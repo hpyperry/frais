@@ -79,6 +79,36 @@ checkupgrade plugins list
 
 Lists available package manager plugins. v1 includes Homebrew only.
 
+### Writing plugins
+
+Any Python package can register a plugin via entry points. Subclass
+`ScannerPlugin` and declare an entry point in `checkupgrade.plugins`:
+
+```python
+from checkupgrade.plugins import ScannerPlugin
+from checkupgrade.models import SystemProfile, UpdateCandidate
+
+class MyPlugin(ScannerPlugin):
+    name = "my-manager"
+    enabled_by_default = True
+
+    def is_available(self) -> bool:
+        return True  # check if the package manager is installed
+
+    def scan(self, system: SystemProfile) -> tuple[list[UpdateCandidate], list[str]]:
+        # return (candidates, skipped_reasons)
+        return [], []
+```
+
+In your `pyproject.toml`:
+
+```toml
+[project.entry-points."checkupgrade.plugins"]
+my_plugin = "my_package.plugin:MyPlugin"
+```
+
+After installing your package, `checkupgrade plugins list` will show it.
+
 ```bash
 checkupgrade ignore
 checkupgrade ignore list

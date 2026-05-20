@@ -45,8 +45,9 @@ src/checkupgrade/
   scanners/
     applications.py    Scans /Applications and ~/Applications for .app bundles via Info.plist
   plugins/
+    __init__.py        Re-exports ScannerPlugin as public API
     base.py            ScannerPlugin ABC (is_available, scan)
-    registry.py        Plugin registry; HomebrewPlugin is the only v1 plugin
+    registry.py        Plugin registry; discovers built-in + third-party plugins via entry points
     homebrew.py        HomebrewPlugin — runs brew outdated --json=v2, brew info, brew uses
 ```
 
@@ -86,3 +87,4 @@ App Store apps skip this entirely — they use the iTunes API directly (~1s).
 - **Logging**: `--verbose` sets INFO, `--debug` sets DEBUG. Logs go to stderr and `~/.local/state/checkupgrade/checkupgrade.log` by default. `--log-file` overrides path, `--no-log` disables file logging. Auto-truncates at 5MB.
 - **Progress bar**: `rich.progress.Progress` shows scan/research/summarize phases with elapsed time.
 - **Ignore list**: `~/.config/checkupgrade/ignore.txt` stores app IDs to skip during `advise`. Managed via `checkupgrade ignore add/remove/list`. Filtered after scan, before research.
+- **Plugin discovery**: `registry.py` uses `importlib.metadata.entry_points(group="checkupgrade.plugins")` to discover third-party plugins at runtime. Built-in plugins (Homebrew) are always present. Failed loads are logged, not fatal.
