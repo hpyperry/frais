@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from typing import Annotated
 
 import click
 import typer
 from rich.console import Console
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from .agent import AgentClient, LLMRequestError, chat_completions_url
@@ -18,6 +21,10 @@ from .plugins.registry import all_plugins, enabled_plugins
 from .research import research_application_update
 from .scanners.applications import scan_applications
 from .system import detect_system
+
+_DEFAULT_LOG_DIR = Path.home() / ".local" / "state" / "checkupgrade"
+_DEFAULT_LOG_FILE = _DEFAULT_LOG_DIR / "checkupgrade.log"
+_LOG_MAX_SIZE = 5 * 1024 * 1024  # 5MB
 
 APP_HELP = """CheckUpgrade scans macOS Applications and Homebrew for available updates.
 
@@ -80,11 +87,22 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
-def _configure_logging(verbose: bool, debug: bool, log_file: str | None) -> None:
+def _configure_logging(verbose: bool, debug: bool, log_file: str | None, no_log: bool) -> None:
     level = logging.DEBUG if debug else logging.INFO if verbose else logging.WARNING
     handlers: list[logging.Handler] = [logging.StreamHandler()]
-    if log_file:
-        handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+
+    if not no_log:
+        path = Path(log_file) if log_file else _DEFAULT_LOG_FILE
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            # Auto-truncate if file exceeds max size
+            if path.exists() and path.stat().st_size > _LOG_MAX_SIZE:
+                path.write_text("")
+            handlers.append(logging.FileHandler(str(path), encoding="utf-8"))
+        except OSError as exc:
+            # Fall back to stderr-only if file logging fails
+            print(f"Warning: could not open log file {path}: {exc}", flush=True)
+
     logging.basicConfig(
         level=level,
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
@@ -115,15 +133,23 @@ def main(
         str | None,
         typer.Option(
             "--log-file",
-            help="Also write logs to this file path.",
+            help="Override default log file path (~/.local/state/checkupgrade/checkupgrade.log).",
             metavar="PATH",
         ),
     ] = None,
+    no_log: Annotated[
+        bool,
+        typer.Option(
+            "--no-log",
+            help="Disable file logging entirely.",
+        ),
+    ] = False,
 ) -> None:
     """Configure logging before running a command."""
-    _configure_logging(verbose=verbose, debug=debug, log_file=log_file)
+    _configure_logging(verbose=verbose, debug=debug, log_file=log_file, no_log=no_log)
     if verbose or debug:
-        logger.info("logging enabled level=%s log_file=%s", "DEBUG" if debug else "INFO", log_file or "-")
+        log_target = "disabled" if no_log else (log_file or str(_DEFAULT_LOG_FILE))
+        logger.info("logging enabled level=%s log_file=%s", "DEBUG" if debug else "INFO", log_target)
 
 
 @app.command()
@@ -318,10 +344,35 @@ def advise(
         raise typer.BadParameter(str(exc)) from exc
     logger.info("advise using provider=%s base_url=%s model=%s jobs=%d", raw_config.provider, raw_config.base_url, raw_config.model, jobs)
     agent = AgentClient(raw_config)
-    result = run_scan(apps_only=apps_only, plugin_names=_split_plugins(plugins))
-    researched, researched_ids = _research_apps_concurrent(agent, result.applications, jobs)
-    result.candidates.extend(researched)
-    _summarize_concurrent(agent, result.candidates, jobs)
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        # Phase 1: Scan
+        scan_task = progress.add_task("Scanning", total=2)
+        result = run_scan(apps_only=apps_only, plugin_names=_split_plugins(plugins))
+        progress.update(scan_task, completed=2, description=f"Scanning ({len(result.applications)} apps, {len(result.candidates)} plugin updates)")
+
+        # Phase 2: Research applications
+        app_count = len(result.applications)
+        if app_count:
+            research_task = progress.add_task("Researching apps", total=app_count)
+            researched, researched_ids = _research_apps_concurrent(agent, result.applications, jobs, progress, research_task)
+            result.candidates.extend(researched)
+        else:
+            researched_ids = set()
+
+        # Phase 3: Summarize candidates
+        cand_count = len(result.candidates)
+        if cand_count:
+            summarize_task = progress.add_task("Generating summaries", total=cand_count)
+            _summarize_concurrent(agent, result.candidates, jobs, progress, summarize_task)
+
     if json_output:
         console.print_json(json.dumps(result.to_dict(), ensure_ascii=False))
         return
@@ -342,7 +393,10 @@ def _research_one(agent: AgentClient, item: SoftwareItem) -> UpdateCandidate | N
     return candidate
 
 
-def _research_apps_concurrent(agent: AgentClient, applications: list[SoftwareItem], jobs: int) -> tuple[list[UpdateCandidate], set[str]]:
+def _research_apps_concurrent(
+    agent: AgentClient, applications: list[SoftwareItem], jobs: int,
+    progress: Progress | None = None, task_id: object | None = None,
+) -> tuple[list[UpdateCandidate], set[str]]:
     if not applications:
         return [], set()
     results: list[UpdateCandidate] = []
@@ -359,6 +413,8 @@ def _research_apps_concurrent(agent: AgentClient, applications: list[SoftwareIte
                 continue
             if candidate:
                 results.append(candidate)
+            if progress and task_id:
+                progress.advance(task_id)
     return results, researched_ids
 
 
@@ -369,13 +425,18 @@ def _summarize_one(agent: AgentClient, candidate: UpdateCandidate) -> None:
         logger.warning("summary failed for %s: %s", candidate.item.name, exc)
 
 
-def _summarize_concurrent(agent: AgentClient, candidates: list[UpdateCandidate], jobs: int) -> None:
+def _summarize_concurrent(
+    agent: AgentClient, candidates: list[UpdateCandidate], jobs: int,
+    progress: Progress | None = None, task_id: object | None = None,
+) -> None:
     if not candidates:
         return
     with ThreadPoolExecutor(max_workers=jobs) as pool:
         futures = [pool.submit(_summarize_one, agent, c) for c in candidates]
         for future in as_completed(futures):
             future.result()  # raise if any unexpected error
+            if progress and task_id:
+                progress.advance(task_id)
 
 
 @app.command()

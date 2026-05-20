@@ -9,38 +9,81 @@ import httpx
 
 from .config import RawLLMConfig
 from .models import ResearchResult, SoftwareItem, UpdateCandidate
-from .tools import TOOL_HANDLERS, TOOLS
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT = (
-    "Find the latest version of a macOS app. You have web_search and web_fetch_batch.\n"
-    "STEPS: 1) web_search once 2) web_fetch_batch with 1-2 best URLs at once 3) return JSON.\n"
-    "Max 2 tool calls. Use web_fetch_batch (not web_fetch) to fetch multiple URLs in one call.\n"
+_SEARCH_QUERIES_PROMPT = (
+    "You are a macOS software update research assistant. "
+    "Given an application, generate 2-3 web search queries to find its latest version. "
+    "Return ONLY a JSON array of query strings.\n"
+    "Example: [\"Keka macOS latest version download\", \"Keka changelog 2026\"]\n"
+    "Focus on: official download pages, GitHub releases, changelog pages."
+)
+
+_PICK_URLS_PROMPT = (
+    "You are a macOS software update research assistant. "
+    "Given search results for an application, pick the top 3 URLs most likely to contain "
+    "the latest version number. Return ONLY a JSON array of URL strings.\n"
+    "Prefer: official download pages, GitHub releases, version history pages.\n"
+    "Avoid: forums, blog posts, review sites."
+)
+
+_EXTRACT_VERSION_PROMPT = (
+    "You are a macOS software update research assistant. "
+    "Given web page content, extract the latest version of the application.\n"
     "Return ONLY JSON:\n"
     '{"latest_version":"x.y.z or null","confidence":"high/medium/low/unknown",'
     '"evidence":["..."],"release_notes_url":"...","download_url":"...",'
     '"source_repo_url":"...","release_notes":"..."}'
 )
 
-_MAX_TOOL_ROUNDS = 4
+_SUMMARIZE_PROMPT = (
+    "Summarize the update recommendation for this software in concise Chinese. "
+    "Mention risk, dependency impact, and whether the user should update now. "
+    "Do not invent facts beyond the provided evidence."
+)
 
 
 class AgentClient:
-    """OpenAI-compatible BYOK client with tool calling for web search."""
+    """OpenAI-compatible BYOK client for structured version research."""
 
     def __init__(self, config: RawLLMConfig) -> None:
         if not config.api_key or not config.base_url or not config.model:
             raise ValueError("LLM config is incomplete.")
         self.config = config
 
-    def research_application(self, item: SoftwareItem) -> ResearchResult:
-        logger.info("agent research application name=%s id=%s version=%s", item.name, item.id, item.current_version or "unknown")
+    def generate_search_queries(self, item: SoftwareItem) -> list[str]:
+        """Step 1: LLM generates search queries for finding the latest version."""
         prompt = (
-            f"App: {item.name}, bundle: {item.id}, current: {item.current_version or 'unknown'}, "
-            f"source: {item.source.value}. Find its latest version online."
+            f"App: {item.name}, bundle: {item.id}, "
+            f"current: {item.current_version or 'unknown'}, "
+            f"source: {item.source.value}."
         )
-        data = self._chat_with_tools(prompt)
+        text = self._chat(_SEARCH_QUERIES_PROMPT, prompt)
+        return _parse_json_list(text)
+
+    def pick_urls(self, item: SoftwareItem, search_results: list[dict[str, str]]) -> list[str]:
+        """Step 2: LLM picks the most promising URLs from search results."""
+        results_text = json.dumps(
+            [{"title": r["title"], "url": r["url"], "snippet": r.get("snippet", "")} for r in search_results],
+            ensure_ascii=False,
+        )
+        prompt = f"App: {item.name}\n\nSearch results:\n{results_text}"
+        text = self._chat(_PICK_URLS_PROMPT, prompt)
+        return _parse_json_list(text)[:3]
+
+    def extract_version(self, item: SoftwareItem, fetched_content: dict[str, str]) -> ResearchResult:
+        """Step 3: LLM extracts version info from fetched page content."""
+        content_text = json.dumps(
+            [{"url": url, "content": content[:3000]} for url, content in fetched_content.items()],
+            ensure_ascii=False,
+        )
+        prompt = (
+            f"App: {item.name}, current version: {item.current_version or 'unknown'}\n\n"
+            f"Page contents:\n{content_text}"
+        )
+        text = self._chat(_EXTRACT_VERSION_PROMPT, prompt)
+        data = _parse_json_object(text)
         return ResearchResult(
             latest_version=data.get("latest_version"),
             release_notes_url=data.get("release_notes_url"),
@@ -52,80 +95,33 @@ class AgentClient:
         )
 
     def summarize_candidate(self, candidate: UpdateCandidate) -> str:
-        logger.info("agent summarize candidate name=%s latest=%s", candidate.item.name, candidate.latest_version or "unknown")
+        """Generate Chinese-language update summary."""
         prompt = (
-            "Summarize the update recommendation for this software in concise Chinese. "
-            "Mention risk, dependency impact, and whether the user should update now. "
-            "Do not invent facts beyond the provided evidence.\n\n"
+            f"{_SUMMARIZE_PROMPT}\n\n"
             f"Candidate: {json.dumps(candidate.to_dict(), ensure_ascii=False)}"
         )
-        return self._chat(prompt)
+        return self._chat("", prompt)
 
     def test_connection(self) -> str:
-        return self._chat("Reply with exactly: ok", max_tokens=64)
+        return self._chat("", "Reply with exactly: ok", max_tokens=64)
 
-    def _chat_with_tools(self, prompt: str) -> dict[str, Any]:
-        """Chat loop with tool calling support."""
+    def _chat(self, system: str, user: str, max_tokens: int | None = None) -> str:
         url = chat_completions_url(self.config.base_url)
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ]
-        for round_num in range(_MAX_TOOL_ROUNDS):
-            logger.debug("agent tool round=%d messages=%d", round_num + 1, len(messages))
-            response_data = self._post(url, messages, tools=TOOLS)
-            choice = response_data["choices"][0]
-            message = choice["message"]
-            # If no tool calls, we have the final answer
-            if not message.get("tool_calls"):
-                text = message.get("content") or message.get("reasoning_content") or ""
-                logger.debug("agent final response text=%s", text[:500])
-                try:
-                    return json.loads(_extract_json(text))
-                except json.JSONDecodeError:
-                    logger.warning("agent response was not valid json: %s", text[:300])
-                    return {"latest_version": None, "confidence": "unknown", "evidence": ["LLM response was not valid JSON."]}
-            # Execute tool calls
-            messages.append(message)
-            for tool_call in message["tool_calls"]:
-                fn_name = tool_call["function"]["name"]
-                try:
-                    fn_args = json.loads(tool_call["function"]["arguments"])
-                except json.JSONDecodeError:
-                    fn_args = {}
-                logger.info("agent tool call name=%s args=%s", fn_name, fn_args)
-                handler = TOOL_HANDLERS.get(fn_name)
-                if handler:
-                    result = handler(**fn_args)
-                else:
-                    result = f"Unknown tool: {fn_name}"
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call["id"],
-                    "content": json.dumps(result, ensure_ascii=False) if not isinstance(result, str) else result,
-                })
-        logger.warning("agent exceeded max tool rounds=%d", _MAX_TOOL_ROUNDS)
-        return {"latest_version": None, "confidence": "unknown", "evidence": ["Exceeded max tool call rounds."]}
-
-    def _chat(self, prompt: str, max_tokens: int | None = None) -> str:
-        url = chat_completions_url(self.config.base_url)
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ]
+        messages: list[dict[str, Any]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": user})
         response_data = self._post(url, messages, max_tokens=max_tokens)
         message = response_data["choices"][0]["message"]
         return message.get("content") or message.get("reasoning_content") or ""
 
-    def _post(self, url: str, messages: list[dict[str, Any]], tools: list | None = None, max_tokens: int | None = None) -> dict[str, Any]:
+    def _post(self, url: str, messages: list[dict[str, Any]], max_tokens: int | None = None) -> dict[str, Any]:
         logger.debug("agent request url=%s model=%s messages=%d", url, self.config.model, len(messages))
         payload: dict[str, Any] = {
             "model": self.config.model,
             "messages": messages,
             "temperature": 0.2,
         }
-        if tools:
-            payload["tools"] = tools
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
         response = httpx.post(
@@ -173,7 +169,6 @@ def chat_completions_url(base_url: str | None) -> str:
 
 def _extract_json(text: str) -> str:
     stripped = text.strip()
-    # Strip code fences
     if stripped.startswith("```"):
         lines = stripped.splitlines()
         if lines and lines[0].startswith("```"):
@@ -181,14 +176,36 @@ def _extract_json(text: str) -> str:
         if lines and lines[-1].startswith("```"):
             lines = lines[:-1]
         stripped = "\n".join(lines).strip()
-    # Try direct parse first
     if stripped.startswith("{"):
         return stripped
-    # Find JSON object in text
-    match = re.search(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", stripped, re.DOTALL)
+    if stripped.startswith("["):
+        return stripped
+    match = re.search(r"(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}|\[[^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*\])", stripped, re.DOTALL)
     if match:
         return match.group()
     return stripped
+
+
+def _parse_json_list(text: str) -> list[str]:
+    """Parse a JSON array of strings from LLM response."""
+    try:
+        data = json.loads(_extract_json(text))
+        if isinstance(data, list):
+            return [str(item) for item in data if item]
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("failed to parse JSON list from: %s", text[:200])
+    return []
+
+
+def _parse_json_object(text: str) -> dict[str, Any]:
+    """Parse a JSON object from LLM response."""
+    try:
+        data = json.loads(_extract_json(text))
+        if isinstance(data, dict):
+            return data
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("failed to parse JSON object from: %s", text[:200])
+    return {}
 
 
 def _ensure_list(value: Any) -> list[str]:

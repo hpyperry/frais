@@ -101,47 +101,6 @@ def _format_github_api(data: Any, url: str) -> str:
     return str(data)[:_FETCH_MAX_CHARS]
 
 
-TOOLS: list[dict[str, Any]] = [
-    {
-        "type": "function",
-        "function": {
-            "name": "web_search",
-            "description": "Search the web. Returns results with title, url, snippet.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search query."},
-                },
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "web_fetch_batch",
-            "description": "Fetch multiple URLs at once and return their content. Pass a list of URLs to read.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "urls": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "List of URLs to fetch.",
-                    },
-                },
-                "required": ["urls"],
-            },
-        },
-    },
-]
-
-TOOL_HANDLERS: dict[str, Any] = {
-    "web_search": web_search,
-    "web_fetch": web_fetch,
-    "web_fetch_batch": web_fetch_batch,
-}
-
 
 def _extract_text(html: str) -> str:
     text = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE)

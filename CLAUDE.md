@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-CheckUpgrade is a macOS BYOK CLI that scans installed Applications and Homebrew packages for available updates. It uses an OpenAI-compatible LLM (user-supplied key) with tool calling for researching application release versions and generating update advice.
+CheckUpgrade is a macOS BYOK CLI that scans installed Applications and Homebrew packages for available updates. It uses an OpenAI-compatible LLM (user-supplied key) with a structured 3-step research pipeline for finding latest versions and generating update advice.
 
 ## Commands
 
@@ -36,9 +36,9 @@ src/checkupgrade/
   cli.py              Typer app: doctor, advise, update, config, plugins
   models.py           Dataclasses: SystemProfile, SoftwareItem, UpdateCandidate, ScanResult
   config.py           BYOK config: reads ~/.config/checkupgrade/config.toml, env var overrides
-  agent.py            AgentClient — OpenAI-compatible chat completions with tool calling
-  tools.py            LLM tools: web_search (DDGS), web_fetch, web_fetch_batch
-  research.py         Orchestrates version research with three-tier fast/slow paths
+  agent.py            AgentClient — structured 3-step research pipeline (generate queries, pick URLs, extract version)
+  tools.py            Web tools: web_search (DDGS), web_fetch, web_fetch_batch (internal, not LLM-exposed)
+  research.py         Orchestrates version research with iTunes fast path + LLM structured pipeline
   version_checker.py  Fast version checks: iTunes API, GitHub API
   system.py           macOS detection
   scanners/
@@ -57,19 +57,22 @@ Three layers of concurrency:
 2. **Research layer**: each app is researched concurrently (controlled by `-j`, default 10)
 3. **Summary layer**: AI summaries for each candidate are generated concurrently
 
-Per-app research uses a three-tier path:
-- **Fast 1 — iTunes API** (~1s): App Store apps only, queries `itunes.apple.com/lookup`
-- **Fast 2 — GitHub API** (~3s): web search → extract GitHub repo → `releases/latest` API
-- **Slow — LLM tool calling** (~20s): LLM uses `web_search` + `web_fetch_batch` tools
+## Research flow
 
-GitHub fast path and LLM run concurrently; if GitHub returns first, LLM is abandoned.
+Each non-App Store app goes through a structured 3-step pipeline:
+
+1. **Generate queries**: LLM produces 2-3 search queries for the app. We execute all queries via `web_search` in parallel.
+2. **Pick URLs**: LLM analyzes deduplicated search results and picks the top 3 most promising URLs.
+3. **Extract version**: We fetch all 3 URLs via `web_fetch_batch`. LLM parses the content and returns version info.
+
+App Store apps skip this entirely — they use the iTunes API directly (~1s).
 
 ## Data flow
 
 **`advise` command**:
 1. `run_scan()` — detect system, scan applications, run plugins concurrently
-2. `_research_apps_concurrent()` — for each app (App Store → iTunes, others → GitHub + LLM concurrent)
-3. `_summarize_concurrent()` — generate Chinese-language summaries via LLM
+2. Research with progress bar — iTunes fast path for App Store apps, 3-step LLM pipeline for others
+3. Summarize with progress bar — generate Chinese-language summaries via LLM
 
 ## Key patterns
 
@@ -77,7 +80,6 @@ GitHub fast path and LLM run concurrently; if GitHub returns first, LLM is aband
 - **Testing**: Uses `monkeypatch` (pytest fixture) for all external dependencies — subprocess, filesystem, env vars. No mock library. Test data for apps uses `tmp_path` with real plistlib dumps.
 - **Version comparison**: Uses `packaging.version.Version`; strips leading `v`/`V` before comparing.
 - **Source classification**: Applications are classified as APP_STORE, LOCAL_BUILD, NETWORK_DOWNLOAD, APPLICATION, or UNKNOWN based on codesign authority, team ID, and quarantine xattr presence.
-- **LLM tool calling**: Agent receives `web_search` and `web_fetch_batch` tools. System prompt constrains to max 2 tool calls per round, max 4 rounds total.
-- **Version tag filtering**: `_is_version_tag()` rejects non-version tags like `svn-trunk`, `ubuntu24/xxx`, `nightly`.
-- **GitHub repo matching**: `find_github_repo_from_search()` prefers repos whose name matches the app name.
-- **Logging**: `--verbose` sets INFO, `--debug` sets DEBUG. Logs go to stderr; `--log-file` adds a file handler. httpx logging is clamped to INFO unless `--debug`.
+- **Structured LLM pipeline**: Agent does NOT use tool calling. Instead, 3 discrete LLM calls per app: generate queries, pick URLs, extract version. Each call returns JSON.
+- **Logging**: `--verbose` sets INFO, `--debug` sets DEBUG. Logs go to stderr and `~/.local/state/checkupgrade/checkupgrade.log` by default. `--log-file` overrides path, `--no-log` disables file logging. Auto-truncates at 5MB.
+- **Progress bar**: `rich.progress.Progress` shows scan/research/summarize phases with elapsed time.

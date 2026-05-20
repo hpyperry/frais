@@ -1,6 +1,6 @@
 # CheckUpgrade
 
-CheckUpgrade is a macOS BYOK CLI that scans installed Applications and Homebrew packages for available updates. It uses an OpenAI-compatible LLM (user-supplied key) with tool calling to research latest versions and generate update advice.
+CheckUpgrade is a macOS BYOK CLI that scans installed Applications and Homebrew packages for available updates. It uses an OpenAI-compatible LLM (user-supplied key) with a structured research pipeline to find latest versions and generate update advice.
 
 ## Quick start
 
@@ -31,14 +31,16 @@ checkupgrade advise --json
 ```
 
 Scans Applications and Homebrew, then researches latest versions using a
-three-tier strategy:
+structured 3-step pipeline per app:
 
-1. **iTunes API** — instant for App Store apps
-2. **GitHub API** — web search + GitHub releases, no LLM needed
-3. **LLM tool calling** — fallback using web search and fetch tools
+1. LLM generates search queries (smarter than hardcoded queries)
+2. We search and LLM picks the best 3 URLs
+3. We fetch those URLs and LLM extracts the version number
 
-GitHub and LLM paths run concurrently; if GitHub resolves first, the LLM is
-skipped. Use `-j` to control concurrency (default 10, max 20).
+App Store apps use the iTunes API directly (fast, no LLM needed).
+
+Use `-j` to control concurrency (default 10, max 20). Progress is shown
+with a live progress bar.
 
 ```bash
 checkupgrade config
@@ -79,16 +81,17 @@ Lists available package manager plugins. v1 includes Homebrew only.
 
 ## Logs
 
-Use global logging flags before the command name:
+Logs are written to both stderr and `~/.local/state/checkupgrade/checkupgrade.log` by default.
 
 ```bash
 checkupgrade --verbose advise
 checkupgrade --debug advise
-checkupgrade --debug --log-file ./checkupgrade.log advise
+checkupgrade --log-file ./my.log advise
+checkupgrade --no-log advise
 ```
 
-Logs are written to stderr by default. `--verbose` shows high-level progress;
-`--debug` also includes subprocess command traces and LLM tool call details.
+`--verbose` shows high-level progress; `--debug` includes LLM call details and
+subprocess traces. Log files auto-truncate at 5MB.
 
 ## Build a macOS binary
 
