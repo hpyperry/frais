@@ -550,7 +550,7 @@ def _print_advise_result(result: ScanResult, researched_ids: set[str]) -> None:
         f"Arch: {result.system.arch} | Paths: {', '.join(result.system.applications_paths)}"
     )
     table = Table(expand=True)
-    table.add_column("ID", ratio=2, no_wrap=True, overflow="ellipsis")
+    table.add_column("ID", ratio=3)
     table.add_column("Software", ratio=3, no_wrap=True, overflow="ellipsis")
     table.add_column("Source", no_wrap=True)
     table.add_column("Current", no_wrap=True, overflow="ellipsis")
