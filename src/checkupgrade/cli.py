@@ -289,18 +289,26 @@ def plugins_default(ctx: typer.Context) -> None:
 
 @plugins_app.command("list")
 def plugins_list() -> None:
-    """List known package manager plugins and availability.
+    """List all known plugins and their status.
 
-    v1 ships with the Homebrew plugin enabled by default. If Homebrew is not on
-    PATH, scans continue with Applications and report the plugin as skipped.
+    Shows all discovered plugins (built-in and third-party), whether the
+    underlying tool is installed, and whether the plugin is enabled by default.
 
     Example:
       checkupgrade plugins list
     """
-    table = Table("Plugin", "Available", "Default")
+    table = Table("Plugin", "Available", "Enabled", "Source")
     for name, plugin in all_plugins().items():
-        table.add_row(name, str(plugin.is_available()), str(plugin.enabled_by_default))
+        available = "yes" if plugin.is_available() else "no"
+        enabled = "yes" if plugin.enabled_by_default else "no"
+        source = "3rd-party" if _is_third_party(plugin) else "built-in"
+        table.add_row(name, available, enabled, source)
     console.print(table)
+
+
+def _is_third_party(plugin) -> bool:
+    mod = type(plugin).__module__
+    return not mod.startswith("checkupgrade")
 
 
 @plugins_app.command("enable")

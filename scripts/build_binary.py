@@ -13,6 +13,13 @@ DIST_BINARY = ROOT / "dist" / "checkupgrade"
 def main() -> None:
     if shutil.which("pyinstaller") is None:
         raise SystemExit("pyinstaller is missing. Run with `uv run --extra build python scripts/build_binary.py`.")
+
+    # Build wheel so .dist-info with entry_points exists for PyInstaller
+    subprocess.run(["uv", "build"], cwd=ROOT, check=True)
+    wheels = sorted(ROOT.glob("dist/checkupgrade-*.whl"))
+    if wheels:
+        subprocess.run(["uv", "pip", "install", "--reinstall", str(wheels[-1])], cwd=ROOT, check=True)
+
     subprocess.run(
         [
             "pyinstaller",
@@ -20,6 +27,10 @@ def main() -> None:
             "--name",
             "checkupgrade",
             "--clean",
+            "--copy-metadata",
+            "checkupgrade",
+            "--additional-hooks-dir",
+            str(ROOT / "scripts"),
             str(ENTRYPOINT),
         ],
         cwd=ROOT,
