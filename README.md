@@ -1,6 +1,6 @@
 # CheckUpgrade
 
-CheckUpgrade is a macOS BYOK CLI that scans installed Applications and Homebrew packages for available updates. It uses an OpenAI-compatible LLM (user-supplied key) with a structured research pipeline to find latest versions and generate update advice.
+CheckUpgrade is a macOS BYOK CLI that scans installed Applications, Homebrew, and npm packages for available updates. It uses an OpenAI-compatible LLM (user-supplied key) with a structured research pipeline to find latest versions and generate update advice.
 
 ## Quick start
 
@@ -30,7 +30,7 @@ checkupgrade advise -j 5
 checkupgrade advise --json
 ```
 
-Scans Applications and Homebrew, then researches latest versions using a
+Scans Applications, Homebrew, and npm global packages, then researches latest versions using a
 structured 3-step pipeline per app:
 
 1. LLM generates search queries (smarter than hardcoded queries)
@@ -77,7 +77,7 @@ checkupgrade plugins
 checkupgrade plugins list
 ```
 
-Lists available package manager plugins. v1 includes Homebrew only.
+Lists available package manager plugins. v1 includes Homebrew and npm.
 
 ### Writing plugins
 

@@ -433,8 +433,17 @@ def advise(
         console=console,
     ) as progress:
         # Phase 1: Scan
-        scan_task = progress.add_task("Scanning", total=2)
-        result = run_scan(apps_only=apps_only, plugin_names=_split_plugins(plugins))
+        _explicit_plugins = _split_plugins(plugins)
+        if apps_only:
+            scan_total = 1
+        elif _explicit_plugins:
+            scan_total = len(enabled_plugins(_explicit_plugins))
+        else:
+            scan_total = 1 + len(enabled_plugins())
+
+        scan_task = progress.add_task("Scanning", total=scan_total)
+        result = run_scan(apps_only=apps_only, plugin_names=_explicit_plugins,
+                          progress=progress, task_id=scan_task)
 
         # Filter ignored apps
         ignored = load_ignored()
@@ -448,7 +457,8 @@ def advise(
             ignored_count += before_cands - len(result.candidates)
 
         ignored_str = f", {ignored_count} ignored" if ignored_count else ""
-        progress.update(scan_task, completed=2, description=f"Scanning ({len(result.applications)} apps, {len(result.candidates)} plugin updates{ignored_str})")
+        progress.update(scan_task,
+                        description=f"Scanning ({len(result.applications)} apps, {len(result.candidates)} plugin updates{ignored_str})")
 
         # Phase 2: Research applications
         app_count = len(result.applications)
@@ -514,7 +524,7 @@ def _research_apps_concurrent(
                 continue
             if candidate:
                 results.append(candidate)
-            if progress and task_id:
+            if progress is not None and task_id is not None:
                 progress.advance(task_id)
     return results, researched_ids
 
@@ -536,7 +546,7 @@ def _summarize_concurrent(
         futures = [pool.submit(_summarize_one, agent, c) for c in candidates]
         for future in as_completed(futures):
             future.result()  # raise if any unexpected error
-            if progress and task_id:
+            if progress is not None and task_id is not None:
                 progress.advance(task_id)
 
 
@@ -640,39 +650,41 @@ def _resolve_app_store_command(item: SoftwareItem) -> tuple[list[str], bool]:
 
 
 
-def run_scan(apps_only: bool = False, plugin_names: list[str] | None = None) -> ScanResult:
+def run_scan(apps_only: bool = False, plugin_names: list[str] | None = None,
+             progress: Progress | None = None, task_id: object | None = None) -> ScanResult:
     system = detect_system()
     logger.info("scan start os=%s version=%s arch=%s apps_only=%s plugins=%s", system.os_name, system.os_version, system.arch, apps_only, plugin_names or "default")
-    if plugin_names:
-        logger.info("scan explicit plugins requested; skipping Applications scanner")
-        applications = []
-    else:
-        logger.info("scan applications paths=%s", system.applications_paths)
-        applications = scan_applications(system.applications_paths)
-        logger.info("scan applications found=%d", len(applications))
-    result = ScanResult(system=system, applications=applications)
-    if apps_only:
-        logger.info("scan apps_only=true skipping plugins")
-        return result
-    plugins = enabled_plugins(plugin_names)
-    if plugins:
-        _run_plugins_concurrent(plugins, system, result)
+    result = ScanResult(system=system, applications=[])
+
+    _scan_apps = not bool(plugin_names)
+    plugins = [] if apps_only else enabled_plugins(plugin_names)
+
+    with ThreadPoolExecutor(max_workers=max(1, len(plugins) + (1 if _scan_apps else 0))) as pool:
+        futures: dict = {}
+        if _scan_apps:
+            futures[pool.submit(scan_applications, system.applications_paths)] = "applications"
+        for plugin in plugins:
+            futures[pool.submit(_run_one_plugin, plugin, system)] = plugin.name
+
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                data = future.result()
+                if name == "applications":
+                    result.applications = data
+                    logger.info("scan applications found=%d", len(data))
+                else:
+                    candidates, skipped = data
+                    logger.info("scan plugin done name=%s candidates=%d skipped=%d", name, len(candidates), len(skipped))
+                    result.candidates.extend(candidates)
+                    result.skipped.extend(skipped)
+            except Exception as exc:
+                logger.warning("scan failed for %s: %s", name, exc)
+            if progress is not None and task_id is not None:
+                progress.advance(task_id)
+
     logger.info("scan done applications=%d candidates=%d skipped=%d", len(result.applications), len(result.candidates), len(result.skipped))
     return result
-
-
-def _run_plugins_concurrent(plugins: list, system, result: ScanResult) -> None:
-    with ThreadPoolExecutor(max_workers=len(plugins)) as pool:
-        futures = {pool.submit(_run_one_plugin, plugin, system): plugin for plugin in plugins}
-        for future in as_completed(futures):
-            plugin = futures[future]
-            try:
-                candidates, skipped = future.result()
-                logger.info("scan plugin done name=%s candidates=%d skipped=%d", plugin.name, len(candidates), len(skipped))
-                result.candidates.extend(candidates)
-                result.skipped.extend(skipped)
-            except Exception as exc:
-                logger.warning("scan plugin failed name=%s: %s", plugin.name, exc)
 
 
 def _run_one_plugin(plugin, system) -> tuple[list[UpdateCandidate], list[str]]:

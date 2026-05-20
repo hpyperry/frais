@@ -56,7 +56,7 @@ src/checkupgrade/
 
 Three layers of concurrency:
 
-1. **Plugin layer**: all plugins run in parallel via `ThreadPoolExecutor`
+1. **Scan layer**: applications scanner and all enabled plugins run in parallel via a single `ThreadPoolExecutor`. No data dependency between them (applications write `result.applications`, plugins write `result.candidates`).
 2. **Research layer**: each app is researched concurrently (controlled by `-j`, default 10)
 3. **Summary layer**: AI summaries for each candidate are generated concurrently
 
@@ -73,7 +73,7 @@ App Store apps skip this entirely — they use the iTunes API directly (~1s).
 ## Data flow
 
 **`advise` command**:
-1. `run_scan()` — detect system, scan applications, run plugins concurrently
+1. `run_scan()` — detect system, scan applications and plugins in parallel; accepts optional `progress`/`task_id` for live progress updates
 2. Filter ignored apps (from `~/.config/checkupgrade/ignore.txt`)
 3. Research with progress bar — iTunes fast path for App Store apps, 3-step LLM pipeline for others
 4. Summarize with progress bar — generate Chinese-language summaries via LLM
@@ -86,6 +86,6 @@ App Store apps skip this entirely — they use the iTunes API directly (~1s).
 - **Source classification**: Applications are classified as APP_STORE, LOCAL_BUILD, NETWORK_DOWNLOAD, APPLICATION, or UNKNOWN based on codesign authority, team ID, and quarantine xattr presence.
 - **Structured LLM pipeline**: Agent does NOT use tool calling. Instead, 3 discrete LLM calls per app: generate queries, pick URLs, extract version. Each call returns JSON.
 - **Logging**: `--verbose` sets INFO, `--debug` sets DEBUG. Logs go to stderr and `~/.local/state/checkupgrade/checkupgrade.log` by default. `--log-file` overrides path, `--no-log` disables file logging. Auto-truncates at 5MB.
-- **Progress bar**: `rich.progress.Progress` shows scan/research/summarize phases with elapsed time.
+- **Progress bar**: `rich.progress.Progress` shows scan/research/summarize phases with elapsed time. Scan total is dynamic: 1 (applications) + N (enabled plugins), or N for `--plugins`, or 1 for `--apps-only`.
 - **Ignore list**: `~/.config/checkupgrade/ignore.txt` stores app IDs to skip during `advise`. Managed via `checkupgrade ignore add/remove/list`. Filtered after scan, before research.
 - **Plugin discovery**: `registry.py` uses `importlib.metadata.entry_points(group="checkupgrade.plugins")` to discover third-party plugins at runtime. Built-in plugins (Homebrew) are always present. Failed loads are logged, not fatal.
