@@ -6,8 +6,8 @@ import shutil
 import subprocess
 from typing import Any
 
-from ..models import DependencyImpact, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
-from .base import ScannerPlugin
+from ...models import DependencyImpact, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
+from ..base import ScannerPlugin
 
 logger = logging.getLogger(__name__)
 

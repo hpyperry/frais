@@ -4,7 +4,6 @@ import logging
 from importlib.metadata import entry_points
 
 from .base import ScannerPlugin
-from .homebrew import HomebrewPlugin
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +11,7 @@ _ENTRY_POINT_GROUP = "checkupgrade.plugins"
 
 
 def all_plugins() -> dict[str, ScannerPlugin]:
-    plugins: dict[str, ScannerPlugin] = {"homebrew": HomebrewPlugin()}
+    plugins: dict[str, ScannerPlugin] = {}
     for ep in entry_points(group=_ENTRY_POINT_GROUP):
         try:
             cls = ep.load()

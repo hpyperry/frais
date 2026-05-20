@@ -12,6 +12,7 @@ class SourceKind(StrEnum):
     APP_STORE = "app store"
     HOMEBREW_FORMULA = "brew"
     HOMEBREW_CASK = "brew cask"
+    NPM_GLOBAL = "npm"
     UNKNOWN = "unknown"
 
 

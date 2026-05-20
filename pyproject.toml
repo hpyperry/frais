@@ -23,6 +23,10 @@ build = [
 [project.scripts]
 checkupgrade = "checkupgrade.cli:app"
 
+[project.entry-points."checkupgrade.plugins"]
+homebrew = "checkupgrade.plugins.homebrew:HomebrewPlugin"
+npm = "checkupgrade.plugins.npm:NpmPlugin"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

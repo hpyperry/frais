@@ -48,7 +48,8 @@ src/checkupgrade/
     __init__.py        Re-exports ScannerPlugin as public API
     base.py            ScannerPlugin ABC (is_available, scan)
     registry.py        Plugin registry; discovers built-in + third-party plugins via entry points
-    homebrew.py        HomebrewPlugin — runs brew outdated --json=v2, brew info, brew uses
+    homebrew/          HomebrewPlugin — runs brew outdated --json=v2, brew info, brew uses
+    npm/               NpmPlugin — runs npm outdated -g --json for global packages
 ```
 
 ## Concurrency model
