@@ -88,8 +88,14 @@ logger = logging.getLogger(__name__)
 
 
 def _configure_logging(verbose: bool, debug: bool, log_file: str | None, no_log: bool) -> None:
-    level = logging.DEBUG if debug else logging.INFO if verbose else logging.WARNING
-    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    file_level = logging.DEBUG if debug else logging.INFO if verbose else logging.WARNING
+    # Stderr: show only errors by default; INFO with --verbose; DEBUG with --debug
+    stderr_level = logging.DEBUG if debug else logging.INFO if verbose else logging.ERROR
+
+    stderr_handler = logging.StreamHandler()
+    stderr_handler.setLevel(stderr_level)
+
+    handlers: list[logging.Handler] = [stderr_handler]
 
     if not no_log:
         path = Path(log_file) if log_file else _DEFAULT_LOG_FILE
@@ -98,13 +104,15 @@ def _configure_logging(verbose: bool, debug: bool, log_file: str | None, no_log:
             # Auto-truncate if file exceeds max size
             if path.exists() and path.stat().st_size > _LOG_MAX_SIZE:
                 path.write_text("")
-            handlers.append(logging.FileHandler(str(path), encoding="utf-8"))
+            file_handler = logging.FileHandler(str(path), encoding="utf-8")
+            file_handler.setLevel(file_level)
+            handlers.append(file_handler)
         except OSError as exc:
             # Fall back to stderr-only if file logging fails
             print(f"Warning: could not open log file {path}: {exc}", flush=True)
 
     logging.basicConfig(
-        level=level,
+        level=logging.DEBUG,
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
         handlers=handlers,
         force=True,
