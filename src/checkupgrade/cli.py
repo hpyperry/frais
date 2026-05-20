@@ -16,7 +16,7 @@ from rich.table import Table
 
 from .agent import AgentClient, LLMRequestError, chat_completions_url
 from .config import CONFIG_PATH, load_llm_config, require_raw_llm_config, write_config_template
-from .models import SoftwareItem, ScanResult, UpdateCandidate
+from .models import SoftwareItem, SourceKind, ScanResult, UpdateCandidate
 from .plugins.registry import all_plugins, enabled_plugins
 from .research import research_application_update
 from .scanners.applications import scan_applications
@@ -505,6 +505,10 @@ def update(
         return
 
     for candidate in candidates:
+        # Ensure App Store apps have an open command
+        if candidate.item.source == SourceKind.APP_STORE and not candidate.command:
+            candidate.command, candidate.can_auto_update = _resolve_app_store_command(candidate.item)
+
         console.print()
         console.print(f"  {candidate.item.id}")
         console.print(f"    {candidate.item.name} | {candidate.item.source.value}")
@@ -528,6 +532,24 @@ def update(
             subprocess.run(candidate.command, check=False)
         else:
             console.print("    Skipped (manual update required).")
+def _resolve_app_store_command(item: SoftwareItem) -> tuple[list[str], bool]:
+    """Try to get App Store trackId and return (command, can_auto_update)."""
+    try:
+        import httpx
+        response = httpx.get(
+            "https://itunes.apple.com/lookup",
+            params={"bundleId": item.id, "country": "cn"},
+            timeout=httpx.Timeout(5.0, read=10.0),
+        )
+        response.raise_for_status()
+        data = response.json()
+        if data.get("resultCount", 0) > 0:
+            track_id = data["results"][0].get("trackId")
+            if track_id:
+                return ["open", f"macappstore://apps.apple.com/app/id{track_id}"], True
+    except Exception as exc:
+        logger.debug("itunes lookup failed for %s: %s", item.name, exc)
+    return [], False
 
 
 def run_scan(apps_only: bool = False, plugin_names: list[str] | None = None) -> ScanResult:
