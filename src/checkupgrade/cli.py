@@ -549,31 +549,46 @@ def _print_advise_result(result: ScanResult, researched_ids: set[str]) -> None:
         f"OS: {result.system.os_name} {result.system.os_version} | "
         f"Arch: {result.system.arch} | Paths: {', '.join(result.system.applications_paths)}"
     )
-    table = Table(expand=True, show_lines=True)
-    table.add_column("ID")
-    table.add_column("Software")
-    table.add_column("Source")
-    table.add_column("Current")
-    table.add_column("Latest")
-    table.add_column("Action")
+    console.print()
+
     candidate_item_ids = {candidate.item.id for candidate in result.candidates}
+    updates: list[tuple[str, str, str, str, str, str]] = []
+
     for item in result.applications:
         if item.id in candidate_item_ids:
             continue
+        source = item.source.value
+        current = item.current_version or "unknown"
         if item.id in researched_ids:
-            table.add_row(item.id, item.name, item.source.value, item.current_version or "unknown", "up to date", "—")
+            console.print(f"  {item.id}")
+            console.print(f"    {item.name} | {source} | {current}  [dim]up to date[/dim]")
+            console.print()
         else:
-            table.add_row(item.id, item.name, item.source.value, item.current_version or "unknown", "failed", "retry")
+            console.print(f"  {item.id}")
+            console.print(f"    {item.name} | {source} | {current}  [red]failed[/red]")
+            console.print()
+
     for candidate in result.candidates:
-        table.add_row(
+        updates.append((
             candidate.item.id,
             candidate.item.name,
             candidate.item.source.value,
             candidate.item.current_version or "unknown",
             candidate.latest_version or "unknown",
             candidate.recommended_action,
-        )
-    console.print(table)
+        ))
+
+    if updates:
+        console.print(f"  [bold]── Updates available ({len(updates)}) ──[/bold]")
+        console.print()
+        for item_id, name, source, current, latest, action in updates:
+            console.print(f"  {item_id}")
+            console.print(f"    {name} | {source}")
+            console.print(f"    {current} → [green]{latest}[/green]  [{action}]")
+            console.print()
+
+    for skipped in result.skipped:
+        console.print(f"  Skipped: {skipped}")
     for skipped in result.skipped:
         console.print(f"Skipped: {skipped}")
 
