@@ -66,6 +66,18 @@ class SoftwareItem:
         data["source"] = self.source.value
         return data
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SoftwareItem:
+        return cls(
+            id=data["id"],
+            name=data["name"],
+            kind=data.get("kind", "application"),
+            source=SourceKind(data.get("source", "unknown")),
+            current_version=data.get("current_version"),
+            path=data.get("path"),
+            metadata=data.get("metadata", {}),
+        )
+
 
 @dataclass(slots=True)
 class ResearchResult:
@@ -90,6 +102,14 @@ class DependencyImpact:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DependencyImpact:
+        return cls(
+            used_by=data.get("used_by", []),
+            depends_on=data.get("depends_on", []),
+            impact_level=data.get("impact_level", "unknown"),
+        )
+
 
 @dataclass(slots=True)
 class UpdateCandidate:
@@ -109,6 +129,21 @@ class UpdateCandidate:
         data["item"] = self.item.to_dict()
         data["dependency_impact"] = self.dependency_impact.to_dict()
         return data
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UpdateCandidate:
+        return cls(
+            item=SoftwareItem.from_dict(data["item"]),
+            latest_version=data.get("latest_version"),
+            release_notes=data.get("release_notes"),
+            dependency_impact=DependencyImpact.from_dict(data.get("dependency_impact", {})),
+            risk_level=data.get("risk_level", "unknown"),
+            ai_summary=data.get("ai_summary"),
+            recommended_action=data.get("recommended_action", "No action"),
+            can_auto_update=data.get("can_auto_update", False),
+            command=data.get("command", []),
+            evidence=data.get("evidence", []),
+        )
 
 
 @dataclass(slots=True)

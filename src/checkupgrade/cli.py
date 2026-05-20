@@ -24,6 +24,7 @@ from .system import detect_system
 
 _DEFAULT_LOG_DIR = Path.home() / ".local" / "state" / "checkupgrade"
 _DEFAULT_LOG_FILE = _DEFAULT_LOG_DIR / "checkupgrade.log"
+_ADVICE_CACHE = _DEFAULT_LOG_DIR / "last_advice.json"
 _LOG_MAX_SIZE = 5 * 1024 * 1024  # 5MB
 
 APP_HELP = """CheckUpgrade scans macOS Applications and Homebrew for available updates.
@@ -384,6 +385,15 @@ def advise(
     if json_output:
         console.print_json(json.dumps(result.to_dict(), ensure_ascii=False))
         return
+
+    # Save advice cache for update command
+    try:
+        _DEFAULT_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        _ADVICE_CACHE.write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+        logger.info("advice cache saved to %s", _ADVICE_CACHE)
+    except OSError as exc:
+        logger.warning("failed to save advice cache: %s", exc)
+
     _print_advise_result(result, researched_ids)
 
 
@@ -451,51 +461,73 @@ def _summarize_concurrent(
 def update(
     only: Annotated[
         str | None,
-        typer.Option(
-            "--only",
-            help="Update one auto-updatable candidate by exact candidate id or software name.",
+        typer.Argument(
+            help="Filter by exact id or software name. Omit to review all candidates.",
             metavar="ID_OR_NAME",
         ),
     ] = None,
-    plugins: Annotated[
-        str | None,
-        typer.Option(
-            "--plugins",
-            help="Comma-separated plugin names to update from. v1 auto-update support is Homebrew only.",
-            metavar="NAMES",
-        ),
-    ] = None,
 ) -> None:
-    """Interactively execute confirmed auto-update commands.
+    """Interactively review and execute updates with AI advice.
 
-    v1 only auto-executes Homebrew formula/cask updates. Applications discovered
-    from local builds, downloads, or unknown sources are reported by advise but
-    are not overwritten automatically. Every command is shown before it is run
-    and requires confirmation.
+    Loads results from the last `checkupgrade advise` run. Shows each candidate
+    with AI advice for confirmation. Auto-updatable packages (Homebrew) execute
+    directly; others show the recommended action.
+
+    Run `checkupgrade advise` first to generate the update candidates.
 
     Examples:
       checkupgrade update
-      checkupgrade update --only node
-      checkupgrade update --plugins homebrew --only docker
+      checkupgrade update fr.handbrake.HandBrake
     """
-    result = run_scan(apps_only=False, plugin_names=_split_plugins(plugins))
-    candidates = [candidate for candidate in result.candidates if candidate.can_auto_update]
-    logger.info("update auto_updatable_candidates=%d only=%s", len(candidates), only or "-")
+    if not _ADVICE_CACHE.exists():
+        console.print("No advice cache found. Run [bold]checkupgrade advise[/bold] first.")
+        raise typer.Exit(1)
+
+    try:
+        data = json.loads(_ADVICE_CACHE.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        console.print(f"Failed to read advice cache: {exc}")
+        raise typer.Exit(1)
+
+    # Parse candidates from cached data
+    raw_candidates = data.get("candidates", [])
+    candidates: list[UpdateCandidate] = []
+    for raw in raw_candidates:
+        try:
+            candidates.append(UpdateCandidate.from_dict(raw))
+        except Exception as exc:
+            logger.warning("failed to parse cached candidate: %s", exc)
+
     if only:
-        candidates = [
-            candidate for candidate in candidates
-            if candidate.item.id == only or candidate.item.name == only
-        ]
+        candidates = [c for c in candidates if c.item.id == only or c.item.name == only]
     if not candidates:
-        console.print("No auto-updatable candidates found.")
+        console.print("No update candidates found.")
         return
+
     for candidate in candidates:
-        _print_candidate_detail(candidate)
-        if not typer.confirm("Run this update command?", default=False):
-            logger.info("update skipped command=%s", " ".join(candidate.command))
+        console.print()
+        console.print(f"  {candidate.item.id}")
+        console.print(f"    {candidate.item.name} | {candidate.item.source.value}")
+        console.print(
+            f"    {candidate.item.current_version or 'unknown'} → "
+            f"[green]{candidate.latest_version or 'unknown'}[/green]"
+        )
+        if candidate.ai_summary:
+            console.print(f"    [cyan]AI:[/cyan] {candidate.ai_summary}")
+        if candidate.can_auto_update:
+            console.print(f"    Command: {' '.join(candidate.command)}")
+        else:
+            console.print(f"    [dim]Manual update required[/dim]")
+
+        if not typer.confirm("Proceed?", default=False):
+            logger.info("update skipped name=%s", candidate.item.name)
             continue
-        logger.info("update executing command=%s", " ".join(candidate.command))
-        subprocess.run(candidate.command, check=False)
+
+        if candidate.can_auto_update:
+            logger.info("update executing command=%s", " ".join(candidate.command))
+            subprocess.run(candidate.command, check=False)
+        else:
+            console.print("    Skipped (manual update required).")
 
 
 def run_scan(apps_only: bool = False, plugin_names: list[str] | None = None) -> ScanResult:
@@ -552,7 +584,6 @@ def _print_advise_result(result: ScanResult, researched_ids: set[str]) -> None:
     console.print()
 
     candidate_item_ids = {candidate.item.id for candidate in result.candidates}
-    updates: list[tuple[str, str, str, str, str, str]] = []
 
     for item in result.applications:
         if item.id in candidate_item_ids:
@@ -568,45 +599,22 @@ def _print_advise_result(result: ScanResult, researched_ids: set[str]) -> None:
             console.print(f"    {item.name} | {source} | {current}  [red]failed[/red]")
             console.print()
 
-    for candidate in result.candidates:
-        updates.append((
-            candidate.item.id,
-            candidate.item.name,
-            candidate.item.source.value,
-            candidate.item.current_version or "unknown",
-            candidate.latest_version or "unknown",
-            candidate.recommended_action,
-        ))
-
-    if updates:
-        console.print(f"  [bold]── Updates available ({len(updates)}) ──[/bold]")
+    if result.candidates:
+        console.print(f"  [bold]── Updates available ({len(result.candidates)}) ──[/bold]")
         console.print()
-        for item_id, name, source, current, latest, action in updates:
-            console.print(f"  {item_id}")
-            console.print(f"    {name} | {source}")
-            console.print(f"    {current} → [green]{latest}[/green]  [{action}]")
+        for candidate in result.candidates:
+            console.print(f"  {candidate.item.id}")
+            console.print(f"    {candidate.item.name} | {candidate.item.source.value}")
+            console.print(
+                f"    {candidate.item.current_version or 'unknown'} → "
+                f"[green]{candidate.latest_version or 'unknown'}[/green]  [{candidate.recommended_action}]"
+            )
             console.print()
 
     for skipped in result.skipped:
         console.print(f"  Skipped: {skipped}")
-    for skipped in result.skipped:
-        console.print(f"Skipped: {skipped}")
 
 
-def _print_candidate_detail(candidate: UpdateCandidate) -> None:
-    table = Table(expand=True)
-    table.add_column("Key", no_wrap=True)
-    table.add_column("Value", ratio=3)
-    table.add_row("Software", candidate.item.name)
-    table.add_row("Source", candidate.item.source.value)
-    table.add_row("Current", candidate.item.current_version or "unknown")
-    table.add_row("Latest", candidate.latest_version or "unknown")
-    table.add_row("Impact", candidate.dependency_impact.impact_level)
-    table.add_row("Used by", ", ".join(candidate.dependency_impact.used_by) or "none")
-    table.add_row("Depends on", ", ".join(candidate.dependency_impact.depends_on) or "none")
-    table.add_row("Advice", candidate.ai_summary or candidate.recommended_action)
-    table.add_row("Command", " ".join(candidate.command))
-    console.print(table)
 
 
 if __name__ == "__main__":
