@@ -11,11 +11,14 @@ from typing import Annotated
 import click
 import typer
 from rich.console import Console
+from rich.markdown import Markdown
+from rich.padding import Padding
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from .agent import AgentClient, LLMRequestError, chat_completions_url
 from .config import CONFIG_PATH, load_llm_config, require_raw_llm_config, write_config_template
+from .ignore import IGNORE_PATH, add_ignored, load_ignored, remove_ignored
 from .models import SoftwareItem, SourceKind, ScanResult, UpdateCandidate
 from .plugins.registry import all_plugins, enabled_plugins
 from .research import research_application_update
@@ -45,6 +48,7 @@ Common examples:
   checkupgrade advise --apps-only
   checkupgrade advise -j 5
   checkupgrade update --only node
+  checkupgrade ignore add com.example.app
 """
 
 CONFIG_HELP = """Manage BYOK LLM configuration.
@@ -79,11 +83,28 @@ Examples:
   checkupgrade plugins list
 """
 
+IGNORE_HELP = """Manage apps to ignore during advise.
+
+Ignored apps are excluded from version research. Useful for false positives
+or apps you never want to update.
+
+Storage:
+  ~/.config/checkupgrade/ignore.txt (one app ID per line)
+
+Examples:
+  checkupgrade ignore
+  checkupgrade ignore list
+  checkupgrade ignore add com.anthropic.claude-code-url-handler
+  checkupgrade ignore remove com.anthropic.claude-code-url-handler
+"""
+
 app = typer.Typer(help=APP_HELP, no_args_is_help=True, rich_markup_mode="rich")
 config_app = typer.Typer(help=CONFIG_HELP, rich_markup_mode="rich")
 plugins_app = typer.Typer(help=PLUGINS_HELP, rich_markup_mode="rich")
+ignore_app = typer.Typer(help=IGNORE_HELP, rich_markup_mode="rich")
 app.add_typer(config_app, name="config")
 app.add_typer(plugins_app, name="plugins")
+app.add_typer(ignore_app, name="ignore")
 console = Console()
 logger = logging.getLogger(__name__)
 
@@ -305,6 +326,47 @@ def plugins_disable(
     console.print(f"Plugin persistence is not implemented in v1. Use `--apps-only` or `--plugins` for one run.")
 
 
+@ignore_app.callback(invoke_without_command=True)
+def ignore_default(ctx: typer.Context) -> None:
+    """List ignored apps when no subcommand is provided."""
+    if ctx.invoked_subcommand is None:
+        ignore_list()
+
+
+@ignore_app.command("list")
+def ignore_list() -> None:
+    """List all ignored app IDs."""
+    ids = load_ignored()
+    if not ids:
+        console.print("No ignored apps.")
+        return
+    console.print(f"Ignored apps ({len(ids)}):")
+    for app_id in sorted(ids):
+        console.print(f"  {app_id}")
+
+
+@ignore_app.command("add")
+def ignore_add(
+    app_id: Annotated[str, typer.Argument(help="App ID (bundle id) to ignore.")],
+) -> None:
+    """Add an app to the ignore list."""
+    if add_ignored(app_id):
+        console.print(f"Added: {app_id}")
+    else:
+        console.print(f"Already ignored: {app_id}")
+
+
+@ignore_app.command("remove")
+def ignore_remove(
+    app_id: Annotated[str, typer.Argument(help="App ID (bundle id) to remove from ignore list.")],
+) -> None:
+    """Remove an app from the ignore list."""
+    if remove_ignored(app_id):
+        console.print(f"Removed: {app_id}")
+    else:
+        console.print(f"Not in ignore list: {app_id}")
+
+
 @app.command()
 def advise(
     json_output: Annotated[
@@ -365,7 +427,20 @@ def advise(
         # Phase 1: Scan
         scan_task = progress.add_task("Scanning", total=2)
         result = run_scan(apps_only=apps_only, plugin_names=_split_plugins(plugins))
-        progress.update(scan_task, completed=2, description=f"Scanning ({len(result.applications)} apps, {len(result.candidates)} plugin updates)")
+
+        # Filter ignored apps
+        ignored = load_ignored()
+        ignored_count = 0
+        if ignored:
+            before_apps = len(result.applications)
+            result.applications = [a for a in result.applications if a.id not in ignored]
+            ignored_count += before_apps - len(result.applications)
+            before_cands = len(result.candidates)
+            result.candidates = [c for c in result.candidates if c.item.id not in ignored]
+            ignored_count += before_cands - len(result.candidates)
+
+        ignored_str = f", {ignored_count} ignored" if ignored_count else ""
+        progress.update(scan_task, completed=2, description=f"Scanning ({len(result.applications)} apps, {len(result.candidates)} plugin updates{ignored_str})")
 
         # Phase 2: Research applications
         app_count = len(result.applications)
@@ -394,7 +469,7 @@ def advise(
     except OSError as exc:
         logger.warning("failed to save advice cache: %s", exc)
 
-    _print_advise_result(result, researched_ids)
+    _print_advise_result(result, researched_ids, ignored_count)
 
 
 def _research_one(agent: AgentClient, item: SoftwareItem) -> UpdateCandidate | None:
@@ -517,10 +592,10 @@ def update(
             f"[green]{candidate.latest_version or 'unknown'}[/green]"
         )
         if candidate.ai_summary:
-            console.print(f"    [cyan]AI:[/cyan] {candidate.ai_summary}")
-        if candidate.can_auto_update:
+            console.print(Padding(Markdown(candidate.ai_summary), (0, 0, 0, 4)))
+        if candidate.can_auto_update and candidate.item.source != SourceKind.APP_STORE:
             console.print(f"    Command: {' '.join(candidate.command)}")
-        else:
+        elif not candidate.can_auto_update:
             console.print(f"    [dim]Manual update required[/dim]")
 
         if not typer.confirm("Proceed?", default=False):
@@ -531,7 +606,10 @@ def update(
             logger.info("update executing command=%s", " ".join(candidate.command))
             subprocess.run(candidate.command, check=False)
         else:
-            console.print("    Skipped (manual update required).")
+            if candidate.item.path and typer.confirm("    Open app for update?", default=False):
+                subprocess.run(["open", candidate.item.path], check=False)
+            else:
+                console.print("    Skipped.")
 def _resolve_app_store_command(item: SoftwareItem) -> tuple[list[str], bool]:
     """Try to get App Store trackId and return (command, can_auto_update)."""
     try:
@@ -550,6 +628,8 @@ def _resolve_app_store_command(item: SoftwareItem) -> tuple[list[str], bool]:
     except Exception as exc:
         logger.debug("itunes lookup failed for %s: %s", item.name, exc)
     return [], False
+
+
 
 
 def run_scan(apps_only: bool = False, plugin_names: list[str] | None = None) -> ScanResult:
@@ -598,7 +678,7 @@ def _split_plugins(value: str | None) -> list[str] | None:
     return [part.strip() for part in value.split(",") if part.strip()]
 
 
-def _print_advise_result(result: ScanResult, researched_ids: set[str]) -> None:
+def _print_advise_result(result: ScanResult, researched_ids: set[str], ignored_count: int = 0) -> None:
     console.print(
         f"OS: {result.system.os_name} {result.system.os_version} | "
         f"Arch: {result.system.arch} | Paths: {', '.join(result.system.applications_paths)}"
@@ -635,6 +715,10 @@ def _print_advise_result(result: ScanResult, researched_ids: set[str]) -> None:
 
     for skipped in result.skipped:
         console.print(f"  Skipped: {skipped}")
+
+    if ignored_count:
+        console.print()
+        console.print(f"  [dim]{ignored_count} app(s) ignored (use `checkupgrade ignore list` to review)[/dim]")
 
 
 

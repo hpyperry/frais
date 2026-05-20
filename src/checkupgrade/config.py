@@ -17,6 +17,7 @@ class RawLLMConfig:
     model: str | None = None
     api_key: str | None = None
     api_key_source: str | None = None
+    thinking: bool = False
 
 
 def _read_config_file(path: Path = CONFIG_PATH) -> dict:
@@ -43,12 +44,15 @@ def load_raw_config(path: Path = CONFIG_PATH) -> RawLLMConfig:
     elif file_key:
         api_key_source = str(path)
 
+    thinking = file_data.get("thinking", False)
+
     return RawLLMConfig(
         provider=provider,
         base_url=base_url,
         model=model,
         api_key=api_key,
         api_key_source=api_key_source,
+        thinking=thinking,
     )
 
 

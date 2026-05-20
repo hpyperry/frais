@@ -79,6 +79,16 @@ checkupgrade plugins list
 
 Lists available package manager plugins. v1 includes Homebrew only.
 
+```bash
+checkupgrade ignore
+checkupgrade ignore list
+checkupgrade ignore add com.example.app
+checkupgrade ignore remove com.example.app
+```
+
+Manages an ignore list. Ignored apps are excluded from `advise` runs. The list
+is stored at `~/.config/checkupgrade/ignore.txt` (one app ID per line).
+
 ## Logs
 
 Logs are written to both stderr and `~/.local/state/checkupgrade/checkupgrade.log` by default.

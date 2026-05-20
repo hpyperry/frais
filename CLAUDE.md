@@ -33,9 +33,10 @@ uv run --extra build python scripts/build_binary.py
 
 ```
 src/checkupgrade/
-  cli.py              Typer app: doctor, advise, update, config, plugins
+  cli.py              Typer app: doctor, advise, update, config, plugins, ignore
   models.py           Dataclasses: SystemProfile, SoftwareItem, UpdateCandidate, ScanResult
   config.py           BYOK config: reads ~/.config/checkupgrade/config.toml, env var overrides
+  ignore.py           Ignore list: load/save/add/remove ignored app IDs (~/.config/checkupgrade/ignore.txt)
   agent.py            AgentClient — structured 3-step research pipeline (generate queries, pick URLs, extract version)
   tools.py            Web tools: web_search (DDGS), web_fetch, web_fetch_batch (internal, not LLM-exposed)
   research.py         Orchestrates version research with iTunes fast path + LLM structured pipeline
@@ -71,8 +72,9 @@ App Store apps skip this entirely — they use the iTunes API directly (~1s).
 
 **`advise` command**:
 1. `run_scan()` — detect system, scan applications, run plugins concurrently
-2. Research with progress bar — iTunes fast path for App Store apps, 3-step LLM pipeline for others
-3. Summarize with progress bar — generate Chinese-language summaries via LLM
+2. Filter ignored apps (from `~/.config/checkupgrade/ignore.txt`)
+3. Research with progress bar — iTunes fast path for App Store apps, 3-step LLM pipeline for others
+4. Summarize with progress bar — generate Chinese-language summaries via LLM
 
 ## Key patterns
 
@@ -83,3 +85,4 @@ App Store apps skip this entirely — they use the iTunes API directly (~1s).
 - **Structured LLM pipeline**: Agent does NOT use tool calling. Instead, 3 discrete LLM calls per app: generate queries, pick URLs, extract version. Each call returns JSON.
 - **Logging**: `--verbose` sets INFO, `--debug` sets DEBUG. Logs go to stderr and `~/.local/state/checkupgrade/checkupgrade.log` by default. `--log-file` overrides path, `--no-log` disables file logging. Auto-truncates at 5MB.
 - **Progress bar**: `rich.progress.Progress` shows scan/research/summarize phases with elapsed time.
+- **Ignore list**: `~/.config/checkupgrade/ignore.txt` stores app IDs to skip during `advise`. Managed via `checkupgrade ignore add/remove/list`. Filtered after scan, before research.
