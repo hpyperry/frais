@@ -14,13 +14,16 @@ _GITHUB_API = "https://api.github.com"
 _GITHUB_REPO_RE = re.compile(r"github\.com/([^/]+/[^/]+?)(?:\.git)?(?:/|$)")
 
 
-def check_app_store_version(item: SoftwareItem) -> str | None:
-    """Query iTunes API for App Store app latest version."""
+def check_app_store_version(item: SoftwareItem) -> tuple[str | None, int | None]:
+    """Query iTunes API for App Store app latest version and track ID.
+
+    Returns (version, track_id). Both are None if not found.
+    """
     if item.source != SourceKind.APP_STORE:
-        return None
+        return None, None
     bundle_id = item.id
     if not bundle_id or "." not in bundle_id:
-        return None
+        return None, None
     try:
         response = httpx.get(
             _ITUNES_SEARCH_URL,
@@ -30,14 +33,16 @@ def check_app_store_version(item: SoftwareItem) -> str | None:
         response.raise_for_status()
         data = response.json()
         if data.get("resultCount", 0) > 0:
-            version = data["results"][0].get("version")
+            result = data["results"][0]
+            version = result.get("version")
+            track_id = result.get("trackId")
             if version:
-                logger.info("itunes version for %s: %s", item.name, version)
-                return version
-        return None
+                logger.info("itunes version for %s: %s (trackId=%s)", item.name, version, track_id)
+                return version, track_id
+        return None, None
     except Exception as exc:
         logger.debug("itunes api failed for %s: %s", item.name, exc)
-        return None
+        return None, None
 
 
 def check_github_version(repo_url: str) -> str | None:
