@@ -541,7 +541,13 @@ def _print_advise_result(result: ScanResult, researched_ids: set[str]) -> None:
         f"OS: {result.system.os_name} {result.system.os_version} | "
         f"Arch: {result.system.arch} | Paths: {', '.join(result.system.applications_paths)}"
     )
-    table = Table("ID", "Software", "Source", "Current", "Latest", "Action")
+    table = Table(expand=True)
+    table.add_column("ID", ratio=2, no_wrap=True, overflow="ellipsis")
+    table.add_column("Software", ratio=3, no_wrap=True, overflow="ellipsis")
+    table.add_column("Source", no_wrap=True)
+    table.add_column("Current", no_wrap=True, overflow="ellipsis")
+    table.add_column("Latest", no_wrap=True, overflow="ellipsis")
+    table.add_column("Action", no_wrap=True)
     candidate_item_ids = {candidate.item.id for candidate in result.candidates}
     for item in result.applications:
         if item.id in candidate_item_ids:
@@ -565,7 +571,9 @@ def _print_advise_result(result: ScanResult, researched_ids: set[str]) -> None:
 
 
 def _print_candidate_detail(candidate: UpdateCandidate) -> None:
-    table = Table("Key", "Value")
+    table = Table(expand=True)
+    table.add_column("Key", no_wrap=True)
+    table.add_column("Value", ratio=3)
     table.add_row("Software", candidate.item.name)
     table.add_row("Source", candidate.item.source.value)
     table.add_row("Current", candidate.item.current_version or "unknown")
