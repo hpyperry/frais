@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import platform
 import signal
 import subprocess
 import sys
@@ -177,6 +178,9 @@ def main(
     ] = False,
 ) -> None:
     """Configure logging before running a command."""
+    if platform.system() != "Darwin":
+        console.print("[red]Frais only supports macOS.[/red]")
+        raise typer.Exit(1)
     _configure_logging(verbose=verbose, debug=debug, log_file=log_file, no_log=no_log)
     if verbose or debug:
         log_target = "disabled" if no_log else (log_file or str(_DEFAULT_LOG_FILE))
