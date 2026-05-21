@@ -6,8 +6,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ENTRYPOINT = ROOT / "scripts" / "checkupgrade_entry.py"
-DIST_BINARY = ROOT / "dist" / "checkupgrade"
+ENTRYPOINT = ROOT / "scripts" / "mise_entry.py"
+DIST_BINARY = ROOT / "dist" / "mise"
 
 
 def main() -> None:
@@ -16,7 +16,7 @@ def main() -> None:
 
     # Build wheel so .dist-info with entry_points exists for PyInstaller
     subprocess.run(["uv", "build"], cwd=ROOT, check=True)
-    wheels = sorted(ROOT.glob("dist/checkupgrade-*.whl"))
+    wheels = sorted(ROOT.glob("dist/mise-*.whl"))
     if wheels:
         subprocess.run(["uv", "pip", "install", "--reinstall", str(wheels[-1])], cwd=ROOT, check=True)
 
@@ -26,10 +26,10 @@ def main() -> None:
             "--onefile",
             "--noupx",
             "--name",
-            "checkupgrade",
+            "mise",
             "--clean",
             "--copy-metadata",
-            "checkupgrade",
+            "mise",
             "--additional-hooks-dir",
             str(ROOT / "scripts"),
             str(ENTRYPOINT),

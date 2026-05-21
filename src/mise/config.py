@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .models import LLMConfig
 
-CONFIG_PATH = Path.home() / ".checkupgrade" / "config" / "config.toml"
+CONFIG_PATH = Path.home() / ".mise" / "config" / "config.toml"
 
 
 @dataclass(slots=True)
@@ -29,16 +29,16 @@ def _read_config_file(path: Path = CONFIG_PATH) -> dict:
 
 def load_raw_config(path: Path = CONFIG_PATH) -> RawLLMConfig:
     file_data = _read_config_file(path).get("llm", {})
-    provider = os.getenv("CHECKUPGRADE_LLM_PROVIDER") or file_data.get("provider") or "openai-compatible"
-    base_url = os.getenv("CHECKUPGRADE_LLM_BASE_URL") or file_data.get("base_url")
-    model = os.getenv("CHECKUPGRADE_LLM_MODEL") or file_data.get("model")
+    provider = os.getenv("MISE_LLM_PROVIDER") or file_data.get("provider") or "openai-compatible"
+    base_url = os.getenv("MISE_LLM_BASE_URL") or file_data.get("base_url")
+    model = os.getenv("MISE_LLM_MODEL") or file_data.get("model")
 
-    env_key = os.getenv("CHECKUPGRADE_LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+    env_key = os.getenv("MISE_LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
     file_key = file_data.get("api_key")
     api_key = env_key or file_key
     api_key_source = None
-    if os.getenv("CHECKUPGRADE_LLM_API_KEY"):
-        api_key_source = "CHECKUPGRADE_LLM_API_KEY"
+    if os.getenv("MISE_LLM_API_KEY"):
+        api_key_source = "MISE_LLM_API_KEY"
     elif os.getenv("OPENAI_API_KEY"):
         api_key_source = "OPENAI_API_KEY"
     elif file_key:
@@ -73,16 +73,16 @@ def require_raw_llm_config(path: Path = CONFIG_PATH) -> RawLLMConfig:
     raw = load_raw_config(path)
     missing = []
     if not raw.api_key:
-        missing.append("CHECKUPGRADE_LLM_API_KEY")
+        missing.append("MISE_LLM_API_KEY")
     if not raw.base_url:
-        missing.append("CHECKUPGRADE_LLM_BASE_URL")
+        missing.append("MISE_LLM_BASE_URL")
     if not raw.model:
-        missing.append("CHECKUPGRADE_LLM_MODEL")
+        missing.append("MISE_LLM_MODEL")
     if missing:
         names = ", ".join(missing)
         raise ValueError(
-            f"Missing BYOK LLM configuration: {names}. Run `checkupgrade config init` "
-            "or set the CHECKUPGRADE_LLM_* environment variables."
+            f"Missing BYOK LLM configuration: {names}. Run `mise config init` "
+            "or set the MISE_LLM_* environment variables."
         )
     return raw
 
@@ -95,7 +95,7 @@ def write_config_template(path: Path = CONFIG_PATH) -> Path:
 provider = "openai-compatible"
 base_url = "https://api.example.com/v1"
 model = "your-model-name"
-# Prefer CHECKUPGRADE_LLM_API_KEY in your shell for better secret hygiene.
+# Prefer MISE_LLM_API_KEY in your shell for better secret hygiene.
 # If you store a key here, keep this file private and never commit it.
 api_key = ""
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from checkupgrade.agent import chat_completions_url
+from mise.agent import chat_completions_url
 
 
 def test_chat_completions_url_accepts_base_url() -> None:

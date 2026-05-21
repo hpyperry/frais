@@ -3,7 +3,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-PLUGINS_CONFIG_PATH = Path.home() / ".checkupgrade" / "config" / "plugins.toml"
+PLUGINS_CONFIG_PATH = Path.home() / ".mise" / "config" / "plugins.toml"
 
 
 def load_plugins_config(path: Path = PLUGINS_CONFIG_PATH) -> dict[str, bool]:

@@ -1,4 +1,4 @@
-from checkupgrade.cli import app
+from mise.cli import app
 
 
 if __name__ == "__main__":

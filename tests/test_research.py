@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from checkupgrade import research
-from checkupgrade.models import ResearchResult, SoftwareItem, SourceKind
-from checkupgrade.research import _is_newer
+from mise import research
+from mise.models import ResearchResult, SoftwareItem, SourceKind
+from mise.research import _is_newer
 
 
 class FakeAgent:

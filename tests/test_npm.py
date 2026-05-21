@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import subprocess
 
-from checkupgrade.models import SourceKind
-from checkupgrade.plugins.npm import NpmPlugin
-from checkupgrade.system import detect_system
+from mise.models import SourceKind
+from mise.plugins.npm import NpmPlugin
+from mise.system import detect_system
 
 
 def test_npm_outdated_candidate(monkeypatch) -> None:
@@ -28,8 +28,8 @@ def test_npm_outdated_candidate(monkeypatch) -> None:
             "",
         )
 
-    monkeypatch.setattr("checkupgrade.plugins.npm.shutil.which", fake_which)
-    monkeypatch.setattr("checkupgrade.plugins._utils.subprocess.run", fake_run)
+    monkeypatch.setattr("mise.plugins.npm.shutil.which", fake_which)
+    monkeypatch.setattr("mise.plugins._utils.subprocess.run", fake_run)
 
     result = NpmPlugin().scan(detect_system())
 
@@ -52,8 +52,8 @@ def test_npm_no_outdated(monkeypatch) -> None:
     def fake_run(command, check=False, capture_output=True, text=True, timeout=60, env=None):
         return subprocess.CompletedProcess(command, 0, "", "")
 
-    monkeypatch.setattr("checkupgrade.plugins.npm.shutil.which", fake_which)
-    monkeypatch.setattr("checkupgrade.plugins._utils.subprocess.run", fake_run)
+    monkeypatch.setattr("mise.plugins.npm.shutil.which", fake_which)
+    monkeypatch.setattr("mise.plugins._utils.subprocess.run", fake_run)
 
     result = NpmPlugin().scan(detect_system())
 
@@ -62,7 +62,7 @@ def test_npm_no_outdated(monkeypatch) -> None:
 
 
 def test_npm_unavailable(monkeypatch) -> None:
-    monkeypatch.setattr("checkupgrade.plugins.npm.shutil.which", lambda name: None)
+    monkeypatch.setattr("mise.plugins.npm.shutil.which", lambda name: None)
 
     result = NpmPlugin().scan(detect_system())
 
@@ -98,8 +98,8 @@ def test_npm_multiple_packages(monkeypatch) -> None:
             "",
         )
 
-    monkeypatch.setattr("checkupgrade.plugins.npm.shutil.which", fake_which)
-    monkeypatch.setattr("checkupgrade.plugins._utils.subprocess.run", fake_run)
+    monkeypatch.setattr("mise.plugins.npm.shutil.which", fake_which)
+    monkeypatch.setattr("mise.plugins._utils.subprocess.run", fake_run)
 
     result = NpmPlugin().scan(detect_system())
 

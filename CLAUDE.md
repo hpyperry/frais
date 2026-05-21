@@ -17,7 +17,7 @@ When the user signals a new implementation task (e.g. "新任务", "给你一个
 
 ## Project overview
 
-CheckUpgrade is a macOS BYOK CLI that scans installed Applications, Homebrew packages, and npm global packages for available updates. It uses an OpenAI-compatible LLM (user-supplied key) with a structured 3-step research pipeline for finding latest versions and generating update advice.
+Mise is a macOS BYOK CLI that scans installed Applications, Homebrew packages, and npm global packages for available updates. It uses an OpenAI-compatible LLM (user-supplied key) with a structured 3-step research pipeline for finding latest versions and generating update advice.
 
 All scanning is plugin-based — the built-in `applications`, `homebrew`, and `npm` scanners are all `ScannerPlugin` implementations.
 
@@ -28,11 +28,11 @@ All scanning is plugin-based — the built-in `applications`, `homebrew`, and `n
 uv sync --extra dev
 
 # Run the CLI
-uv run checkupgrade doctor
-uv run checkupgrade advise
-uv run checkupgrade advise --all
-uv run checkupgrade advise --apps-only
-uv run checkupgrade advise -j 5
+uv run mise doctor
+uv run mise advise
+uv run mise advise --all
+uv run mise advise --apps-only
+uv run mise advise -j 5
 
 # Run all tests
 uv run pytest
@@ -48,12 +48,12 @@ uv run --extra build python scripts/build_binary.py
 ## Architecture
 
 ```
-src/checkupgrade/
+src/mise/
   cli.py              Typer app: doctor, advise, update, config, plugins, ignore
   models.py           Dataclasses: SystemProfile, SoftwareItem, UpdateCandidate,
                       PluginScanResult, ScanResult, ResearchResult, etc.
-  config.py           BYOK config: reads ~/.checkupgrade/config/config.toml, env var overrides
-  ignore.py           Ignore list: load/save/add/remove ignored app IDs (~/.checkupgrade/config/ignore.txt)
+  config.py           BYOK config: reads ~/.mise/config/config.toml, env var overrides
+  ignore.py           Ignore list: load/save/add/remove ignored app IDs (~/.mise/config/ignore.txt)
   agent.py            AgentClient — structured 3-step research pipeline (generate queries, pick URLs, extract version)
   tools.py            Web tools: web_search (DDGS), web_fetch, web_fetch_batch (internal, not LLM-exposed)
   research.py         Orchestrates version research with iTunes fast path + LLM structured pipeline
@@ -66,7 +66,7 @@ src/checkupgrade/
     _utils.py          Shared helper: run_json() with env isolation for subprocess calls
     base.py            ScannerPlugin ABC with scan, scan_all, research, summarize interface
     registry.py        Plugin registry; discovers built-in + third-party plugins via entry points
-    config.py          Plugin persistence: reads/writes ~/.checkupgrade/config/plugins.toml;
+    config.py          Plugin persistence: reads/writes ~/.mise/config/plugins.toml;
                        auto-creates file with defaults on first access
     applications/      ApplicationsPlugin — scans /Applications and ~/Applications .app bundles
     homebrew/          HomebrewPlugin — brew outdated --json=v2, brew info --json=v2 --installed
@@ -106,9 +106,9 @@ class ScannerPlugin(ABC):
 
 All plugins are registered via entry points in `pyproject.toml`:
 ```
-applications = "checkupgrade.plugins.applications:ApplicationsPlugin"
-homebrew = "checkupgrade.plugins.homebrew:HomebrewPlugin"
-npm = "checkupgrade.plugins.npm:NpmPlugin"
+applications = "mise.plugins.applications:ApplicationsPlugin"
+homebrew = "mise.plugins.homebrew:HomebrewPlugin"
+npm = "mise.plugins.npm:NpmPlugin"
 ```
 
 ## PluginScanResult
@@ -166,15 +166,15 @@ Plugins that don't need research (Homebrew, npm) skip the LLM pipeline entirely 
 
 ## Key patterns
 
-- **BYOK model**: LLM config merges env vars (`CHECKUPGRADE_LLM_*`) over file values. `require_raw_llm_config()` raises `ValueError` listing missing keys. API keys are never logged or printed in full. Thinking/reasoning models (e.g. DeepSeek-R1, o1, o3) are not yet supported — the structured JSON extraction pipeline requires clean `content` output.
+- **BYOK model**: LLM config merges env vars (`MISE_LLM_*`) over file values. `require_raw_llm_config()` raises `ValueError` listing missing keys. API keys are never logged or printed in full. Thinking/reasoning models (e.g. DeepSeek-R1, o1, o3) are not yet supported — the structured JSON extraction pipeline requires clean `content` output.
 - **Testing**: Uses `monkeypatch` (pytest fixture) for all external dependencies — subprocess, filesystem, env vars. No mock library.
 - **Version comparison**: Uses `packaging.version.Version`; strips leading `v`/`V` before comparing.
 - **Source classification**: Applications are classified as APP_STORE, LOCAL_BUILD, NETWORK_DOWNLOAD, APPLICATION, or UNKNOWN based on codesign authority, team ID, and quarantine xattr presence.
 - **Structured LLM pipeline**: Agent does NOT use tool calling. Instead, 3 discrete LLM calls per app: generate queries, pick URLs, extract version. Each call returns JSON.
-- **Logging**: `--verbose` sets INFO, `--debug` sets DEBUG. Logs go to stderr and `~/.checkupgrade/log/checkupgrade.log` by default. `--log-file` overrides path, `--no-log` disables file logging. Auto-truncates at 5MB.
+- **Logging**: `--verbose` sets INFO, `--debug` sets DEBUG. Logs go to stderr and `~/.mise/log/mise.log` by default. `--log-file` overrides path, `--no-log` disables file logging. Auto-truncates at 5MB.
 - **Progress bar**: Each plugin gets its own `Progress` task row. Scanning fills the row with item/candidate counts. Research (if `needs_research`) updates the same row with progress. Summaries gets a dedicated row. For `show_all`, `scan_all()` is called instead of `scan()`.
-- **Ignore list**: `~/.checkupgrade/config/ignore.txt` stores app IDs to skip during `advise`. Auto-created on first access via `init_ignored()`. Managed via `checkupgrade ignore add/remove/list`. Filtered after scan, before research.
-- **Plugin discovery**: `registry.py` uses `importlib.metadata.entry_points(group="checkupgrade.plugins")` to discover all plugins at runtime. Built-in plugins (applications, homebrew, npm) are always present. Failed loads are logged, not fatal.
-- **Plugin persistence**: `plugins/config.py` manages `~/.checkupgrade/config/plugins.toml`. First run auto-creates the file with all discovered plugins set to their defaults. `plugins enable/disable` persist state. `_select_plugins()` uses 3-tier precedence: CLI flags (`--apps-only`, `--plugins`) override persisted config, which overrides `enabled_by_default`.
+- **Ignore list**: `~/.mise/config/ignore.txt` stores app IDs to skip during `advise`. Auto-created on first access via `init_ignored()`. Managed via `mise ignore add/remove/list`. Filtered after scan, before research.
+- **Plugin discovery**: `registry.py` uses `importlib.metadata.entry_points(group="mise.plugins")` to discover all plugins at runtime. Built-in plugins (applications, homebrew, npm) are always present. Failed loads are logged, not fatal.
+- **Plugin persistence**: `plugins/config.py` manages `~/.mise/config/plugins.toml`. First run auto-creates the file with all discovered plugins set to their defaults. `plugins enable/disable` persist state. `_select_plugins()` uses 3-tier precedence: CLI flags (`--apps-only`, `--plugins`) override persisted config, which overrides `enabled_by_default`.
 - **Ctrl+C handling**: `advise` registers a SIGINT handler before entering the Progress/ThreadPoolExecutor block. The handler calls `console.show_cursor()`, flushes stdout/stderr, then `os._exit(130)`. Original handler is restored via `try/finally`. Signal handler (not KeyboardInterrupt) is needed because ThreadPoolExecutor.__exit__ blocks on worker threads.
 - **Subprocess env isolation**: `run_json()` in `plugins/_utils.py` and `_brew_uses()` in `plugins/homebrew/__init__.py` clear `DYLD_LIBRARY_PATH` from the subprocess environment to prevent PyInstaller-bundled dylibs from interfering with system commands.

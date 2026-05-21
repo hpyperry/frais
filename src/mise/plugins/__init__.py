@@ -1,4 +1,4 @@
-"""Scanner plugins for CheckUpgrade."""
+"""Scanner plugins for Mise."""
 
 from .base import ScannerPlugin
 

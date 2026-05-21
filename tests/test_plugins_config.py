@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from checkupgrade.plugins.config import load_plugins_config, remove_plugin_state, save_plugin_state
+from mise.plugins.config import load_plugins_config, remove_plugin_state, save_plugin_state
 
 
 def test_load_plugins_config_empty_when_no_file(tmp_path: Path) -> None:

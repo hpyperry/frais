@@ -1,6 +1,6 @@
-# CheckUpgrade
+# Mise
 
-CheckUpgrade is a macOS BYOK CLI that scans installed Applications, Homebrew, and npm packages for available updates. It uses an OpenAI-compatible LLM (user-supplied key) with a structured research pipeline to find latest versions and generate update advice.
+Mise is a macOS BYOK CLI that scans installed Applications, Homebrew, and npm packages for available updates. It uses an OpenAI-compatible LLM (user-supplied key) with a structured research pipeline to find latest versions and generate update advice.
 
 All scanning is plugin-based — the built-in `applications`, `homebrew`, and `npm` scanners are all `ScannerPlugin` implementations.
 
@@ -8,12 +8,12 @@ All scanning is plugin-based — the built-in `applications`, `homebrew`, and `n
 
 ```bash
 uv sync --extra dev
-uv run checkupgrade doctor
-uv run checkupgrade config init
+uv run mise doctor
+uv run mise config init
 ```
 
 LLM features require user-owned configuration via environment variables or
-`~/.checkupgrade/config/config.toml`. The project never ships or creates a
+`~/.mise/config/config.toml`. The project never ships or creates a
 server-side API key.
 
 > **Note**: Thinking/reasoning models (e.g. DeepSeek-R1, o1, o3) are not yet
@@ -24,18 +24,18 @@ server-side API key.
 ## Commands
 
 ```bash
-checkupgrade doctor
+mise doctor
 ```
 
 Prints detected macOS version, architecture, Applications paths, plugin
 availability, and redacted BYOK status.
 
 ```bash
-checkupgrade advise
-checkupgrade advise --all
-checkupgrade advise --apps-only
-checkupgrade advise -j 5
-checkupgrade advise --json
+mise advise
+mise advise --all
+mise advise --apps-only
+mise advise -j 5
+mise advise --json
 ```
 
 Scans Applications, Homebrew, and npm global packages, then researches latest
@@ -53,11 +53,11 @@ Use `-j` to control concurrency (default 10, max 20). Progress is shown
 with a live progress bar — one row per plugin.
 
 ```bash
-checkupgrade config
-checkupgrade config init
-checkupgrade config show
-checkupgrade config path
-checkupgrade config test
+mise config
+mise config init
+mise config show
+mise config path
+mise config test
 ```
 
 Creates or displays BYOK configuration. `show` never prints the full API key.
@@ -75,32 +75,32 @@ api_key = "..."
 ```
 
 ```bash
-checkupgrade update
-checkupgrade update --only node
+mise update
+mise update --only node
 ```
 
 Shows each auto-updatable candidate and asks for confirmation before running a
 command. v1 only auto-executes Homebrew formula/cask updates.
 
 ```bash
-checkupgrade plugins
-checkupgrade plugins list
-checkupgrade plugins enable homebrew
-checkupgrade plugins disable homebrew
+mise plugins
+mise plugins list
+mise plugins enable homebrew
+mise plugins disable homebrew
 ```
 
 Lists and manages plugins. `enable` / `disable` persist the choice to
-`~/.checkupgrade/config/plugins.toml`. When a plugin is disabled, it is
+`~/.mise/config/plugins.toml`. When a plugin is disabled, it is
 skipped during `advise` runs.
 
 ### Writing plugins
 
 Any Python package can register a plugin via entry points. Subclass
-`ScannerPlugin` and declare an entry point in `checkupgrade.plugins`:
+`ScannerPlugin` and declare an entry point in `mise.plugins`:
 
 ```python
-from checkupgrade.plugins import ScannerPlugin
-from checkupgrade.models import PluginScanResult, SystemProfile, SoftwareItem, UpdateCandidate
+from mise.plugins import ScannerPlugin
+from mise.models import PluginScanResult, SystemProfile, SoftwareItem, UpdateCandidate
 
 class MyPlugin(ScannerPlugin):
     name = "my-manager"
@@ -129,31 +129,31 @@ class MyPlugin(ScannerPlugin):
 In your `pyproject.toml`:
 
 ```toml
-[project.entry-points."checkupgrade.plugins"]
+[project.entry-points."mise.plugins"]
 my_plugin = "my_package.plugin:MyPlugin"
 ```
 
-After installing your package, `checkupgrade plugins list` will show it.
+After installing your package, `mise plugins list` will show it.
 
 ```bash
-checkupgrade ignore
-checkupgrade ignore list
-checkupgrade ignore add com.example.app
-checkupgrade ignore remove com.example.app
+mise ignore
+mise ignore list
+mise ignore add com.example.app
+mise ignore remove com.example.app
 ```
 
 Manages an ignore list. Ignored apps are excluded from `advise` runs. The list
-is stored at `~/.checkupgrade/config/ignore.txt` (one app ID per line).
+is stored at `~/.mise/config/ignore.txt` (one app ID per line).
 
 ## Logs
 
-Logs are written to both stderr and `~/.checkupgrade/log/checkupgrade.log` by default.
+Logs are written to both stderr and `~/.mise/log/mise.log` by default.
 
 ```bash
-checkupgrade --verbose advise
-checkupgrade --debug advise
-checkupgrade --log-file ./my.log advise
-checkupgrade --no-log advise
+mise --verbose advise
+mise --debug advise
+mise --log-file ./my.log advise
+mise --no-log advise
 ```
 
 `--verbose` shows high-level progress; `--debug` includes LLM call details and
@@ -163,9 +163,9 @@ subprocess traces. Log files auto-truncate at 5MB.
 
 ```bash
 uv run --extra build python scripts/build_binary.py
-./dist/checkupgrade doctor
+./dist/mise doctor
 ```
 
 The binary is built with PyInstaller and writes no secrets into the artifact.
 LLM access still uses BYOK runtime configuration from environment variables or
-`~/.checkupgrade/config/config.toml`.
+`~/.mise/config/config.toml`.

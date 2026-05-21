@@ -1,5 +1,5 @@
 [project]
-name = "checkupgrade"
+name = "mise"
 version = "0.1.0"
 description = "Agent CLI for checking macOS application and Homebrew updates."
 readme = "README.md"
@@ -21,12 +21,12 @@ build = [
 ]
 
 [project.scripts]
-checkupgrade = "checkupgrade.cli:app"
+mise = "mise.cli:app"
 
-[project.entry-points."checkupgrade.plugins"]
-applications = "checkupgrade.plugins.applications:ApplicationsPlugin"
-homebrew = "checkupgrade.plugins.homebrew:HomebrewPlugin"
-npm = "checkupgrade.plugins.npm:NpmPlugin"
+[project.entry-points."mise.plugins"]
+applications = "mise.plugins.applications:ApplicationsPlugin"
+homebrew = "mise.plugins.homebrew:HomebrewPlugin"
+npm = "mise.plugins.npm:NpmPlugin"
 
 [build-system]
 requires = ["hatchling"]

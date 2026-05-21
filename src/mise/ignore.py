@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-IGNORE_PATH = Path.home() / ".checkupgrade" / "config" / "ignore.txt"
+IGNORE_PATH = Path.home() / ".mise" / "config" / "ignore.txt"
 
 
 def load_ignored(path: Path = IGNORE_PATH) -> set[str]:

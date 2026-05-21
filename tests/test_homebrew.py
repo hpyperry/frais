@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import subprocess
 
-from checkupgrade.plugins.homebrew import HomebrewPlugin
-from checkupgrade.system import detect_system
+from mise.plugins.homebrew import HomebrewPlugin
+from mise.system import detect_system
 
 
 def test_homebrew_formula_candidate(monkeypatch) -> None:
@@ -52,8 +52,8 @@ def test_homebrew_formula_candidate(monkeypatch) -> None:
             return subprocess.CompletedProcess(command, 0, "yarn\npnpm\n", "")
         raise AssertionError(command)
 
-    monkeypatch.setattr("checkupgrade.plugins.homebrew.shutil.which", fake_which)
-    monkeypatch.setattr("checkupgrade.plugins._utils.subprocess.run", fake_run)
+    monkeypatch.setattr("mise.plugins.homebrew.shutil.which", fake_which)
+    monkeypatch.setattr("mise.plugins._utils.subprocess.run", fake_run)
 
     result = HomebrewPlugin().scan(detect_system())
 
