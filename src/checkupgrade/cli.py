@@ -23,7 +23,7 @@ from .config import CONFIG_PATH, write_config_template
 from .ignore import add_ignored, load_ignored, remove_ignored
 from .models import PluginScanResult, SoftwareItem, SourceKind, ScanResult, UpdateCandidate
 
-_DEFAULT_LOG_DIR = Path.home() / ".local" / "state" / "checkupgrade"
+_DEFAULT_LOG_DIR = Path.home() / ".checkupgrade" / "log"
 _DEFAULT_LOG_FILE = _DEFAULT_LOG_DIR / "checkupgrade.log"
 _ADVICE_CACHE = _DEFAULT_LOG_DIR / "last_advice.json"
 _LOG_MAX_SIZE = 5 * 1024 * 1024  # 5MB
@@ -55,7 +55,7 @@ BYOK means the user supplies their own OpenAI-compatible endpoint, model, and
 API key. CheckUpgrade does not ship, create, or embed a service-side key.
 
 Config file:
-  ~/.config/checkupgrade/config.toml
+  ~/.checkupgrade/config/config.toml
 
 Environment variables override the config file:
   CHECKUPGRADE_LLM_PROVIDER
@@ -87,7 +87,7 @@ Ignored apps are excluded from version research. Useful for false positives
 or apps you never want to update.
 
 Storage:
-  ~/.config/checkupgrade/ignore.txt (one app ID per line)
+  ~/.checkupgrade/config/ignore.txt (one app ID per line)
 
 Examples:
   checkupgrade ignore
@@ -161,7 +161,7 @@ def main(
         str | None,
         typer.Option(
             "--log-file",
-            help="Override default log file path (~/.local/state/checkupgrade/checkupgrade.log).",
+            help="Override default log file path (~/.checkupgrade/log/checkupgrade.log).",
             metavar="PATH",
         ),
     ] = None,
@@ -225,7 +225,7 @@ def config_default(ctx: typer.Context) -> None:
 def config_init() -> None:
     """Create a local BYOK config template.
 
-    The generated template is written to ~/.config/checkupgrade/config.toml.
+    The generated template is written to ~/.checkupgrade/config/config.toml.
     It contains placeholder provider/base_url/model fields and comments for the
     API key. It does not write a real key.
 
@@ -241,7 +241,7 @@ def config_init() -> None:
 def config_show() -> None:
     """Show effective BYOK config with secrets redacted.
 
-    Environment variables override ~/.config/checkupgrade/config.toml. The API
+    Environment variables override ~/.checkupgrade/config/config.toml. The API
     key is never printed; only presence and a final 4-character suffix are
     shown when available.
 
@@ -305,23 +305,17 @@ def plugins_list() -> None:
     Example:
       checkupgrade plugins list
     """
-    from .plugins.config import load_plugins_config
+    from .plugins.config import init_plugins_config, load_plugins_config
     from .plugins.registry import all_plugins
 
+    init_plugins_config()
     persisted = load_plugins_config()
-    table = Table("Plugin", "Available", "Default", "Persisted", "Effective")
+    table = Table("Plugin", "Available", "Default", "Effective")
     for name, plugin in all_plugins().items():
         available = "yes" if plugin.is_available() else "no"
         default = "enabled" if plugin.enabled_by_default else "disabled"
-        if name in persisted:
-            persisted_str = "enabled" if persisted[name] else "disabled"
-        else:
-            persisted_str = "-"
-        if name in persisted:
-            effective = "enabled" if persisted[name] else "disabled"
-        else:
-            effective = "enabled" if plugin.enabled_by_default else "disabled"
-        table.add_row(name, available, default, persisted_str, effective)
+        effective = "enabled" if persisted.get(name, plugin.enabled_by_default) else "disabled"
+        table.add_row(name, available, default, effective)
     console.print(table)
 
 
@@ -334,9 +328,10 @@ def plugins_enable(
     Example:
       checkupgrade plugins enable homebrew
     """
-    from .plugins.config import save_plugin_state
+    from .plugins.config import init_plugins_config, save_plugin_state
     from .plugins.registry import all_plugins
 
+    init_plugins_config()
     if name not in all_plugins():
         console.print(f"[red]Unknown plugin: {name}[/red]")
         raise typer.Exit(1)
@@ -354,9 +349,10 @@ def plugins_disable(
     Example:
       checkupgrade plugins disable homebrew
     """
-    from .plugins.config import save_plugin_state
+    from .plugins.config import init_plugins_config, save_plugin_state
     from .plugins.registry import all_plugins
 
+    init_plugins_config()
     if name not in all_plugins():
         console.print(f"[red]Unknown plugin: {name}[/red]")
         raise typer.Exit(1)
@@ -375,6 +371,8 @@ def ignore_default(ctx: typer.Context) -> None:
 @ignore_app.command("list")
 def ignore_list() -> None:
     """List all ignored app IDs."""
+    from .ignore import init_ignored
+    init_ignored()
     ids = load_ignored()
     if not ids:
         console.print("No ignored apps.")
@@ -389,6 +387,8 @@ def ignore_add(
     app_id: Annotated[str, typer.Argument(help="App ID (bundle id) to ignore.")],
 ) -> None:
     """Add an app to the ignore list."""
+    from .ignore import init_ignored
+    init_ignored()
     if add_ignored(app_id):
         console.print(f"Added: {app_id}")
     else:
@@ -400,6 +400,8 @@ def ignore_remove(
     app_id: Annotated[str, typer.Argument(help="App ID (bundle id) to remove from ignore list.")],
 ) -> None:
     """Remove an app from the ignore list."""
+    from .ignore import init_ignored
+    init_ignored()
     if remove_ignored(app_id):
         console.print(f"Removed: {app_id}")
     else:

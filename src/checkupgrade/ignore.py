@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-IGNORE_PATH = Path.home() / ".config" / "checkupgrade" / "ignore.txt"
+IGNORE_PATH = Path.home() / ".checkupgrade" / "config" / "ignore.txt"
 
 
 def load_ignored(path: Path = IGNORE_PATH) -> set[str]:
@@ -10,6 +10,13 @@ def load_ignored(path: Path = IGNORE_PATH) -> set[str]:
         return set()
     lines = path.read_text(encoding="utf-8").splitlines()
     return {line.strip() for line in lines if line.strip() and not line.strip().startswith("#")}
+
+
+def init_ignored(path: Path = IGNORE_PATH) -> None:
+    """Create ignore.txt if it does not exist."""
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
 
 
 def save_ignored(ids: set[str], path: Path = IGNORE_PATH) -> None:

@@ -13,7 +13,7 @@ uv run checkupgrade config init
 ```
 
 LLM features require user-owned configuration via environment variables or
-`~/.config/checkupgrade/config.toml`. The project never ships or creates a
+`~/.checkupgrade/config/config.toml`. The project never ships or creates a
 server-side API key.
 
 ## Commands
@@ -85,7 +85,7 @@ checkupgrade plugins disable homebrew
 ```
 
 Lists and manages plugins. `enable` / `disable` persist the choice to
-`~/.config/checkupgrade/plugins.toml`. When a plugin is disabled, it is
+`~/.checkupgrade/config/plugins.toml`. When a plugin is disabled, it is
 skipped during `advise` runs.
 
 ### Writing plugins
@@ -138,11 +138,11 @@ checkupgrade ignore remove com.example.app
 ```
 
 Manages an ignore list. Ignored apps are excluded from `advise` runs. The list
-is stored at `~/.config/checkupgrade/ignore.txt` (one app ID per line).
+is stored at `~/.checkupgrade/config/ignore.txt` (one app ID per line).
 
 ## Logs
 
-Logs are written to both stderr and `~/.local/state/checkupgrade/checkupgrade.log` by default.
+Logs are written to both stderr and `~/.checkupgrade/log/checkupgrade.log` by default.
 
 ```bash
 checkupgrade --verbose advise
@@ -163,4 +163,4 @@ uv run --extra build python scripts/build_binary.py
 
 The binary is built with PyInstaller and writes no secrets into the artifact.
 LLM access still uses BYOK runtime configuration from environment variables or
-`~/.config/checkupgrade/config.toml`.
+`~/.checkupgrade/config/config.toml`.

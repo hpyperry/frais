@@ -213,6 +213,7 @@ def test_plugins_enable_persists(monkeypatch, capsys) -> None:
     def fake_save(name, enabled):
         calls["name"] = name
         calls["enabled"] = enabled
+    monkeypatch.setattr("checkupgrade.plugins.config.init_plugins_config", lambda: None)
     monkeypatch.setattr("checkupgrade.plugins.config.save_plugin_state", fake_save)
     monkeypatch.setattr("checkupgrade.plugins.registry.all_plugins", lambda: {"homebrew": _fake_plugin("homebrew", True)})
 
@@ -225,6 +226,7 @@ def test_plugins_enable_persists(monkeypatch, capsys) -> None:
 def test_plugins_enable_unknown_plugin(monkeypatch) -> None:
     from checkupgrade.cli import plugins_enable
 
+    monkeypatch.setattr("checkupgrade.plugins.config.init_plugins_config", lambda: None)
     monkeypatch.setattr("checkupgrade.plugins.config.save_plugin_state", lambda name, enabled: None)
     monkeypatch.setattr("checkupgrade.plugins.registry.all_plugins", lambda: {})
 
@@ -239,6 +241,7 @@ def test_plugins_disable_persists(monkeypatch, capsys) -> None:
     def fake_save(name, enabled):
         calls["name"] = name
         calls["enabled"] = enabled
+    monkeypatch.setattr("checkupgrade.plugins.config.init_plugins_config", lambda: None)
     monkeypatch.setattr("checkupgrade.plugins.config.save_plugin_state", fake_save)
     monkeypatch.setattr("checkupgrade.plugins.registry.all_plugins", lambda: {"homebrew": _fake_plugin("homebrew", True)})
 
@@ -251,6 +254,7 @@ def test_plugins_disable_persists(monkeypatch, capsys) -> None:
 def test_plugins_disable_unknown_plugin(monkeypatch) -> None:
     from checkupgrade.cli import plugins_disable
 
+    monkeypatch.setattr("checkupgrade.plugins.config.init_plugins_config", lambda: None)
     monkeypatch.setattr("checkupgrade.plugins.config.save_plugin_state", lambda name, enabled: None)
     monkeypatch.setattr("checkupgrade.plugins.registry.all_plugins", lambda: {})
 
@@ -264,6 +268,7 @@ def test_plugins_disable_unknown_plugin(monkeypatch) -> None:
 def test_plugins_list_shows_persisted_state(monkeypatch, capsys) -> None:
     from checkupgrade.cli import plugins_list
 
+    monkeypatch.setattr("checkupgrade.plugins.config.init_plugins_config", lambda: None)
     monkeypatch.setattr("checkupgrade.plugins.config.load_plugins_config", lambda: {"homebrew": False})
     monkeypatch.setattr("checkupgrade.plugins.registry.all_plugins", lambda: {
         "applications": _fake_plugin("applications", True),
@@ -276,12 +281,13 @@ def test_plugins_list_shows_persisted_state(monkeypatch, capsys) -> None:
     assert "applications" in captured.out
     assert "homebrew" in captured.out
     assert "npm" in captured.out
-    assert "disabled" in captured.out  # homebrew Persisted = disabled
+    assert "disabled" in captured.out  # homebrew Effective = disabled
 
 
-def test_plugins_list_shows_dash_for_not_persisted(monkeypatch, capsys) -> None:
+def test_plugins_list_uses_default_when_not_persisted(monkeypatch, capsys) -> None:
     from checkupgrade.cli import plugins_list
 
+    monkeypatch.setattr("checkupgrade.plugins.config.init_plugins_config", lambda: None)
     monkeypatch.setattr("checkupgrade.plugins.config.load_plugins_config", lambda: {})
     monkeypatch.setattr("checkupgrade.plugins.registry.all_plugins", lambda: {
         "applications": _fake_plugin("applications", True),
@@ -289,7 +295,7 @@ def test_plugins_list_shows_dash_for_not_persisted(monkeypatch, capsys) -> None:
 
     plugins_list()
     captured = capsys.readouterr()
-    assert "-" in captured.out
+    assert "enabled" in captured.out
 
 
 # --- _select_plugins edge cases ---

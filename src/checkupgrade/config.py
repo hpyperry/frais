@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .models import LLMConfig
 
-CONFIG_PATH = Path.home() / ".config" / "checkupgrade" / "config.toml"
+CONFIG_PATH = Path.home() / ".checkupgrade" / "config" / "config.toml"
 
 
 @dataclass(slots=True)

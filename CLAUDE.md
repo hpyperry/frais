@@ -51,8 +51,8 @@ src/checkupgrade/
   cli.py              Typer app: doctor, advise, update, config, plugins, ignore
   models.py           Dataclasses: SystemProfile, SoftwareItem, UpdateCandidate,
                       PluginScanResult, ScanResult, ResearchResult, etc.
-  config.py           BYOK config: reads ~/.config/checkupgrade/config.toml, env var overrides
-  ignore.py           Ignore list: load/save/add/remove ignored app IDs (~/.config/checkupgrade/ignore.txt)
+  config.py           BYOK config: reads ~/.checkupgrade/config/config.toml, env var overrides
+  ignore.py           Ignore list: load/save/add/remove ignored app IDs (~/.checkupgrade/config/ignore.txt)
   agent.py            AgentClient — structured 3-step research pipeline (generate queries, pick URLs, extract version)
   tools.py            Web tools: web_search (DDGS), web_fetch, web_fetch_batch (internal, not LLM-exposed)
   research.py         Orchestrates version research with iTunes fast path + LLM structured pipeline
@@ -64,7 +64,7 @@ src/checkupgrade/
     __init__.py        Re-exports ScannerPlugin as public API
     base.py            ScannerPlugin ABC with scan, scan_all, research, summarize interface
     registry.py        Plugin registry; discovers built-in + third-party plugins via entry points
-    config.py          Plugin persistence: reads/writes ~/.config/checkupgrade/plugins.toml
+    config.py          Plugin persistence: reads/writes ~/.checkupgrade/config/plugins.toml
     applications/      ApplicationsPlugin — scans /Applications and ~/Applications .app bundles
     homebrew/          HomebrewPlugin — brew outdated --json=v2, brew info --json=v2 --installed
     npm/               NpmPlugin — npm outdated -g --json, npm ls -g --depth=0 --json
@@ -168,8 +168,8 @@ Plugins that don't need research (Homebrew, npm) skip the LLM pipeline entirely 
 - **Version comparison**: Uses `packaging.version.Version`; strips leading `v`/`V` before comparing.
 - **Source classification**: Applications are classified as APP_STORE, LOCAL_BUILD, NETWORK_DOWNLOAD, APPLICATION, or UNKNOWN based on codesign authority, team ID, and quarantine xattr presence.
 - **Structured LLM pipeline**: Agent does NOT use tool calling. Instead, 3 discrete LLM calls per app: generate queries, pick URLs, extract version. Each call returns JSON.
-- **Logging**: `--verbose` sets INFO, `--debug` sets DEBUG. Logs go to stderr and `~/.local/state/checkupgrade/checkupgrade.log` by default. `--log-file` overrides path, `--no-log` disables file logging. Auto-truncates at 5MB.
+- **Logging**: `--verbose` sets INFO, `--debug` sets DEBUG. Logs go to stderr and `~/.checkupgrade/log/checkupgrade.log` by default. `--log-file` overrides path, `--no-log` disables file logging. Auto-truncates at 5MB.
 - **Progress bar**: Each plugin gets its own `Progress` task row. Scanning fills the row with item/candidate counts. Research (if `needs_research`) updates the same row with progress. Summaries gets a dedicated row. For `show_all`, `scan_all()` is called instead of `scan()`.
-- **Ignore list**: `~/.config/checkupgrade/ignore.txt` stores app IDs to skip during `advise`. Managed via `checkupgrade ignore add/remove/list`. Filtered after scan, before research.
+- **Ignore list**: `~/.checkupgrade/config/ignore.txt` stores app IDs to skip during `advise`. Managed via `checkupgrade ignore add/remove/list`. Filtered after scan, before research.
 - **Plugin discovery**: `registry.py` uses `importlib.metadata.entry_points(group="checkupgrade.plugins")` to discover all plugins at runtime. Built-in plugins (applications, homebrew, npm) are always present. Failed loads are logged, not fatal.
-- **Plugin persistence**: `plugins/config.py` manages `~/.config/checkupgrade/plugins.toml`. Only explicitly-set plugins appear. `plugins enable/disable` persist state. `_select_plugins()` uses 3-tier precedence: CLI flags (`--apps-only`, `--plugins`) override persisted config, which overrides `enabled_by_default`.
+- **Plugin persistence**: `plugins/config.py` manages `~/.checkupgrade/config/plugins.toml`. Only explicitly-set plugins appear. `plugins enable/disable` persist state. `_select_plugins()` uses 3-tier precedence: CLI flags (`--apps-only`, `--plugins`) override persisted config, which overrides `enabled_by_default`.

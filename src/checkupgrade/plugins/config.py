@@ -3,7 +3,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-PLUGINS_CONFIG_PATH = Path.home() / ".config" / "checkupgrade" / "plugins.toml"
+PLUGINS_CONFIG_PATH = Path.home() / ".checkupgrade" / "config" / "plugins.toml"
 
 
 def load_plugins_config(path: Path = PLUGINS_CONFIG_PATH) -> dict[str, bool]:
@@ -14,6 +14,15 @@ def load_plugins_config(path: Path = PLUGINS_CONFIG_PATH) -> dict[str, bool]:
         data = tomllib.load(f)
     plugins = data.get("plugins", {})
     return {k: bool(v) for k, v in plugins.items()}
+
+
+def init_plugins_config(path: Path = PLUGINS_CONFIG_PATH) -> None:
+    """Create plugins.toml with all discovered plugins set to their defaults."""
+    if path.exists():
+        return
+    from .registry import all_plugins
+    config = {name: plugin.enabled_by_default for name, plugin in all_plugins().items()}
+    _write_plugins_config(config, path)
 
 
 def save_plugin_state(name: str, enabled: bool, path: Path = PLUGINS_CONFIG_PATH) -> None:
