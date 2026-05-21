@@ -460,6 +460,7 @@ def advise(
 
     def _on_interrupt(signum, frame):
         signal.signal(signal.SIGINT, signal.SIG_DFL)
+        console.show_cursor()
         console.print()
         console.print("  [dim]Interrupted[/dim]")
         os._exit(0)
