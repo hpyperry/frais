@@ -133,8 +133,7 @@ class AgentClient:
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
         thinking = enable_thinking if enable_thinking is not None else self.config.thinking
-        if thinking:
-            payload["thinking"] = {"type": "enabled"}
+        payload["thinking"] = {"type": "enabled"} if thinking else {"type": "disabled"}
         response = httpx.post(
             url,
             headers={"Authorization": f"Bearer {self.config.api_key}"},

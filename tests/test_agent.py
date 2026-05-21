@@ -56,7 +56,7 @@ def test_post_includes_thinking_when_config_enabled(monkeypatch) -> None:
     assert payloads[0].get("thinking") == {"type": "enabled"}
 
 
-def test_post_excludes_thinking_when_config_disabled(monkeypatch) -> None:
+def test_post_includes_disabled_thinking_when_config_disabled(monkeypatch) -> None:
     client = AgentClient(_FAKE_CONFIG)
     payloads = []
 
@@ -66,7 +66,7 @@ def test_post_excludes_thinking_when_config_disabled(monkeypatch) -> None:
 
     monkeypatch.setattr("checkupgrade.agent.httpx.post", fake_post)
     client._chat("", "test")
-    assert "thinking" not in payloads[0]
+    assert payloads[0].get("thinking") == {"type": "disabled"}
 
 
 def test_enable_thinking_false_overrides_config(monkeypatch) -> None:
@@ -83,7 +83,7 @@ def test_enable_thinking_false_overrides_config(monkeypatch) -> None:
 
     monkeypatch.setattr("checkupgrade.agent.httpx.post", fake_post)
     client._chat("", "test", enable_thinking=False)
-    assert "thinking" not in payloads[0]
+    assert payloads[0].get("thinking") == {"type": "disabled"}
 
 
 # --- reasoning_content fallback tests ---
