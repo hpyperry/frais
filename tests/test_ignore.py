@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from mise.ignore import add_ignored, load_ignored, remove_ignored, save_ignored
+from frais.ignore import add_ignored, load_ignored, remove_ignored, save_ignored
 
 
 def test_load_ignored_empty_when_no_file(tmp_path: Path) -> None:

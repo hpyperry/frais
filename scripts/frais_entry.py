@@ -1,4 +1,4 @@
-from mise.cli import app
+from frais.cli import app
 
 
 if __name__ == "__main__":

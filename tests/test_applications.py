@@ -3,8 +3,8 @@ from __future__ import annotations
 import plistlib
 from pathlib import Path
 
-from mise.models import SourceKind
-from mise.scanners.applications import classify_source, scan_applications
+from frais.models import SourceKind
+from frais.scanners.applications import classify_source, scan_applications
 
 
 def test_scan_application_plist(tmp_path: Path) -> None:

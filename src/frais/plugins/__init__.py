@@ -1,4 +1,4 @@
-"""Scanner plugins for Mise."""
+"""Scanner plugins for Frais."""
 
 from .base import ScannerPlugin
 

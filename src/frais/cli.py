@@ -23,12 +23,12 @@ from .config import CONFIG_PATH, write_config_template
 from .ignore import add_ignored, load_ignored, remove_ignored
 from .models import PluginScanResult, SoftwareItem, SourceKind, ScanResult, UpdateCandidate
 
-_DEFAULT_LOG_DIR = Path.home() / ".mise" / "log"
-_DEFAULT_LOG_FILE = _DEFAULT_LOG_DIR / "mise.log"
+_DEFAULT_LOG_DIR = Path.home() / ".frais" / "log"
+_DEFAULT_LOG_FILE = _DEFAULT_LOG_DIR / "frais.log"
 _ADVICE_CACHE = _DEFAULT_LOG_DIR / "last_advice.json"
 _LOG_MAX_SIZE = 5 * 1024 * 1024  # 5MB
 
-APP_HELP = """Mise scans macOS Applications, Homebrew packages, and npm global packages for updates.
+APP_HELP = """Frais scans macOS Applications, Homebrew packages, and npm global packages for updates.
 
 Default scope:
   - Applications in /Applications and ~/Applications
@@ -41,47 +41,47 @@ Safety model:
   - `update` auto-executes packages after interactive confirmation.
 
 Common examples:
-  mise doctor
-  mise config init
-  mise advise
-  mise advise --apps-only
-  mise advise -j 5
-  mise update
-  mise ignore add com.example.app
+  frais doctor
+  frais config init
+  frais advise
+  frais advise --apps-only
+  frais advise -j 5
+  frais update
+  frais ignore add com.example.app
 """
 
 CONFIG_HELP = """Manage BYOK LLM configuration.
 
 BYOK means the user supplies their own OpenAI-compatible endpoint, model, and
-API key. Mise does not ship, create, or embed a service-side key.
+API key. Frais does not ship, create, or embed a service-side key.
 
 Config file:
-  ~/.mise/config/config.toml
+  ~/.frais/config/config.toml
 
 Environment variables override the config file:
-  MISE_LLM_PROVIDER
-  MISE_LLM_API_KEY
-  MISE_LLM_BASE_URL
-  MISE_LLM_MODEL
+  FRAIS_LLM_PROVIDER
+  FRAIS_LLM_API_KEY
+  FRAIS_LLM_BASE_URL
+  FRAIS_LLM_MODEL
 
 Examples:
-  mise config
-  mise config show
-  mise config init
-  mise config path
-  mise config test
+  frais config
+  frais config show
+  frais config init
+  frais config path
+  frais config test
 """
 
 PLUGINS_HELP = """Manage scanner plugins.
 
 Built-in plugins: applications, homebrew, npm. Third-party plugins can
-be registered via entry points in `mise.plugins`.
+be registered via entry points in `frais.plugins`.
 
 Examples:
-  mise plugins
-  mise plugins list
-  mise plugins enable homebrew
-  mise plugins disable npm
+  frais plugins
+  frais plugins list
+  frais plugins enable homebrew
+  frais plugins disable npm
 """
 
 IGNORE_HELP = """Manage apps to ignore during advise.
@@ -90,13 +90,13 @@ Ignored apps are excluded from version research. Useful for false positives
 or apps you never want to update.
 
 Storage:
-  ~/.mise/config/ignore.txt (one app ID per line)
+  ~/.frais/config/ignore.txt (one app ID per line)
 
 Examples:
-  mise ignore
-  mise ignore list
-  mise ignore add com.anthropic.claude-code-url-handler
-  mise ignore remove com.anthropic.claude-code-url-handler
+  frais ignore
+  frais ignore list
+  frais ignore add com.anthropic.claude-code-url-handler
+  frais ignore remove com.anthropic.claude-code-url-handler
 """
 
 app = typer.Typer(help=APP_HELP, no_args_is_help=True, rich_markup_mode="rich", add_completion=False)
@@ -164,7 +164,7 @@ def main(
         str | None,
         typer.Option(
             "--log-file",
-            help="Override default log file path (~/.mise/log/mise.log).",
+            help="Override default log file path (~/.frais/log/frais.log).",
             metavar="PATH",
         ),
     ] = None,
@@ -192,7 +192,7 @@ def doctor() -> None:
     configuring the tool.
 
     Example:
-      mise doctor
+      frais doctor
     """
     from .config import load_llm_config
     from .plugins.registry import all_plugins
@@ -228,12 +228,12 @@ def config_default(ctx: typer.Context) -> None:
 def config_init() -> None:
     """Create a local BYOK config template.
 
-    The generated template is written to ~/.mise/config/config.toml.
+    The generated template is written to ~/.frais/config/config.toml.
     It contains placeholder provider/base_url/model fields and comments for the
     API key. It does not write a real key.
 
     Example:
-      mise config init
+      frais config init
     """
     path = write_config_template()
     logger.info("config template ready path=%s", path)
@@ -244,12 +244,12 @@ def config_init() -> None:
 def config_show() -> None:
     """Show effective BYOK config with secrets redacted.
 
-    Environment variables override ~/.mise/config/config.toml. The API
+    Environment variables override ~/.frais/config/config.toml. The API
     key is never printed; only presence and a final 4-character suffix are
     shown when available.
 
     Example:
-      mise config show
+      frais config show
     """
     from .config import load_llm_config
 
@@ -261,7 +261,7 @@ def config_path() -> None:
     """Print the default BYOK config file path.
 
     Example:
-      mise config path
+      frais config path
     """
     console.print(str(CONFIG_PATH))
 
@@ -274,7 +274,7 @@ def config_test() -> None:
     URL, model, and a short success or provider error message.
 
     Example:
-      mise config test
+      frais config test
     """
     from .agent import AgentClient, LLMRequestError, chat_completions_url
     from .config import require_raw_llm_config
@@ -305,7 +305,7 @@ def plugins_list() -> None:
     underlying tool is installed, default state, and effective enabled state.
 
     Example:
-      mise plugins list
+      frais plugins list
     """
     from .plugins.config import init_plugins_config, load_plugins_config
     from .plugins.registry import all_plugins
@@ -328,7 +328,7 @@ def plugins_enable(
     """Persistently enable a plugin.
 
     Example:
-      mise plugins enable homebrew
+      frais plugins enable homebrew
     """
     from .plugins.config import init_plugins_config, save_plugin_state
     from .plugins.registry import all_plugins
@@ -349,7 +349,7 @@ def plugins_disable(
     """Persistently disable a plugin.
 
     Example:
-      mise plugins disable homebrew
+      frais plugins disable homebrew
     """
     from .plugins.config import init_plugins_config, save_plugin_state
     from .plugins.registry import all_plugins
@@ -445,17 +445,17 @@ def advise(
 ) -> None:
     """Scan and generate BYOK LLM update advice.
 
-    Requires MISE_LLM_API_KEY, MISE_LLM_BASE_URL, and
-    MISE_LLM_MODEL, or equivalent values in the config file. The LLM is
+    Requires FRAIS_LLM_API_KEY, FRAIS_LLM_BASE_URL, and
+    FRAIS_LLM_MODEL, or equivalent values in the config file. The LLM is
     used for release research and summaries; missing or unreliable evidence is
     reported as unknown instead of being invented.
 
     Examples:
-      mise advise
-      mise advise --all
-      mise advise --apps-only
-      mise advise --json
-      mise advise -j 5
+      frais advise
+      frais advise --all
+      frais advise --apps-only
+      frais advise --json
+      frais advise -j 5
     """
     from .agent import AgentClient
     from .config import require_raw_llm_config
@@ -666,18 +666,18 @@ def update(
 ) -> None:
     """Interactively review and execute updates with AI advice.
 
-    Loads results from the last `mise advise` run. Shows each candidate
+    Loads results from the last `frais advise` run. Shows each candidate
     with AI advice for confirmation. Auto-updatable packages (Homebrew, npm)
     execute directly; others show the recommended action.
 
-    Run `mise advise` first to generate the update candidates.
+    Run `frais advise` first to generate the update candidates.
 
     Examples:
-      mise update
-      mise update npm
+      frais update
+      frais update npm
     """
     if not _ADVICE_CACHE.exists():
-        console.print("No advice cache found. Run [bold]mise advise[/bold] first.")
+        console.print("No advice cache found. Run [bold]frais advise[/bold] first.")
         raise typer.Exit(1)
 
     try:
@@ -809,7 +809,7 @@ def _print_advise_result(result: ScanResult, researched_ids: set[str], ignored_c
             console.print()
 
     if ignored_count:
-        console.print(f"  [dim]{ignored_count} app(s) ignored (use `mise ignore list` to review)[/dim]")
+        console.print(f"  [dim]{ignored_count} app(s) ignored (use `frais ignore list` to review)[/dim]")
 
 
 

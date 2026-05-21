@@ -1,5 +1,5 @@
 [project]
-name = "mise"
+name = "frais"
 version = "0.1.0"
 description = "Agent CLI for checking macOS application and Homebrew updates."
 readme = "README.md"
@@ -22,12 +22,12 @@ build = [
 ]
 
 [project.scripts]
-mise = "mise.cli:app"
+frais = "frais.cli:app"
 
-[project.entry-points."mise.plugins"]
-applications = "mise.plugins.applications:ApplicationsPlugin"
-homebrew = "mise.plugins.homebrew:HomebrewPlugin"
-npm = "mise.plugins.npm:NpmPlugin"
+[project.entry-points."frais.plugins"]
+applications = "frais.plugins.applications:ApplicationsPlugin"
+homebrew = "frais.plugins.homebrew:HomebrewPlugin"
+npm = "frais.plugins.npm:NpmPlugin"
 
 [build-system]
 requires = ["hatchling"]

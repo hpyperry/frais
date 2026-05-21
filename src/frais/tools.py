@@ -44,7 +44,7 @@ def web_fetch(url: str) -> str:
         response = httpx.get(
             url,
             headers={
-                "User-Agent": "mise/0.1.0",
+                "User-Agent": "frais/0.1.0",
                 "Accept": "application/vnd.github+json" if "api.github.com" in url else "text/html",
             },
             timeout=httpx.Timeout(8.0, read=15.0),

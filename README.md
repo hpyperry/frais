@@ -1,8 +1,8 @@
-# Mise
+# Frais
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Mise is a macOS BYOK CLI that scans installed Applications, Homebrew, and npm packages for available updates. It uses an OpenAI-compatible LLM (user-supplied key) with a structured research pipeline to find latest versions and generate update advice.
+Frais is a macOS BYOK CLI that scans installed Applications, Homebrew, and npm packages for available updates. It uses an OpenAI-compatible LLM (user-supplied key) with a structured research pipeline to find latest versions and generate update advice.
 
 All scanning is plugin-based — the built-in `applications`, `homebrew`, and `npm` scanners are all `ScannerPlugin` implementations.
 
@@ -10,12 +10,12 @@ All scanning is plugin-based — the built-in `applications`, `homebrew`, and `n
 
 ```bash
 uv sync --extra dev
-uv run mise doctor
-uv run mise config init
+uv run frais doctor
+uv run frais config init
 ```
 
 LLM features require user-owned configuration via environment variables or
-`~/.mise/config/config.toml`. The project never ships or creates a
+`~/.frais/config/config.toml`. The project never ships or creates a
 server-side API key.
 
 > **Note**: Thinking/reasoning models (e.g. DeepSeek-R1, o1, o3) are not yet
@@ -26,18 +26,18 @@ server-side API key.
 ## Commands
 
 ```bash
-mise doctor
+frais doctor
 ```
 
 Prints detected macOS version, architecture, Applications paths, plugin
 availability, and redacted BYOK status.
 
 ```bash
-mise advise
-mise advise --all
-mise advise --apps-only
-mise advise -j 5
-mise advise --json
+frais advise
+frais advise --all
+frais advise --apps-only
+frais advise -j 5
+frais advise --json
 ```
 
 Scans Applications, Homebrew, and npm global packages, then researches latest
@@ -55,11 +55,11 @@ Use `-j` to control concurrency (default 10, max 20). Progress is shown
 with a live progress bar — one row per plugin.
 
 ```bash
-mise config
-mise config init
-mise config show
-mise config path
-mise config test
+frais config
+frais config init
+frais config show
+frais config path
+frais config test
 ```
 
 Creates or displays BYOK configuration. `show` never prints the full API key.
@@ -77,32 +77,32 @@ api_key = "..."
 ```
 
 ```bash
-mise update
-mise update --only node
+frais update
+frais update --only node
 ```
 
 Shows each auto-updatable candidate and asks for confirmation before running a
 command. v1 only auto-executes Homebrew formula/cask updates.
 
 ```bash
-mise plugins
-mise plugins list
-mise plugins enable homebrew
-mise plugins disable homebrew
+frais plugins
+frais plugins list
+frais plugins enable homebrew
+frais plugins disable homebrew
 ```
 
 Lists and manages plugins. `enable` / `disable` persist the choice to
-`~/.mise/config/plugins.toml`. When a plugin is disabled, it is
+`~/.frais/config/plugins.toml`. When a plugin is disabled, it is
 skipped during `advise` runs.
 
 ### Writing plugins
 
 Any Python package can register a plugin via entry points. Subclass
-`ScannerPlugin` and declare an entry point in `mise.plugins`:
+`ScannerPlugin` and declare an entry point in `frais.plugins`:
 
 ```python
-from mise.plugins import ScannerPlugin
-from mise.models import PluginScanResult, SystemProfile, SoftwareItem, UpdateCandidate
+from frais.plugins import ScannerPlugin
+from frais.models import PluginScanResult, SystemProfile, SoftwareItem, UpdateCandidate
 
 class MyPlugin(ScannerPlugin):
     name = "my-manager"
@@ -131,31 +131,31 @@ class MyPlugin(ScannerPlugin):
 In your `pyproject.toml`:
 
 ```toml
-[project.entry-points."mise.plugins"]
+[project.entry-points."frais.plugins"]
 my_plugin = "my_package.plugin:MyPlugin"
 ```
 
-After installing your package, `mise plugins list` will show it.
+After installing your package, `frais plugins list` will show it.
 
 ```bash
-mise ignore
-mise ignore list
-mise ignore add com.example.app
-mise ignore remove com.example.app
+frais ignore
+frais ignore list
+frais ignore add com.example.app
+frais ignore remove com.example.app
 ```
 
 Manages an ignore list. Ignored apps are excluded from `advise` runs. The list
-is stored at `~/.mise/config/ignore.txt` (one app ID per line).
+is stored at `~/.frais/config/ignore.txt` (one app ID per line).
 
 ## Logs
 
-Logs are written to both stderr and `~/.mise/log/mise.log` by default.
+Logs are written to both stderr and `~/.frais/log/frais.log` by default.
 
 ```bash
-mise --verbose advise
-mise --debug advise
-mise --log-file ./my.log advise
-mise --no-log advise
+frais --verbose advise
+frais --debug advise
+frais --log-file ./my.log advise
+frais --no-log advise
 ```
 
 `--verbose` shows high-level progress; `--debug` includes LLM call details and
@@ -165,9 +165,9 @@ subprocess traces. Log files auto-truncate at 5MB.
 
 ```bash
 uv run --extra build python scripts/build_binary.py
-./dist/mise doctor
+./dist/frais doctor
 ```
 
 The binary is built with PyInstaller and writes no secrets into the artifact.
 LLM access still uses BYOK runtime configuration from environment variables or
-`~/.mise/config/config.toml`.
+`~/.frais/config/config.toml`.

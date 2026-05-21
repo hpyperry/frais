@@ -7,7 +7,7 @@ from .base import ScannerPlugin
 
 logger = logging.getLogger(__name__)
 
-_ENTRY_POINT_GROUP = "mise.plugins"
+_ENTRY_POINT_GROUP = "frais.plugins"
 
 
 def all_plugins() -> dict[str, ScannerPlugin]:
