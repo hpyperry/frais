@@ -16,6 +16,11 @@ LLM features require user-owned configuration via environment variables or
 `~/.checkupgrade/config/config.toml`. The project never ships or creates a
 server-side API key.
 
+> **Note**: Thinking/reasoning models (e.g. DeepSeek-R1, o1, o3) are not yet
+> supported. The research pipeline requires clean JSON output which thinking
+> models do not reliably produce. Use a standard model (e.g. deepseek-chat,
+> gpt-4o).
+
 ## Commands
 
 ```bash

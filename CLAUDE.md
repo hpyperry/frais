@@ -2,9 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Task workflow (mandatory)
+## Task workflow
 
-For every task the user gives, follow these steps in order:
+When the user signals a new implementation task (e.g. "新任务", "给你一个任务", "帮我实现", "加个功能"), follow these steps in order. For simple questions, bug reports, or quick checks, skip the workflow and respond directly.
 
 1. **Enter plan mode** — do not write code before planning is approved.
 2. **Research** — read CLAUDE.md and README.md, analyze recent git log for context.
@@ -13,6 +13,7 @@ For every task the user gives, follow these steps in order:
 5. **Test coverage** — review existing tests and add new ones to cover all changed paths.
 6. **Build binary** — run `uv run --extra build python scripts/build_binary.py` and verify with the built artifact.
 7. **Update docs** — update CLAUDE.md and README.md to reflect the changes.
+8. **Git commit** — Commit the changes. The Co-Authored-By trailer must use the name of the model that performed the work (e.g. `DeepSeek-V4-Pro`, not a hardcoded Claude model name).
 
 ## Project overview
 
@@ -165,7 +166,7 @@ Plugins that don't need research (Homebrew, npm) skip the LLM pipeline entirely 
 
 ## Key patterns
 
-- **BYOK model**: LLM config merges env vars (`CHECKUPGRADE_LLM_*`) over file values. `require_raw_llm_config()` raises `ValueError` listing missing keys. API keys are never logged or printed in full.
+- **BYOK model**: LLM config merges env vars (`CHECKUPGRADE_LLM_*`) over file values. `require_raw_llm_config()` raises `ValueError` listing missing keys. API keys are never logged or printed in full. Thinking/reasoning models (e.g. DeepSeek-R1, o1, o3) are not yet supported — the structured JSON extraction pipeline requires clean `content` output.
 - **Testing**: Uses `monkeypatch` (pytest fixture) for all external dependencies — subprocess, filesystem, env vars. No mock library.
 - **Version comparison**: Uses `packaging.version.Version`; strips leading `v`/`V` before comparing.
 - **Source classification**: Applications are classified as APP_STORE, LOCAL_BUILD, NETWORK_DOWNLOAD, APPLICATION, or UNKNOWN based on codesign authority, team ID, and quarantine xattr presence.
