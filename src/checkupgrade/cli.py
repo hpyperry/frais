@@ -4,11 +4,13 @@ import json
 import logging
 import os
 import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Annotated
 
 import click
+import signal
 import typer
 from rich.console import Console
 from rich.markdown import Markdown
@@ -103,6 +105,7 @@ app.add_typer(plugins_app, name="plugins")
 app.add_typer(ignore_app, name="ignore")
 console = Console()
 logger = logging.getLogger(__name__)
+
 
 
 def _configure_logging(verbose: bool, debug: bool, log_file: str | None, no_log: bool) -> None:
@@ -456,6 +459,12 @@ def advise(
     from .plugins.registry import all_plugins
     from .system import detect_system
 
+    def _on_interrupt(signum, frame):
+        console.print()
+        console.print("  [dim]Interrupted[/dim]")
+        sys.exit(0)
+
+    orig_handler = signal.signal(signal.SIGINT, _on_interrupt)
     try:
         raw_config = require_raw_llm_config()
     except ValueError as exc:
@@ -591,6 +600,8 @@ def advise(
         logger.warning("failed to save advice cache: %s", exc)
 
     _print_advise_result(result, researched_ids, len(ignored), show_all=show_all)
+
+    signal.signal(signal.SIGINT, orig_handler)
 
 
 def _select_plugins(apps_only: bool, explicit: list[str] | None) -> list[str]:
