@@ -6,7 +6,7 @@ import shutil
 import subprocess
 from typing import Any
 
-from ...models import DependencyImpact, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
+from ...models import DependencyImpact, PluginScanResult, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
 from ..base import ScannerPlugin
 
 logger = logging.getLogger(__name__)
@@ -15,32 +15,81 @@ logger = logging.getLogger(__name__)
 class HomebrewPlugin(ScannerPlugin):
     name = "homebrew"
     enabled_by_default = True
+    display_color = "orange3"
 
     def is_available(self) -> bool:
         path = shutil.which("brew")
         logger.debug("homebrew which brew=%s", path or "-")
         return path is not None
 
-    def scan(self, system: SystemProfile) -> tuple[list[UpdateCandidate], list[str]]:
+    def scan(self, system: SystemProfile) -> PluginScanResult:
         if not self.is_available():
             logger.info("homebrew unavailable")
-            return [], ["Homebrew is not installed or `brew` is not on PATH."]
+            return PluginScanResult(skipped=["Homebrew is not installed or `brew` is not on PATH."])
         try:
             logger.info("homebrew scan outdated start")
             raw = _run_json(["brew", "outdated", "--json=v2"])
         except RuntimeError as exc:
             logger.warning("homebrew outdated failed error=%s", exc)
-            return [], [str(exc)]
+            return PluginScanResult(skipped=[str(exc)])
 
+        candidates, items = self._parse_outdated(raw)
+        logger.info("homebrew outdated items=%d", len(items))
+        return PluginScanResult(items=items, candidates=candidates)
+
+    def scan_all(self, system: SystemProfile) -> PluginScanResult:
+        if not self.is_available():
+            logger.info("homebrew unavailable")
+            return PluginScanResult(skipped=["Homebrew is not installed or `brew` is not on PATH."])
+        try:
+            logger.info("homebrew scan all start")
+            installed_raw = _run_json(["brew", "info", "--json=v2", "--installed"])
+            outdated_raw = _run_json(["brew", "outdated", "--json=v2"])
+        except RuntimeError as exc:
+            logger.warning("homebrew scan all failed error=%s", exc)
+            return PluginScanResult(skipped=[str(exc)])
+
+        candidates, _ = self._parse_outdated(outdated_raw)
+        all_items = self._parse_installed(installed_raw)
+        logger.info("homebrew scan all items=%d outdated=%d", len(all_items), len(candidates))
+        return PluginScanResult(items=all_items, candidates=candidates)
+
+    def _parse_outdated(self, raw: dict[str, Any]) -> tuple[list[UpdateCandidate], list[SoftwareItem]]:
         candidates: list[UpdateCandidate] = []
-        formulae = raw.get("formulae", [])
-        casks = raw.get("casks", [])
-        logger.info("homebrew outdated formulae=%d casks=%d", len(formulae), len(casks))
-        for formula in formulae:
-            candidates.append(self._formula_candidate(formula))
-        for cask in casks:
-            candidates.append(self._cask_candidate(cask))
-        return candidates, []
+        items: list[SoftwareItem] = []
+        for formula in raw.get("formulae", []):
+            cand = self._formula_candidate(formula)
+            candidates.append(cand)
+            items.append(cand.item)
+        for cask in raw.get("casks", []):
+            cand = self._cask_candidate(cask)
+            candidates.append(cand)
+            items.append(cand.item)
+        return candidates, items
+
+    def _parse_installed(self, raw: dict[str, Any]) -> list[SoftwareItem]:
+        items: list[SoftwareItem] = []
+        for formula in raw.get("formulae", []):
+            name = formula.get("name") or "unknown"
+            current = formula.get("linked_keg") or _installed_version(formula)
+            items.append(SoftwareItem(
+                id=f"brew:{name}",
+                name=name,
+                kind="package",
+                source=SourceKind.HOMEBREW_FORMULA,
+                current_version=current,
+            ))
+        for cask in raw.get("casks", []):
+            name = cask.get("name") or cask.get("token") or "unknown"
+            current = _cask_current_version(cask)
+            items.append(SoftwareItem(
+                id=f"brew-cask:{name}",
+                name=name,
+                kind="application",
+                source=SourceKind.HOMEBREW_CASK,
+                current_version=current,
+            ))
+        return items
 
     def _formula_candidate(self, formula: dict[str, Any]) -> UpdateCandidate:
         name = formula.get("name") or "unknown"
@@ -148,3 +197,22 @@ def _first(value: Any) -> Any:
     if isinstance(value, list):
         return value[0] if value else None
     return value
+
+
+def _installed_version(pkg: dict[str, Any]) -> str | None:
+    """Extract installed version from brew info output."""
+    linked = pkg.get("linked_keg")
+    if linked:
+        return linked
+    installed_list = pkg.get("installed")
+    if isinstance(installed_list, list) and installed_list:
+        return installed_list[0].get("version")
+    return None
+
+
+def _cask_current_version(cask: dict[str, Any]) -> str | None:
+    """Extract installed version from cask brew info output."""
+    linked = cask.get("linked_keg")
+    if linked:
+        return linked
+    return cask.get("version")

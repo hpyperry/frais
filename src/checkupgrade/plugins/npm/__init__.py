@@ -6,7 +6,7 @@ import shutil
 import subprocess
 from typing import Any
 
-from ...models import DependencyImpact, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
+from ...models import DependencyImpact, PluginScanResult, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
 from ..base import ScannerPlugin
 
 logger = logging.getLogger(__name__)
@@ -15,32 +15,71 @@ logger = logging.getLogger(__name__)
 class NpmPlugin(ScannerPlugin):
     name = "npm"
     enabled_by_default = True
+    display_color = "bright_magenta"
 
     def is_available(self) -> bool:
         path = shutil.which("npm")
         logger.debug("npm which npm=%s", path or "-")
         return path is not None
 
-    def scan(self, system: SystemProfile) -> tuple[list[UpdateCandidate], list[str]]:
+    def scan(self, system: SystemProfile) -> PluginScanResult:
         if not self.is_available():
             logger.info("npm unavailable")
-            return [], ["npm is not installed or `npm` is not on PATH."]
+            return PluginScanResult(skipped=["npm is not installed or `npm` is not on PATH."])
         try:
             logger.info("npm scan outdated start")
             raw = _run_json(["npm", "outdated", "-g", "--json"])
         except RuntimeError as exc:
             logger.warning("npm outdated failed error=%s", exc)
-            return [], [str(exc)]
+            return PluginScanResult(skipped=[str(exc)])
 
         if not raw:
             logger.info("npm no outdated packages")
-            return [], []
+            return PluginScanResult()
 
-        logger.info("npm outdated packages=%d", len(raw))
+        candidates, items = self._parse_outdated(raw)
+        logger.info("npm outdated items=%d", len(items))
+        return PluginScanResult(items=items, candidates=candidates)
+
+    def scan_all(self, system: SystemProfile) -> PluginScanResult:
+        if not self.is_available():
+            logger.info("npm unavailable")
+            return PluginScanResult(skipped=["npm is not installed or `npm` is not on PATH."])
+        try:
+            logger.info("npm scan all start")
+            installed_raw = _run_json(["npm", "ls", "-g", "--depth=0", "--json"])
+            outdated_raw = _run_json(["npm", "outdated", "-g", "--json"])
+        except RuntimeError as exc:
+            logger.warning("npm scan all failed error=%s", exc)
+            return PluginScanResult(skipped=[str(exc)])
+
+        candidates, _ = self._parse_outdated(outdated_raw)
+        all_items = self._parse_installed(installed_raw)
+        logger.info("npm scan all items=%d outdated=%d", len(all_items), len(candidates))
+        return PluginScanResult(items=all_items, candidates=candidates)
+
+    def _parse_outdated(self, raw: dict[str, Any]) -> tuple[list[UpdateCandidate], list[SoftwareItem]]:
         candidates: list[UpdateCandidate] = []
+        items: list[SoftwareItem] = []
         for name, info in raw.items():
-            candidates.append(self._make_candidate(name, info))
-        return candidates, []
+            cand = self._make_candidate(name, info)
+            candidates.append(cand)
+            items.append(cand.item)
+        return candidates, items
+
+    def _parse_installed(self, raw: dict[str, Any]) -> list[SoftwareItem]:
+        deps = raw.get("dependencies", {})
+        items: list[SoftwareItem] = []
+        for name, info in deps.items():
+            version = info.get("version")
+            items.append(SoftwareItem(
+                id=f"npm:{name}",
+                name=name,
+                kind="package",
+                source=SourceKind.NPM_GLOBAL,
+                current_version=version,
+            ))
+        return items
 
     def _make_candidate(self, name: str, info: dict[str, Any]) -> UpdateCandidate:
         current = info.get("current")

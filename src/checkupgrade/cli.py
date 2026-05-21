@@ -14,16 +14,12 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.rule import Rule
 from rich.table import Table
 
-from .agent import AgentClient, LLMRequestError, chat_completions_url
-from .config import CONFIG_PATH, load_llm_config, require_raw_llm_config, write_config_template
+from .config import CONFIG_PATH, write_config_template
 from .ignore import IGNORE_PATH, add_ignored, load_ignored, remove_ignored
-from .models import SoftwareItem, SourceKind, ScanResult, UpdateCandidate
-from .plugins.registry import all_plugins, enabled_plugins
-from .research import research_application_update
-from .scanners.applications import scan_applications
-from .system import detect_system
+from .models import PluginScanResult, SoftwareItem, SourceKind, ScanResult, UpdateCandidate
 
 _DEFAULT_LOG_DIR = Path.home() / ".local" / "state" / "checkupgrade"
 _DEFAULT_LOG_FILE = _DEFAULT_LOG_DIR / "checkupgrade.log"
@@ -193,6 +189,10 @@ def doctor() -> None:
     Example:
       checkupgrade doctor
     """
+    from .config import load_llm_config
+    from .plugins.registry import all_plugins
+    from .system import detect_system
+
     system = detect_system()
     llm = load_llm_config()
     logger.info("doctor system=%s %s arch=%s", system.os_name, system.os_version, system.arch)
@@ -246,6 +246,8 @@ def config_show() -> None:
     Example:
       checkupgrade config show
     """
+    from .config import load_llm_config
+
     console.print_json(json.dumps(load_llm_config().safe_dict(), ensure_ascii=False))
 
 
@@ -269,6 +271,9 @@ def config_test() -> None:
     Example:
       checkupgrade config test
     """
+    from .agent import AgentClient, LLMRequestError, chat_completions_url
+    from .config import require_raw_llm_config
+
     try:
         raw_config = require_raw_llm_config()
         console.print(f"Provider: {raw_config.provider}")
@@ -297,18 +302,15 @@ def plugins_list() -> None:
     Example:
       checkupgrade plugins list
     """
-    table = Table("Plugin", "Available", "Enabled", "Source")
+    from .plugins.registry import all_plugins
+
+    table = Table("Plugin", "Available", "Enabled")
     for name, plugin in all_plugins().items():
         available = "yes" if plugin.is_available() else "no"
         enabled = "yes" if plugin.enabled_by_default else "no"
-        source = "3rd-party" if _is_third_party(plugin) else "built-in"
-        table.add_row(name, available, enabled, source)
+        table.add_row(name, available, enabled)
     console.print(table)
 
-
-def _is_third_party(plugin) -> bool:
-    mod = type(plugin).__module__
-    return not mod.startswith("checkupgrade")
 
 
 @plugins_app.command("enable")
@@ -403,6 +405,10 @@ def advise(
             max=20,
         ),
     ] = 10,
+    show_all: Annotated[
+        bool,
+        typer.Option("--all", help="Show all installed software, including up-to-date items."),
+    ] = False,
 ) -> None:
     """Scan and generate BYOK LLM update advice.
 
@@ -413,16 +419,36 @@ def advise(
 
     Examples:
       checkupgrade advise
+      checkupgrade advise --all
       checkupgrade advise --apps-only
       checkupgrade advise --json
       checkupgrade advise -j 5
     """
+    from .agent import AgentClient
+    from .config import require_raw_llm_config
+    from .plugins.registry import all_plugins
+    from .system import detect_system
+
     try:
         raw_config = require_raw_llm_config()
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     logger.info("advise using provider=%s base_url=%s model=%s jobs=%d", raw_config.provider, raw_config.base_url, raw_config.model, jobs)
     agent = AgentClient(raw_config)
+
+    system = detect_system()
+    _explicit_plugins = _split_plugins(plugins)
+    active = _select_plugins(apps_only, _explicit_plugins)
+
+    # Print system banner before scanning
+    console.print()
+    plugin_labels = ", ".join(active)
+    console.print(
+        f"  [bold cyan]OS:[/] {system.os_name} {system.os_version}  "
+        f"[bold cyan]Arch:[/] {system.arch}  "
+        f"[bold cyan]Plugins:[/] {plugin_labels}"
+    )
+    console.print()
 
     with Progress(
         SpinnerColumn(),
@@ -432,48 +458,103 @@ def advise(
         TimeElapsedColumn(),
         console=console,
     ) as progress:
-        # Phase 1: Scan
-        _explicit_plugins = _split_plugins(plugins)
-        if apps_only:
-            scan_total = 1
-        elif _explicit_plugins:
-            scan_total = len(enabled_plugins(_explicit_plugins))
-        else:
-            scan_total = 1 + len(enabled_plugins())
-
-        scan_task = progress.add_task("Scanning", total=scan_total)
-        result = run_scan(apps_only=apps_only, plugin_names=_explicit_plugins,
-                          progress=progress, task_id=scan_task)
-
-        # Filter ignored apps
+        # Phase 1: Scan + Research per-plugin (research starts as soon as scan done)
+        plugin_tasks: dict[str, int] = {}
+        for name in active:
+            plugin_tasks[name] = progress.add_task(name, total=1)
+        result = ScanResult(system=system)
         ignored = load_ignored()
+
+        researched_ids: set[str] = set()
+        research_futures: dict = {}
         ignored_count = 0
-        if ignored:
-            before_apps = len(result.applications)
-            result.applications = [a for a in result.applications if a.id not in ignored]
-            ignored_count += before_apps - len(result.applications)
-            before_cands = len(result.candidates)
-            result.candidates = [c for c in result.candidates if c.item.id not in ignored]
-            ignored_count += before_cands - len(result.candidates)
 
-        ignored_str = f", {ignored_count} ignored" if ignored_count else ""
-        progress.update(scan_task,
-                        description=f"Scanning ({len(result.applications)} apps, {len(result.candidates)} plugin updates{ignored_str})")
+        with ThreadPoolExecutor(max_workers=max(1, len(active))) as scan_pool, \
+             ThreadPoolExecutor(max_workers=jobs) as research_pool:
 
-        # Phase 2: Research applications
-        app_count = len(result.applications)
-        if app_count:
-            research_task = progress.add_task("Researching apps", total=app_count)
-            researched, researched_ids = _research_apps_concurrent(agent, result.applications, jobs, progress, research_task)
-            result.candidates.extend(researched)
-        else:
-            researched_ids = set()
+            # Submit all scans
+            scan_futures: dict = {}
+            for name in active:
+                plugin = all_plugins()[name]
+                scan_fn = plugin.scan_all if show_all else plugin.scan
+                scan_futures[scan_pool.submit(scan_fn, system)] = name
 
-        # Phase 3: Summarize candidates
-        cand_count = len(result.candidates)
-        if cand_count:
-            summarize_task = progress.add_task("Generating summaries", total=cand_count)
-            _summarize_concurrent(agent, result.candidates, jobs, progress, summarize_task)
+            # As each scan finishes, start its research (if needed) in the same loop
+            for future in as_completed(scan_futures):
+                name = scan_futures[future]
+                plugin = all_plugins()[name]
+                task_id = plugin_tasks[name]
+                try:
+                    pr = future.result()
+                except Exception as exc:
+                    logger.warning("scan failed for %s: %s", name, exc)
+                    pr = PluginScanResult(skipped=[str(exc)])
+
+                # Filter ignored — count unique IDs since a single ignored app
+                # may appear in both items and candidates (Homebrew/npm plugins).
+                if ignored:
+                    kept_items = [it for it in pr.items if it.id not in ignored]
+                    kept_cands = [c for c in pr.candidates if c.item.id not in ignored]
+                    removed_item_ids = {it.id for it in pr.items if it.id in ignored}
+                    removed_cand_ids = {c.item.id for c in pr.candidates if c.item.id in ignored}
+                    ignored_count += len(removed_item_ids | removed_cand_ids)
+                    pr.items = kept_items
+                    pr.candidates = kept_cands
+
+                result.plugin_results[name] = pr
+
+                if plugin.needs_research:
+                    items_to_research = [it for it in pr.items
+                                         if it.id not in {c.item.id for c in pr.candidates}]
+                    if items_to_research:
+                        progress.update(task_id, total=len(items_to_research), completed=0,
+                                        description=f"{name}    researching")
+                        for it in items_to_research:
+                            r_fut = research_pool.submit(plugin.research, agent, it)
+                            research_futures[r_fut] = (name, it)
+                    else:
+                        progress.update(task_id, completed=1,
+                                        description=f"{name}    {len(pr.items)} items, {len(pr.candidates)} updates")
+                else:
+                    desc = f"{name}    {len(pr.items)} items"
+                    if pr.candidates:
+                        desc += f", {len(pr.candidates)} updates"
+                    progress.update(task_id, completed=1, description=desc)
+
+            # Collect research results as they complete
+            for r_future in as_completed(research_futures):
+                name, item = research_futures[r_future]
+                pr = result.plugin_results[name]
+                task_id = plugin_tasks[name]
+                researched_ids.add(item.id)
+                try:
+                    candidate = r_future.result()
+                except Exception as exc:
+                    logger.warning("research failed for %s: %s", item.name, exc)
+                    progress.advance(task_id)
+                    continue
+                if candidate:
+                    pr.candidates.append(candidate)
+                progress.advance(task_id)
+
+        # Finalize research plugin task descriptions
+        for name in active:
+            pr = result.plugin_results[name]
+            plugin = all_plugins()[name]
+            desc = f"{name}    {len(pr.items)} items"
+            if pr.candidates:
+                desc += f", {len(pr.candidates)} updates"
+            if plugin.needs_research:
+                progress.update(plugin_tasks[name], total=1, completed=1, description=desc)
+
+
+
+
+        # Phase 3: Summaries
+        all_candidates = result.all_candidates
+        if all_candidates:
+            summarize_task = progress.add_task("Summaries", total=len(all_candidates))
+            _summarize_concurrent(agent, all_candidates, jobs, progress, summarize_task)
 
     if json_output:
         console.print_json(json.dumps(result.to_dict(), ensure_ascii=False))
@@ -487,46 +568,17 @@ def advise(
     except OSError as exc:
         logger.warning("failed to save advice cache: %s", exc)
 
-    _print_advise_result(result, researched_ids, ignored_count)
+    _print_advise_result(result, researched_ids, ignored_count, show_all=show_all)
 
 
-def _research_one(agent: AgentClient, item: SoftwareItem) -> UpdateCandidate | None:
-    logger.info("research application name=%s id=%s source=%s version=%s", item.name, item.id, item.source.value, item.current_version)
-    try:
-        candidate = research_application_update(agent, item)
-    except Exception as exc:
-        logger.warning("research failed for %s: %s", item.name, exc)
-        return None
-    if candidate:
-        logger.info("application update candidate name=%s latest=%s action=%s", item.name, candidate.latest_version, candidate.recommended_action)
-    else:
-        logger.info("application no newer reliable version found name=%s id=%s", item.name, item.id)
-    return candidate
+def _select_plugins(apps_only: bool, explicit: list[str] | None) -> list[str]:
+    from .plugins.registry import all_plugins
 
-
-def _research_apps_concurrent(
-    agent: AgentClient, applications: list[SoftwareItem], jobs: int,
-    progress: Progress | None = None, task_id: object | None = None,
-) -> tuple[list[UpdateCandidate], set[str]]:
-    if not applications:
-        return [], set()
-    results: list[UpdateCandidate] = []
-    researched_ids: set[str] = set()
-    with ThreadPoolExecutor(max_workers=jobs) as pool:
-        futures = {pool.submit(_research_one, agent, item): item for item in applications}
-        for future in as_completed(futures):
-            item = futures[future]
-            researched_ids.add(item.id)
-            try:
-                candidate = future.result()
-            except Exception as exc:
-                logger.warning("research failed for %s: %s", item.name, exc)
-                continue
-            if candidate:
-                results.append(candidate)
-            if progress is not None and task_id is not None:
-                progress.advance(task_id)
-    return results, researched_ids
+    if apps_only:
+        return ["applications"]
+    if explicit:
+        return [name for name in explicit if name in all_plugins()]
+    return [name for name, p in all_plugins().items() if p.enabled_by_default]
 
 
 def _summarize_one(agent: AgentClient, candidate: UpdateCandidate) -> None:
@@ -545,7 +597,7 @@ def _summarize_concurrent(
     with ThreadPoolExecutor(max_workers=jobs) as pool:
         futures = [pool.submit(_summarize_one, agent, c) for c in candidates]
         for future in as_completed(futures):
-            future.result()  # raise if any unexpected error
+            future.result()
             if progress is not None and task_id is not None:
                 progress.advance(task_id)
 
@@ -582,8 +634,13 @@ def update(
         console.print(f"Failed to read advice cache: {exc}")
         raise typer.Exit(1)
 
-    # Parse candidates from cached data
-    raw_candidates = data.get("candidates", [])
+    # Parse candidates from cached data (v2 format: plugin_results)
+    raw_candidates: list[dict] = []
+    if "plugin_results" in data:
+        for pr in data["plugin_results"].values():
+            raw_candidates.extend(pr.get("candidates", []))
+    else:
+        raw_candidates = data.get("candidates", [])
     candidates: list[UpdateCandidate] = []
     for raw in raw_candidates:
         try:
@@ -650,81 +707,58 @@ def _resolve_app_store_command(item: SoftwareItem) -> tuple[list[str], bool]:
 
 
 
-def run_scan(apps_only: bool = False, plugin_names: list[str] | None = None,
-             progress: Progress | None = None, task_id: object | None = None) -> ScanResult:
-    system = detect_system()
-    logger.info("scan start os=%s version=%s arch=%s apps_only=%s plugins=%s", system.os_name, system.os_version, system.arch, apps_only, plugin_names or "default")
-    result = ScanResult(system=system, applications=[])
-
-    _scan_apps = not bool(plugin_names)
-    plugins = [] if apps_only else enabled_plugins(plugin_names)
-
-    with ThreadPoolExecutor(max_workers=max(1, len(plugins) + (1 if _scan_apps else 0))) as pool:
-        futures: dict = {}
-        if _scan_apps:
-            futures[pool.submit(scan_applications, system.applications_paths)] = "applications"
-        for plugin in plugins:
-            futures[pool.submit(_run_one_plugin, plugin, system)] = plugin.name
-
-        for future in as_completed(futures):
-            name = futures[future]
-            try:
-                data = future.result()
-                if name == "applications":
-                    result.applications = data
-                    logger.info("scan applications found=%d", len(data))
-                else:
-                    candidates, skipped = data
-                    logger.info("scan plugin done name=%s candidates=%d skipped=%d", name, len(candidates), len(skipped))
-                    result.candidates.extend(candidates)
-                    result.skipped.extend(skipped)
-            except Exception as exc:
-                logger.warning("scan failed for %s: %s", name, exc)
-            if progress is not None and task_id is not None:
-                progress.advance(task_id)
-
-    logger.info("scan done applications=%d candidates=%d skipped=%d", len(result.applications), len(result.candidates), len(result.skipped))
-    return result
-
-
-def _run_one_plugin(plugin, system) -> tuple[list[UpdateCandidate], list[str]]:
-    logger.info("scan plugin start name=%s", plugin.name)
-    return plugin.scan(system)
-
-
 def _split_plugins(value: str | None) -> list[str] | None:
     if not value:
         return None
     return [part.strip() for part in value.split(",") if part.strip()]
 
 
-def _print_advise_result(result: ScanResult, researched_ids: set[str], ignored_count: int = 0) -> None:
-    console.print(
-        f"OS: {result.system.os_name} {result.system.os_version} | "
-        f"Arch: {result.system.arch} | Paths: {', '.join(result.system.applications_paths)}"
-    )
-    console.print()
+def _source_label(source: SourceKind) -> str:
+    if source == SourceKind.HOMEBREW_FORMULA:
+        return "Homebrew"
+    if source == SourceKind.HOMEBREW_CASK:
+        return "Homebrew Casks"
+    if source == SourceKind.NPM_GLOBAL:
+        return "npm"
+    return source.value
 
-    candidate_item_ids = {candidate.item.id for candidate in result.candidates}
 
-    for item in result.applications:
-        if item.id in candidate_item_ids:
-            continue
-        source = item.source.value
-        current = item.current_version or "unknown"
-        if item.id in researched_ids:
-            console.print(f"  {item.id}")
-            console.print(f"    {item.name} | {source} | {current}  [dim]up to date[/dim]")
-            console.print()
-        else:
-            console.print(f"  {item.id}")
-            console.print(f"    {item.name} | {source} | {current}  [red]failed[/red]")
-            console.print()
 
-    if result.candidates:
-        console.print(f"  [bold]── Updates available ({len(result.candidates)}) ──[/bold]")
+def _print_advise_result(result: ScanResult, researched_ids: set[str], ignored_count: int = 0,
+                         show_all: bool = False) -> None:
+    from .plugins.registry import all_plugins
+
+    candidate_item_ids = {c.item.id for c in result.all_candidates}
+    plugins = all_plugins()
+
+    for name, pr in result.plugin_results.items():
+        plugin = plugins.get(name)
+        color = plugin.display_color if plugin else "white"
+        if show_all:
+            current_items = [it for it in pr.items if it.id not in candidate_item_ids]
+            if current_items:
+                console.print(Rule(f"[bold]{name}[/] — {len(current_items)} up to date", style=color))
+                for item in sorted(current_items, key=lambda x: x.name.lower()):
+                    current = item.current_version or "unknown"
+                    source = item.source.value
+                    if item.id in researched_ids:
+                        console.print(f"  {item.id}")
+                        console.print(f"    {item.name} | {source} | {current}  [dim]up to date[/dim]")
+                    elif item.source in (SourceKind.HOMEBREW_FORMULA, SourceKind.HOMEBREW_CASK,
+                                         SourceKind.NPM_GLOBAL):
+                        console.print(f"  {item.id}")
+                        console.print(f"    {item.name} | {current}  [dim]up to date[/dim]")
+                    else:
+                        console.print(f"  {item.id}")
+                        console.print(f"    {item.name} | {source} | {current}  [red]failed[/red]")
+                console.print()
+        for skipped in pr.skipped:
+            console.print(f"  [dim]Skipped ({name}): {skipped}[/dim]")
+
+    if result.all_candidates:
+        console.print(Rule(f"[bold]Updates available[/] ({len(result.all_candidates)})", style="green"))
         console.print()
-        for candidate in result.candidates:
+        for candidate in result.all_candidates:
             console.print(f"  {candidate.item.id}")
             console.print(f"    {candidate.item.name} | {candidate.item.source.value}")
             console.print(
@@ -733,11 +767,7 @@ def _print_advise_result(result: ScanResult, researched_ids: set[str], ignored_c
             )
             console.print()
 
-    for skipped in result.skipped:
-        console.print(f"  Skipped: {skipped}")
-
     if ignored_count:
-        console.print()
         console.print(f"  [dim]{ignored_count} app(s) ignored (use `checkupgrade ignore list` to review)[/dim]")
 
 

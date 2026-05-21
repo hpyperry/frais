@@ -55,10 +55,10 @@ def test_homebrew_formula_candidate(monkeypatch) -> None:
     monkeypatch.setattr("checkupgrade.plugins.homebrew.shutil.which", fake_which)
     monkeypatch.setattr("checkupgrade.plugins.homebrew.subprocess.run", fake_run)
 
-    candidates, skipped = HomebrewPlugin().scan(detect_system())
+    result = HomebrewPlugin().scan(detect_system())
 
-    assert skipped == []
-    assert candidates[0].item.name == "node"
-    assert candidates[0].latest_version == "24.2.0"
-    assert candidates[0].command == ["brew", "upgrade", "node"]
-    assert candidates[0].dependency_impact.used_by == ["pnpm", "yarn"]
+    assert result.skipped == []
+    assert result.candidates[0].item.name == "node"
+    assert result.candidates[0].latest_version == "24.2.0"
+    assert result.candidates[0].command == ["brew", "upgrade", "node"]
+    assert result.candidates[0].dependency_impact.used_by == ["pnpm", "yarn"]

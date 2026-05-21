@@ -5,52 +5,13 @@ from pathlib import Path
 
 import typer
 
-from checkupgrade.cli import _ADVICE_CACHE, _print_advise_result, run_scan, update
-from checkupgrade.models import ScanResult, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
-
-
-def test_explicit_plugins_skip_applications(monkeypatch) -> None:
-    called = False
-
-    def fake_scan_applications(paths):
-        nonlocal called
-        called = True
-        return []
-
-    monkeypatch.setattr("checkupgrade.cli.scan_applications", fake_scan_applications)
-    monkeypatch.setattr("checkupgrade.cli.enabled_plugins", lambda names: [])
-
-    result = run_scan(plugin_names=["homebrew"])
-
-    assert result.applications == []
-    assert not called
-
-
-def test_advise_filters_ignored_apps(monkeypatch) -> None:
-    apps = [
-        SoftwareItem(id="com.keep.app", name="Keep", kind="application", source=SourceKind.APPLICATION, current_version="1.0"),
-        SoftwareItem(id="com.ignore.app", name="IgnoreMe", kind="application", source=SourceKind.APPLICATION, current_version="1.0"),
-    ]
-
-    def fake_scan_applications(paths):
-        return apps
-
-    monkeypatch.setattr("checkupgrade.cli.scan_applications", fake_scan_applications)
-    monkeypatch.setattr("checkupgrade.cli.enabled_plugins", lambda names: [])
-
-    ignored = {"com.ignore.app"}
-    monkeypatch.setattr("checkupgrade.cli.load_ignored", lambda: ignored)
-
-    result = run_scan(apps_only=True)
-    result.applications = [a for a in result.applications if a.id not in ignored]
-
-    assert len(result.applications) == 1
-    assert result.applications[0].id == "com.keep.app"
+from checkupgrade.cli import _ADVICE_CACHE, _print_advise_result, update
+from checkupgrade.models import PluginScanResult, ScanResult, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
 
 
 def test_print_advise_result_shows_ignored_count(capsys) -> None:
     system = SystemProfile(os_name="macOS", os_version="15.0", arch="arm64", applications_paths=["/Applications"])
-    result = ScanResult(system=system, applications=[], candidates=[])
+    result = ScanResult(system=system)
 
     _print_advise_result(result, researched_ids=set(), ignored_count=3)
 
@@ -60,7 +21,7 @@ def test_print_advise_result_shows_ignored_count(capsys) -> None:
 
 def test_print_advise_result_no_ignored_shows_nothing(capsys) -> None:
     system = SystemProfile(os_name="macOS", os_version="15.0", arch="arm64", applications_paths=["/Applications"])
-    result = ScanResult(system=system, applications=[], candidates=[])
+    result = ScanResult(system=system)
 
     _print_advise_result(result, researched_ids=set(), ignored_count=0)
 
@@ -71,7 +32,8 @@ def test_print_advise_result_no_ignored_shows_nothing(capsys) -> None:
 def _write_cache(tmp_path: Path, candidates: list[dict]) -> Path:
     cache = tmp_path / "last_advice.json"
     system = {"os_name": "macOS", "os_version": "15.0", "arch": "arm64", "applications_paths": []}
-    cache.write_text(json.dumps({"system": system, "applications": [], "candidates": candidates, "skipped": []}))
+    plugin_results = {"applications": {"items": [], "candidates": candidates, "skipped": []}}
+    cache.write_text(json.dumps({"system": system, "plugin_results": plugin_results}))
     return cache
 
 

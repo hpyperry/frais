@@ -148,16 +148,48 @@ class UpdateCandidate:
 
 
 @dataclass(slots=True)
-class ScanResult:
-    system: SystemProfile
-    applications: list[SoftwareItem] = field(default_factory=list)
+class PluginScanResult:
+    """Per-plugin scan result: all discovered items and any already-known candidates."""
+    items: list[SoftwareItem] = field(default_factory=list)
     candidates: list[UpdateCandidate] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "system": self.system.to_dict(),
-            "applications": [item.to_dict() for item in self.applications],
-            "candidates": [candidate.to_dict() for candidate in self.candidates],
+            "items": [item.to_dict() for item in self.items],
+            "candidates": [c.to_dict() for c in self.candidates],
             "skipped": self.skipped,
+        }
+
+
+@dataclass(slots=True)
+class ScanResult:
+    system: SystemProfile
+    plugin_results: dict[str, PluginScanResult] = field(default_factory=dict)
+
+    @property
+    def all_candidates(self) -> list[UpdateCandidate]:
+        candidates: list[UpdateCandidate] = []
+        for pr in self.plugin_results.values():
+            candidates.extend(pr.candidates)
+        return candidates
+
+    @property
+    def all_items(self) -> list[SoftwareItem]:
+        items: list[SoftwareItem] = []
+        for pr in self.plugin_results.values():
+            items.extend(pr.items)
+        return items
+
+    @property
+    def all_skipped(self) -> list[str]:
+        skipped: list[str] = []
+        for pr in self.plugin_results.values():
+            skipped.extend(pr.skipped)
+        return skipped
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "system": self.system.to_dict(),
+            "plugin_results": {name: pr.to_dict() for name, pr in self.plugin_results.items()},
         }

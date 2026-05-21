@@ -24,6 +24,7 @@ build = [
 checkupgrade = "checkupgrade.cli:app"
 
 [project.entry-points."checkupgrade.plugins"]
+applications = "checkupgrade.plugins.applications:ApplicationsPlugin"
 homebrew = "checkupgrade.plugins.homebrew:HomebrewPlugin"
 npm = "checkupgrade.plugins.npm:NpmPlugin"
 

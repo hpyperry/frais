@@ -31,11 +31,11 @@ def test_npm_outdated_candidate(monkeypatch) -> None:
     monkeypatch.setattr("checkupgrade.plugins.npm.shutil.which", fake_which)
     monkeypatch.setattr("checkupgrade.plugins.npm.subprocess.run", fake_run)
 
-    candidates, skipped = NpmPlugin().scan(detect_system())
+    result = NpmPlugin().scan(detect_system())
 
-    assert skipped == []
-    assert len(candidates) == 1
-    c = candidates[0]
+    assert result.skipped == []
+    assert len(result.candidates) == 1
+    c = result.candidates[0]
     assert c.item.name == "typescript"
     assert c.item.id == "npm:typescript"
     assert c.item.source == SourceKind.NPM_GLOBAL
@@ -55,20 +55,20 @@ def test_npm_no_outdated(monkeypatch) -> None:
     monkeypatch.setattr("checkupgrade.plugins.npm.shutil.which", fake_which)
     monkeypatch.setattr("checkupgrade.plugins.npm.subprocess.run", fake_run)
 
-    candidates, skipped = NpmPlugin().scan(detect_system())
+    result = NpmPlugin().scan(detect_system())
 
-    assert candidates == []
-    assert skipped == []
+    assert result.candidates == []
+    assert result.skipped == []
 
 
 def test_npm_unavailable(monkeypatch) -> None:
     monkeypatch.setattr("checkupgrade.plugins.npm.shutil.which", lambda name: None)
 
-    candidates, skipped = NpmPlugin().scan(detect_system())
+    result = NpmPlugin().scan(detect_system())
 
-    assert candidates == []
-    assert len(skipped) == 1
-    assert "npm is not installed" in skipped[0]
+    assert result.candidates == []
+    assert len(result.skipped) == 1
+    assert "npm is not installed" in result.skipped[0]
 
 
 def test_npm_multiple_packages(monkeypatch) -> None:
@@ -101,12 +101,12 @@ def test_npm_multiple_packages(monkeypatch) -> None:
     monkeypatch.setattr("checkupgrade.plugins.npm.shutil.which", fake_which)
     monkeypatch.setattr("checkupgrade.plugins.npm.subprocess.run", fake_run)
 
-    candidates, skipped = NpmPlugin().scan(detect_system())
+    result = NpmPlugin().scan(detect_system())
 
-    assert skipped == []
-    assert len(candidates) == 2
-    names = {c.item.name for c in candidates}
+    assert result.skipped == []
+    assert len(result.candidates) == 2
+    names = {c.item.name for c in result.candidates}
     assert names == {"typescript", "pnpm"}
     # pnpm should use "latest" (10.0.0) over "wanted" (9.1.0)
-    pnpm = next(c for c in candidates if c.item.name == "pnpm")
+    pnpm = next(c for c in result.candidates if c.item.name == "pnpm")
     assert pnpm.latest_version == "10.0.0"
