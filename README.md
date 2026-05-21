@@ -1,6 +1,7 @@
 # Frais
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Coverage](https://img.shields.io/badge/coverage-72%25-green)](https://github.com/hpyperry/frais)
 
 Frais is a macOS CLI that scans installed Applications, Homebrew, and npm packages for available updates. It uses a curated set of LLM providers (DeepSeek, OpenAI, Kimi, Grok, Mistral, Qwen, Zhipu) with a structured research pipeline to find latest versions and generate update advice.
 
@@ -164,6 +165,24 @@ frais --no-log advise
 
 `--verbose` shows high-level progress; `--debug` includes LLM call details and
 subprocess traces. Log files auto-truncate at 5MB.
+
+## Testing
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run with coverage report
+uv run pytest --cov=src/frais --cov-report=term-missing tests/
+
+# Generate HTML coverage report (opens in browser)
+uv run pytest --cov=src/frais --cov-report=html tests/
+open htmlcov/index.html
+```
+
+Coverage is tracked per-file in CI. Core logic (agent, research, tools, models, config)
+maintains >90% line coverage. Tests use `monkeypatch` for all external dependencies —
+no real HTTP calls or subprocess execution.
 
 ## Build a macOS binary
 

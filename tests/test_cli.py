@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 from pathlib import Path
 
+import httpx
 import typer
 
 import pytest
 
-from frais.cli import _ADVICE_CACHE, _print_advise_result, _select_plugins, update
-from frais.models import ScanResult, SystemProfile
+from frais.cli import _ADVICE_CACHE, _configure_logging, _print_advise_result, _resolve_app_store_command, _select_plugins, _split_plugins, _summarize_concurrent, _summarize_one, update
+from frais.models import PluginScanResult, ScanResult, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
 
 
 def test_print_advise_result_shows_ignored_count(capsys) -> None:
@@ -307,6 +310,252 @@ def test_select_plugins_silently_drops_unknown_names(monkeypatch) -> None:
     })
     result = _select_plugins(apps_only=False, explicit=["applications", "nonexistent"])
     assert result == ["applications"]
+
+
+# --- _summarize_one / _summarize_concurrent ---
+
+
+class _FakeSummarizeAgent:
+    """Test agent for summary concurrency tests. Supports optional delay to verify parallelism."""
+
+    def __init__(self, delay: float = 0.0) -> None:
+        self.delay = delay
+        self.call_count = 0
+
+    def summarize_candidate(self, candidate: UpdateCandidate) -> str:
+        self.call_count += 1
+        if self.delay:
+            time.sleep(self.delay)
+        return f"Summary for {candidate.item.name}"
+
+
+class _FailingSummarizeAgent:
+    """Agent whose summarize_candidate always raises."""
+
+    def summarize_candidate(self, candidate: UpdateCandidate) -> str:
+        raise RuntimeError("LLM unavailable")
+
+
+def _make_candidate(name: str = "TestApp") -> UpdateCandidate:
+    item = SoftwareItem(
+        id=f"com.example.{name.lower()}",
+        name=name,
+        kind="application",
+        source=SourceKind.APPLICATION,
+        current_version="1.0",
+    )
+    return UpdateCandidate(item=item, latest_version="2.0")
+
+
+def test_summarize_one_sets_ai_summary() -> None:
+    agent = _FakeSummarizeAgent()
+    candidate = _make_candidate()
+
+    _summarize_one(agent, candidate)
+
+    assert candidate.ai_summary == "Summary for TestApp"
+    assert agent.call_count == 1
+
+
+def test_summarize_one_handles_exception(monkeypatch) -> None:
+    warnings = []
+    monkeypatch.setattr("frais.cli.logger.warning", lambda msg, *args: warnings.append(msg))
+
+    agent = _FailingSummarizeAgent()
+    candidate = _make_candidate()
+
+    _summarize_one(agent, candidate)
+
+    assert candidate.ai_summary is None
+    assert len(warnings) == 1
+    assert "summary failed" in warnings[0]
+
+
+def test_summarize_concurrent_empty_candidates() -> None:
+    _summarize_concurrent(_FakeSummarizeAgent(), [], jobs=5)
+    # Should not raise
+
+
+def test_summarize_concurrent_single_candidate() -> None:
+    agent = _FakeSummarizeAgent()
+    candidate = _make_candidate()
+
+    _summarize_concurrent(agent, [candidate], jobs=5)
+
+    assert candidate.ai_summary == "Summary for TestApp"
+    assert agent.call_count == 1
+
+
+def test_summarize_concurrent_processes_all() -> None:
+    agent = _FakeSummarizeAgent()
+    candidates = [_make_candidate(f"App{i}") for i in range(5)]
+
+    _summarize_concurrent(agent, candidates, jobs=5)
+
+    assert agent.call_count == 5
+    for i, c in enumerate(candidates):
+        assert c.ai_summary == f"Summary for App{i}"
+
+
+def test_summarize_concurrent_runs_concurrently() -> None:
+    delay = 0.15
+    agent = _FakeSummarizeAgent(delay=delay)
+    candidates = [_make_candidate(f"App{i}") for i in range(5)]
+
+    start = time.monotonic()
+    _summarize_concurrent(agent, candidates, jobs=5)
+    elapsed = time.monotonic() - start
+
+    # If concurrent: ~0.15s + overhead. If sequential: ~0.75s + overhead.
+    # Use generous threshold: must be under 0.45s for 5 * 0.15s tasks.
+    assert elapsed < 0.45, f"Expected concurrent execution, took {elapsed:.2f}s"
+
+
+def test_summarize_concurrent_with_progress(monkeypatch) -> None:
+    advances = []
+    task_id = object()
+
+    class _MockProgress:
+        def advance(self, tid):
+            if tid is task_id:
+                advances.append(1)
+
+    agent = _FakeSummarizeAgent()
+    candidates = [_make_candidate(f"App{i}") for i in range(3)]
+
+    _summarize_concurrent(agent, candidates, jobs=3, progress=_MockProgress(), task_id=task_id)
+
+    assert len(advances) == 3
+
+
+# --- _split_plugins ---
+
+
+def test_split_plugins_none() -> None:
+    assert _split_plugins(None) is None
+
+
+def test_split_plugins_empty_string() -> None:
+    assert _split_plugins("") is None
+
+
+def test_split_plugins_single() -> None:
+    assert _split_plugins("homebrew") == ["homebrew"]
+
+
+def test_split_plugins_comma_separated() -> None:
+    assert _split_plugins("homebrew, npm , applications") == ["homebrew", "npm", "applications"]
+
+
+# --- _resolve_app_store_command ---
+
+
+def test_resolve_app_store_returns_command(monkeypatch) -> None:
+    fake_resp = type("Resp", (), {"raise_for_status": lambda self: None, "json": lambda self: {"resultCount": 1, "results": [{"trackId": 12345}]}})()
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: fake_resp)
+    item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APP_STORE, current_version="1.0")
+    cmd, can_auto = _resolve_app_store_command(item)
+    assert cmd == ["open", "macappstore://apps.apple.com/app/id12345"]
+    assert can_auto is True
+
+
+def test_resolve_app_store_no_results(monkeypatch) -> None:
+    fake_resp = type("Resp", (), {"raise_for_status": lambda self: None, "json": lambda self: {"resultCount": 0}})()
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: fake_resp)
+    item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APP_STORE, current_version="1.0")
+    cmd, can_auto = _resolve_app_store_command(item)
+    assert cmd == []
+    assert can_auto is False
+
+
+def test_resolve_app_store_http_error(monkeypatch) -> None:
+    def raise_error(url, **kw):
+        raise Exception("network error")
+    monkeypatch.setattr(httpx, "get", raise_error)
+    item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APP_STORE, current_version="1.0")
+    cmd, can_auto = _resolve_app_store_command(item)
+    assert cmd == []
+    assert can_auto is False
+
+
+# --- _print_advise_result show_all branches ---
+
+
+def test_print_advise_result_show_all_up_to_date(capsys) -> None:
+    item = SoftwareItem(id="com.example.ok", name="OkApp", kind="application", source=SourceKind.APPLICATION, current_version="2.0")
+    pr = PluginScanResult(items=[item], candidates=[], skipped=[])
+    system = SystemProfile(os_name="macOS", os_version="15.0", arch="arm64", applications_paths=["/Applications"])
+    result = ScanResult(system=system, plugin_results={"applications": pr})
+
+    _print_advise_result(result, researched_ids={"com.example.ok"}, ignored_count=0, show_all=True)
+
+    captured = capsys.readouterr()
+    assert "up to date" in captured.out
+
+
+def test_print_advise_result_shows_skipped(capsys) -> None:
+    pr = PluginScanResult(items=[], candidates=[], skipped=["brew not found"])
+    system = SystemProfile(os_name="macOS", os_version="15.0", arch="arm64", applications_paths=["/Applications"])
+    result = ScanResult(system=system, plugin_results={"homebrew": pr})
+
+    _print_advise_result(result, researched_ids=set(), ignored_count=0)
+
+    captured = capsys.readouterr()
+    assert "brew not found" in captured.out
+
+
+def test_print_advise_result_shows_updates_section(capsys) -> None:
+    item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
+    candidate = UpdateCandidate(item=item, latest_version="2.0", recommended_action="Update")
+    pr = PluginScanResult(items=[item], candidates=[candidate], skipped=[])
+    system = SystemProfile(os_name="macOS", os_version="15.0", arch="arm64", applications_paths=["/Applications"])
+    result = ScanResult(system=system, plugin_results={"applications": pr})
+
+    _print_advise_result(result, researched_ids=set(), ignored_count=0)
+
+    captured = capsys.readouterr()
+    assert "Updates available" in captured.out
+    assert "2.0" in captured.out
+
+
+# --- _configure_logging ---
+
+
+def test_configure_logging_stderr_level_default(tmp_path) -> None:
+    log_path = tmp_path / "test.log"
+    _configure_logging(verbose=False, debug=False, log_file=str(log_path), no_log=False)
+    root = logging.getLogger()
+    stderr_handler = next(h for h in root.handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler))
+    assert stderr_handler.level == logging.ERROR
+
+
+def test_configure_logging_stderr_level_verbose(tmp_path) -> None:
+    log_path = tmp_path / "test.log"
+    _configure_logging(verbose=True, debug=False, log_file=str(log_path), no_log=False)
+    root = logging.getLogger()
+    stderr_handler = next(h for h in root.handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler))
+    assert stderr_handler.level == logging.INFO
+
+
+def test_configure_logging_stderr_level_debug(tmp_path) -> None:
+    log_path = tmp_path / "test.log"
+    _configure_logging(verbose=False, debug=True, log_file=str(log_path), no_log=False)
+    root = logging.getLogger()
+    stderr_handler = next(h for h in root.handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler))
+    assert stderr_handler.level == logging.DEBUG
+
+
+def test_configure_logging_truncates_large_file(tmp_path) -> None:
+    log_path = tmp_path / "big.log"
+    log_path.write_text("x" * (6 * 1024 * 1024))  # 6MB > 5MB limit
+    _configure_logging(verbose=False, debug=False, log_file=str(log_path), no_log=False)
+    assert log_path.stat().st_size < 100
+
+
+def test_configure_logging_no_log(tmp_path) -> None:
+    log_path = tmp_path / "no_write.log"
+    _configure_logging(verbose=False, debug=False, log_file=str(log_path), no_log=True)
+    assert not log_path.exists()
 
 
 # --- helpers ---

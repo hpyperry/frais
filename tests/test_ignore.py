@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from frais.ignore import add_ignored, load_ignored, remove_ignored, save_ignored
+from frais.ignore import add_ignored, init_ignored, load_ignored, remove_ignored, save_ignored
 
 
 def test_load_ignored_empty_when_no_file(tmp_path: Path) -> None:
@@ -83,3 +83,19 @@ def test_save_ignored_raises_on_unwritable_path(tmp_path: Path) -> None:
             save_ignored({"com.example.app"}, path)
     finally:
         path.parent.chmod(0o755)
+
+
+def test_init_ignored_creates_file(tmp_path: Path) -> None:
+    path = tmp_path / "config" / "ignore.txt"
+    assert not path.exists()
+    init_ignored(path)
+    assert path.exists()
+    assert path.read_text(encoding="utf-8") == ""
+
+
+def test_init_ignored_idempotent(tmp_path: Path) -> None:
+    path = tmp_path / "config" / "ignore.txt"
+    path.parent.mkdir(parents=True)
+    path.write_text("com.example.app", encoding="utf-8")
+    init_ignored(path)
+    assert path.read_text(encoding="utf-8") == "com.example.app"
