@@ -6,7 +6,6 @@ import os
 import platform
 import signal
 import subprocess
-import sys
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from pathlib import Path
 from typing import Annotated
@@ -549,11 +548,7 @@ def advise(
 
     def _on_interrupt(signum, frame):
         signal.signal(signal.SIGINT, signal.SIG_DFL)
-        console.show_cursor()
-        console.print()
-        console.print("  [dim]Interrupted[/dim]")
-        sys.stdout.flush()
-        sys.stderr.flush()
+        os.write(1, b"\033[?25h\n")
         os._exit(130)
 
     orig_handler = signal.signal(signal.SIGINT, _on_interrupt)
