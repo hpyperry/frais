@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 from typing import Any
@@ -166,12 +167,15 @@ def _brew_info(name: str, cask: bool = False) -> dict[str, Any]:
 
 def _brew_uses(name: str) -> list[str]:
     logger.debug("homebrew run command=brew uses --installed %s", name)
+    env = os.environ.copy()
+    env.pop("DYLD_LIBRARY_PATH", None)
     result = subprocess.run(
         ["brew", "uses", "--installed", name],
         check=False,
         capture_output=True,
         text=True,
         timeout=30,
+        env=env,
     )
     if result.returncode != 0:
         logger.debug("homebrew uses failed name=%s returncode=%s", name, result.returncode)

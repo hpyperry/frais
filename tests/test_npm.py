@@ -12,7 +12,7 @@ def test_npm_outdated_candidate(monkeypatch) -> None:
     def fake_which(name: str) -> str | None:
         return "/usr/local/bin/npm" if name == "npm" else None
 
-    def fake_run(command, check=False, capture_output=True, text=True, timeout=60):
+    def fake_run(command, check=False, capture_output=True, text=True, timeout=60, env=None):
         return subprocess.CompletedProcess(
             command,
             1,
@@ -49,7 +49,7 @@ def test_npm_no_outdated(monkeypatch) -> None:
     def fake_which(name: str) -> str | None:
         return "/usr/local/bin/npm" if name == "npm" else None
 
-    def fake_run(command, check=False, capture_output=True, text=True, timeout=60):
+    def fake_run(command, check=False, capture_output=True, text=True, timeout=60, env=None):
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr("checkupgrade.plugins.npm.shutil.which", fake_which)
@@ -75,7 +75,7 @@ def test_npm_multiple_packages(monkeypatch) -> None:
     def fake_which(name: str) -> str | None:
         return "/usr/local/bin/npm" if name == "npm" else None
 
-    def fake_run(command, check=False, capture_output=True, text=True, timeout=60):
+    def fake_run(command, check=False, capture_output=True, text=True, timeout=60, env=None):
         return subprocess.CompletedProcess(
             command,
             1,

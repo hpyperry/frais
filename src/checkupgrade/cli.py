@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import signal
 import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Annotated
@@ -463,135 +465,149 @@ def advise(
     logger.info("advise using provider=%s base_url=%s model=%s jobs=%d", raw_config.provider, raw_config.base_url, raw_config.model, jobs)
     agent = AgentClient(raw_config)
 
-    system = detect_system()
-    _explicit_plugins = _split_plugins(plugins)
-    active = _select_plugins(apps_only, _explicit_plugins)
+    def _on_interrupt(signum, frame):
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+        console.show_cursor()
+        console.print()
+        console.print("  [dim]Interrupted[/dim]")
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(130)
 
-    # Print system banner before scanning
-    console.print()
-    plugin_labels = ", ".join(active)
-    console.print(
-        f"  [bold cyan]OS:[/] {system.os_name} {system.os_version}  "
-        f"[bold cyan]Arch:[/] {system.arch}  "
-        f"[bold cyan]Plugins:[/] {plugin_labels}"
-    )
-    console.print()
-
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
-        # Phase 1: Scan + Research per-plugin (research starts as soon as scan done)
-        plugin_tasks: dict[str, int] = {}
-        for name in active:
-            plugin_tasks[name] = progress.add_task(name, total=1)
-        result = ScanResult(system=system)
-        ignored = load_ignored()
-
-        researched_ids: set[str] = set()
-        research_futures: dict = {}
-
-        with ThreadPoolExecutor(max_workers=max(1, len(active))) as scan_pool, \
-             ThreadPoolExecutor(max_workers=jobs) as research_pool:
-
-            # Submit all scans
-            scan_futures: dict = {}
-            for name in active:
-                plugin = all_plugins()[name]
-                scan_fn = plugin.scan_all if show_all else plugin.scan
-                scan_futures[scan_pool.submit(scan_fn, system)] = name
-
-            # As each scan finishes, start its research (if needed) in the same loop
-            for future in as_completed(scan_futures):
-                name = scan_futures[future]
-                plugin = all_plugins()[name]
-                task_id = plugin_tasks[name]
-                try:
-                    pr = future.result()
-                except Exception as exc:
-                    logger.warning("scan failed for %s: %s", name, exc)
-                    pr = PluginScanResult(skipped=[str(exc)])
-
-                # Filter ignored
-                if ignored:
-                    pr.items = [it for it in pr.items if it.id not in ignored]
-                    pr.candidates = [c for c in pr.candidates if c.item.id not in ignored]
-
-                result.plugin_results[name] = pr
-
-                if plugin.needs_research:
-                    items_to_research = [it for it in pr.items
-                                         if it.id not in {c.item.id for c in pr.candidates}]
-                    if items_to_research:
-                        progress.update(task_id, total=len(items_to_research), completed=0,
-                                        description=f"{name}    researching")
-                        for it in items_to_research:
-                            r_fut = research_pool.submit(plugin.research, agent, it)
-                            research_futures[r_fut] = (name, it)
-                    else:
-                        progress.update(task_id, completed=1,
-                                        description=f"{name}    {len(pr.items)} items, {len(pr.candidates)} updates")
-                else:
-                    desc = f"{name}    {len(pr.items)} items"
-                    if pr.candidates:
-                        desc += f", {len(pr.candidates)} updates"
-                    progress.update(task_id, completed=1, description=desc)
-
-            # Collect research results as they complete
-            for r_future in as_completed(research_futures):
-                name, item = research_futures[r_future]
-                pr = result.plugin_results[name]
-                task_id = plugin_tasks[name]
-                researched_ids.add(item.id)
-                try:
-                    candidate = r_future.result()
-                except Exception as exc:
-                    logger.warning("research failed for %s: %s", item.name, exc)
-                    progress.advance(task_id)
-                    continue
-                if candidate:
-                    pr.candidates.append(candidate)
-                progress.advance(task_id)
-
-        # Finalize research plugin task descriptions
-        for name in active:
-            pr = result.plugin_results[name]
-            plugin = all_plugins()[name]
-            desc = f"{name}    {len(pr.items)} items"
-            if pr.candidates:
-                desc += f", {len(pr.candidates)} updates"
-            if plugin.needs_research:
-                progress.update(plugin_tasks[name], total=1, completed=1, description=desc)
-
-
-
-
-        # Phase 3: Summaries
-        all_candidates = result.all_candidates
-        if all_candidates:
-            summarize_task = progress.add_task("Summaries", total=len(all_candidates))
-            _summarize_concurrent(agent, all_candidates, jobs, progress, summarize_task)
-
-    if json_output:
-        console.print_json(json.dumps(result.to_dict(), ensure_ascii=False))
-        return
-
-    # Save advice cache for update command (atomic write via temp file)
+    orig_handler = signal.signal(signal.SIGINT, _on_interrupt)
     try:
-        _DEFAULT_LOG_DIR.mkdir(parents=True, exist_ok=True)
-        tmp_path = _ADVICE_CACHE.with_suffix(".tmp")
-        tmp_path.write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
-        tmp_path.replace(_ADVICE_CACHE)
-        logger.info("advice cache saved to %s", _ADVICE_CACHE)
-    except OSError as exc:
-        logger.warning("failed to save advice cache: %s", exc)
+        system = detect_system()
+        _explicit_plugins = _split_plugins(plugins)
+        active = _select_plugins(apps_only, _explicit_plugins)
 
-    _print_advise_result(result, researched_ids, len(ignored), show_all=show_all)
+        # Print system banner before scanning
+        console.print()
+        plugin_labels = ", ".join(active)
+        console.print(
+            f"  [bold cyan]OS:[/] {system.os_name} {system.os_version}  "
+            f"[bold cyan]Arch:[/] {system.arch}  "
+            f"[bold cyan]Plugins:[/] {plugin_labels}"
+        )
+        console.print()
 
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            # Phase 1: Scan + Research per-plugin (research starts as soon as scan done)
+            plugin_tasks: dict[str, int] = {}
+            for name in active:
+                plugin_tasks[name] = progress.add_task(name, total=1)
+            result = ScanResult(system=system)
+            ignored = load_ignored()
+
+            researched_ids: set[str] = set()
+            research_futures: dict = {}
+
+            with ThreadPoolExecutor(max_workers=max(1, len(active))) as scan_pool, \
+                 ThreadPoolExecutor(max_workers=jobs) as research_pool:
+
+                # Submit all scans
+                scan_futures: dict = {}
+                for name in active:
+                    plugin = all_plugins()[name]
+                    scan_fn = plugin.scan_all if show_all else plugin.scan
+                    scan_futures[scan_pool.submit(scan_fn, system)] = name
+
+                # As each scan finishes, start its research (if needed) in the same loop
+                for future in as_completed(scan_futures):
+                    name = scan_futures[future]
+                    plugin = all_plugins()[name]
+                    task_id = plugin_tasks[name]
+                    try:
+                        pr = future.result()
+                    except Exception as exc:
+                        logger.warning("scan failed for %s: %s", name, exc)
+                        pr = PluginScanResult(skipped=[str(exc)])
+
+                    # Filter ignored
+                    if ignored:
+                        pr.items = [it for it in pr.items if it.id not in ignored]
+                        pr.candidates = [c for c in pr.candidates if c.item.id not in ignored]
+
+                    result.plugin_results[name] = pr
+
+                    if plugin.needs_research:
+                        items_to_research = [it for it in pr.items
+                                             if it.id not in {c.item.id for c in pr.candidates}]
+                        if items_to_research:
+                            progress.update(task_id, total=len(items_to_research), completed=0,
+                                            description=f"{name}    researching")
+                            for it in items_to_research:
+                                r_fut = research_pool.submit(plugin.research, agent, it)
+                                research_futures[r_fut] = (name, it)
+                        else:
+                            progress.update(task_id, completed=1,
+                                            description=f"{name}    {len(pr.items)} items, {len(pr.candidates)} updates")
+                    else:
+                        desc = f"{name}    {len(pr.items)} items"
+                        if pr.candidates:
+                            desc += f", {len(pr.candidates)} updates"
+                        progress.update(task_id, completed=1, description=desc)
+
+                # Collect research results as they complete
+                for r_future in as_completed(research_futures):
+                    name, item = research_futures[r_future]
+                    pr = result.plugin_results[name]
+                    task_id = plugin_tasks[name]
+                    researched_ids.add(item.id)
+                    try:
+                        candidate = r_future.result()
+                    except Exception as exc:
+                        logger.warning("research failed for %s: %s", item.name, exc)
+                        progress.advance(task_id)
+                        continue
+                    if candidate:
+                        pr.candidates.append(candidate)
+                    progress.advance(task_id)
+
+            # Finalize research plugin task descriptions
+            for name in active:
+                pr = result.plugin_results[name]
+                plugin = all_plugins()[name]
+                desc = f"{name}    {len(pr.items)} items"
+                if pr.candidates:
+                    desc += f", {len(pr.candidates)} updates"
+                if plugin.needs_research:
+                    progress.update(plugin_tasks[name], total=1, completed=1, description=desc)
+
+
+
+
+            # Phase 3: Summaries
+            all_candidates = result.all_candidates
+            if all_candidates:
+                summarize_task = progress.add_task("Summaries", total=len(all_candidates))
+                _summarize_concurrent(agent, all_candidates, jobs, progress, summarize_task)
+
+        if json_output:
+            console.print_json(json.dumps(result.to_dict(), ensure_ascii=False))
+            return
+
+        # Save advice cache for update command (atomic write via temp file)
+        try:
+            _DEFAULT_LOG_DIR.mkdir(parents=True, exist_ok=True)
+            tmp_path = _ADVICE_CACHE.with_suffix(".tmp")
+            tmp_path.write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+            tmp_path.replace(_ADVICE_CACHE)
+            logger.info("advice cache saved to %s", _ADVICE_CACHE)
+        except OSError as exc:
+            logger.warning("failed to save advice cache: %s", exc)
+
+        _print_advise_result(result, researched_ids, len(ignored), show_all=show_all)
+
+
+    finally:
+        signal.signal(signal.SIGINT, orig_handler)
 
 def _select_plugins(apps_only: bool, explicit: list[str] | None) -> list[str]:
     from .plugins.config import load_plugins_config

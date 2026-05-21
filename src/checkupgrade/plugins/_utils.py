@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 from typing import Any
 
@@ -14,8 +15,10 @@ def run_json(command: list[str], ok_codes: tuple[int, ...] = (0,), timeout: int 
     ok_codes: exit codes considered successful (e.g. (0, 1) for npm outdated).
     """
     logger.debug("run_json command=%s", " ".join(command))
+    env = os.environ.copy()
+    env.pop("DYLD_LIBRARY_PATH", None)
     try:
-        result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=timeout, env=env)
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"Command timed out after {timeout}s: {' '.join(command)}") from exc
     logger.debug("run_json returncode=%s stdout_bytes=%d stderr_bytes=%d", result.returncode, len(result.stdout), len(result.stderr))

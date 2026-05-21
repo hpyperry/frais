@@ -11,7 +11,7 @@ def test_homebrew_formula_candidate(monkeypatch) -> None:
     def fake_which(name: str) -> str | None:
         return "/opt/homebrew/bin/brew" if name == "brew" else None
 
-    def fake_run(command, check=False, capture_output=True, text=True, timeout=60):
+    def fake_run(command, check=False, capture_output=True, text=True, timeout=60, env=None):
         joined = " ".join(command)
         if "outdated" in joined:
             return subprocess.CompletedProcess(

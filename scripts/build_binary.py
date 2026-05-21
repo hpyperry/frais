@@ -24,6 +24,7 @@ def main() -> None:
         [
             "pyinstaller",
             "--onefile",
+            "--noupx",
             "--name",
             "checkupgrade",
             "--clean",
