@@ -14,7 +14,6 @@ _SEARCH_MAX_RESULTS = 5
 _FETCH_MAX_CHARS = 5000
 
 _GITHUB_REPO_RE = re.compile(r"github\.com/([^/]+/[^/]+?)(?:\.git)?(?:/|$)")
-_VERSION_RE = re.compile(r"\b(\d+\.\d+(?:\.\d+)?(?:\.\d+)?)\b")
 
 
 def web_search(query: str) -> list[dict[str, str]]:
@@ -91,8 +90,9 @@ def _github_url_to_api(url: str) -> str | None:
 
 def _format_github_api(data: Any, url: str) -> str:
     if isinstance(data, list):
-        data = data[0] if data else {}
-        return "No releases found."
+        if not data:
+            return "No releases found."
+        data = data[0]
     if isinstance(data, dict):
         tag = data.get("tag_name") or data.get("name", "")
         body = (data.get("body") or "")[:1500]

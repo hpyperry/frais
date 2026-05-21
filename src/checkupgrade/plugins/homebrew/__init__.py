@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 import logging
 import shutil
 import subprocess
 from typing import Any
 
 from ...models import DependencyImpact, PluginScanResult, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
+from .._utils import run_json
 from ..base import ScannerPlugin
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ class HomebrewPlugin(ScannerPlugin):
             return PluginScanResult(skipped=["Homebrew is not installed or `brew` is not on PATH."])
         try:
             logger.info("homebrew scan outdated start")
-            raw = _run_json(["brew", "outdated", "--json=v2"])
+            raw = run_json(["brew", "outdated", "--json=v2"], ok_codes=(0, 1))
         except RuntimeError as exc:
             logger.warning("homebrew outdated failed error=%s", exc)
             return PluginScanResult(skipped=[str(exc)])
@@ -43,8 +43,8 @@ class HomebrewPlugin(ScannerPlugin):
             return PluginScanResult(skipped=["Homebrew is not installed or `brew` is not on PATH."])
         try:
             logger.info("homebrew scan all start")
-            installed_raw = _run_json(["brew", "info", "--json=v2", "--installed"])
-            outdated_raw = _run_json(["brew", "outdated", "--json=v2"])
+            installed_raw = run_json(["brew", "info", "--json=v2", "--installed"])
+            outdated_raw = run_json(["brew", "outdated", "--json=v2"], ok_codes=(0, 1))
         except RuntimeError as exc:
             logger.warning("homebrew scan all failed error=%s", exc)
             return PluginScanResult(skipped=[str(exc)])
@@ -149,27 +149,13 @@ class HomebrewPlugin(ScannerPlugin):
         )
 
 
-def _run_json(command: list[str]) -> dict[str, Any]:
-    logger.debug("homebrew run command=%s", " ".join(command))
-    result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=60)
-    logger.debug("homebrew command returncode=%s stdout_bytes=%d stderr_bytes=%d", result.returncode, len(result.stdout), len(result.stderr))
-    if result.returncode not in {0, 1}:
-        raise RuntimeError(result.stderr.strip() or f"Command failed: {' '.join(command)}")
-    if not result.stdout.strip():
-        return {}
-    try:
-        return json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Invalid JSON from {' '.join(command)}") from exc
-
-
 def _brew_info(name: str, cask: bool = False) -> dict[str, Any]:
     command = ["brew", "info", "--json=v2"]
     if cask:
         command.append("--cask")
     command.append(name)
     try:
-        data = _run_json(command)
+        data = run_json(command)
     except RuntimeError:
         logger.warning("homebrew info failed name=%s cask=%s", name, cask)
         return {}

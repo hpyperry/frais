@@ -20,11 +20,7 @@ def save_plugin_state(name: str, enabled: bool, path: Path = PLUGINS_CONFIG_PATH
     """Persist a single plugin's enabled state, creating the file if needed."""
     config = load_plugins_config(path)
     config[name] = enabled
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lines = ["[plugins]"]
-    for k in sorted(config):
-        lines.append(f"{k} = {'true' if config[k] else 'false'}")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _write_plugins_config(config, path)
 
 
 def remove_plugin_state(name: str, path: Path = PLUGINS_CONFIG_PATH) -> bool:
@@ -33,9 +29,13 @@ def remove_plugin_state(name: str, path: Path = PLUGINS_CONFIG_PATH) -> bool:
     if name not in config:
         return False
     del config[name]
+    _write_plugins_config(config, path)
+    return True
+
+
+def _write_plugins_config(config: dict[str, bool], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = ["[plugins]"]
     for k in sorted(config):
         lines.append(f"{k} = {'true' if config[k] else 'false'}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return True

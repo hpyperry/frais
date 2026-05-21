@@ -8,7 +8,7 @@ import typer
 import pytest
 
 from checkupgrade.cli import _ADVICE_CACHE, _print_advise_result, _select_plugins, update
-from checkupgrade.models import PluginScanResult, ScanResult, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
+from checkupgrade.models import ScanResult, SystemProfile
 
 
 def test_print_advise_result_shows_ignored_count(capsys) -> None:
@@ -290,6 +290,17 @@ def test_plugins_list_shows_dash_for_not_persisted(monkeypatch, capsys) -> None:
     plugins_list()
     captured = capsys.readouterr()
     assert "-" in captured.out
+
+
+# --- _select_plugins edge cases ---
+
+
+def test_select_plugins_silently_drops_unknown_names(monkeypatch) -> None:
+    monkeypatch.setattr("checkupgrade.plugins.registry.all_plugins", lambda: {
+        "applications": _fake_plugin("applications", True),
+    })
+    result = _select_plugins(apps_only=False, explicit=["applications", "nonexistent"])
+    assert result == ["applications"]
 
 
 # --- helpers ---

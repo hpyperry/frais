@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from checkupgrade.ignore import add_ignored, load_ignored, remove_ignored, save_ignored
 
 
@@ -70,3 +72,14 @@ def test_add_then_remove(tmp_path: Path) -> None:
     assert load_ignored(path) == {"com.example.app", "com.other.app"}
     remove_ignored("com.example.app", path)
     assert load_ignored(path) == {"com.other.app"}
+
+
+def test_save_ignored_raises_on_unwritable_path(tmp_path: Path) -> None:
+    path = tmp_path / "readonly" / "ignore.txt"
+    path.parent.mkdir()
+    path.parent.chmod(0o444)  # read-only
+    try:
+        with pytest.raises(OSError):
+            save_ignored({"com.example.app"}, path)
+    finally:
+        path.parent.chmod(0o755)

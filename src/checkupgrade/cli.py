@@ -18,7 +18,7 @@ from rich.rule import Rule
 from rich.table import Table
 
 from .config import CONFIG_PATH, write_config_template
-from .ignore import IGNORE_PATH, add_ignored, load_ignored, remove_ignored
+from .ignore import add_ignored, load_ignored, remove_ignored
 from .models import PluginScanResult, SoftwareItem, SourceKind, ScanResult, UpdateCandidate
 
 _DEFAULT_LOG_DIR = Path.home() / ".local" / "state" / "checkupgrade"
@@ -580,10 +580,12 @@ def advise(
         console.print_json(json.dumps(result.to_dict(), ensure_ascii=False))
         return
 
-    # Save advice cache for update command
+    # Save advice cache for update command (atomic write via temp file)
     try:
         _DEFAULT_LOG_DIR.mkdir(parents=True, exist_ok=True)
-        _ADVICE_CACHE.write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+        tmp_path = _ADVICE_CACHE.with_suffix(".tmp")
+        tmp_path.write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+        tmp_path.replace(_ADVICE_CACHE)
         logger.info("advice cache saved to %s", _ADVICE_CACHE)
     except OSError as exc:
         logger.warning("failed to save advice cache: %s", exc)
@@ -741,17 +743,6 @@ def _split_plugins(value: str | None) -> list[str] | None:
     if not value:
         return None
     return [part.strip() for part in value.split(",") if part.strip()]
-
-
-def _source_label(source: SourceKind) -> str:
-    if source == SourceKind.HOMEBREW_FORMULA:
-        return "Homebrew"
-    if source == SourceKind.HOMEBREW_CASK:
-        return "Homebrew Casks"
-    if source == SourceKind.NPM_GLOBAL:
-        return "npm"
-    return source.value
-
 
 
 def _print_advise_result(result: ScanResult, researched_ids: set[str], ignored_count: int = 0,

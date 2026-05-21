@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from checkupgrade.plugins.config import load_plugins_config, remove_plugin_state, save_plugin_state
 
 
@@ -71,6 +73,15 @@ def test_remove_plugin_state_not_found(tmp_path: Path) -> None:
     assert not removed
     result = load_plugins_config(path)
     assert result == {"homebrew": False}
+
+
+def test_load_plugins_config_malformed_toml(tmp_path: Path) -> None:
+    import tomllib
+
+    path = tmp_path / "plugins.toml"
+    path.write_text("malformed [[[ toml", encoding="utf-8")
+    with pytest.raises(tomllib.TOMLDecodeError):
+        load_plugins_config(path)
 
 
 def test_save_preserves_sorted_order(tmp_path: Path) -> None:

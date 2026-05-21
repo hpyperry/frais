@@ -144,7 +144,7 @@ def _is_newer(current: str | None, latest: str | None) -> bool:
     try:
         return Version(l2) > Version(c2)
     except InvalidVersion:
-        return l2 != c2
+        return tuple(int(x) for x in l2.split(".")) > tuple(int(x) for x in c2.split("."))
 
 
 def _normalize(value: str) -> str:

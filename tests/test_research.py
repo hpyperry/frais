@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from checkupgrade.models import SoftwareItem, SourceKind, ResearchResult
 from checkupgrade import research
+from checkupgrade.models import ResearchResult, SoftwareItem, SourceKind
+from checkupgrade.research import _is_newer
 
 
 class FakeAgent:
@@ -42,3 +43,20 @@ def test_local_build_can_be_update_candidate(monkeypatch) -> None:
     assert candidate.latest_version == "0.4.0"
     assert candidate.recommended_action == "Rebuild"
     assert not candidate.can_auto_update
+
+
+def test_is_newer_detects_upgrade() -> None:
+    assert _is_newer("1.0", "2.0")
+
+
+def test_is_newer_rejects_same_version() -> None:
+    assert not _is_newer("1.0", "1.0")
+
+
+def test_is_newer_rejects_downgrade() -> None:
+    assert not _is_newer("10.0.0", "2.0.0")
+
+
+def test_is_newer_handles_missing_versions() -> None:
+    assert not _is_newer(None, "1.0")
+    assert not _is_newer("1.0", None)

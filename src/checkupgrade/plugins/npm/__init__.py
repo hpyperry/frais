@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import json
 import logging
 import shutil
-import subprocess
 from typing import Any
 
 from ...models import DependencyImpact, PluginScanResult, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
+from .._utils import run_json
 from ..base import ScannerPlugin
 
 logger = logging.getLogger(__name__)
@@ -28,7 +27,7 @@ class NpmPlugin(ScannerPlugin):
             return PluginScanResult(skipped=["npm is not installed or `npm` is not on PATH."])
         try:
             logger.info("npm scan outdated start")
-            raw = _run_json(["npm", "outdated", "-g", "--json"])
+            raw = run_json(["npm", "outdated", "-g", "--json"], ok_codes=(0, 1))
         except RuntimeError as exc:
             logger.warning("npm outdated failed error=%s", exc)
             return PluginScanResult(skipped=[str(exc)])
@@ -47,8 +46,8 @@ class NpmPlugin(ScannerPlugin):
             return PluginScanResult(skipped=["npm is not installed or `npm` is not on PATH."])
         try:
             logger.info("npm scan all start")
-            installed_raw = _run_json(["npm", "ls", "-g", "--depth=0", "--json"])
-            outdated_raw = _run_json(["npm", "outdated", "-g", "--json"])
+            installed_raw = run_json(["npm", "ls", "-g", "--depth=0", "--json"])
+            outdated_raw = run_json(["npm", "outdated", "-g", "--json"], ok_codes=(0, 1))
         except RuntimeError as exc:
             logger.warning("npm scan all failed error=%s", exc)
             return PluginScanResult(skipped=[str(exc)])
@@ -104,16 +103,3 @@ class NpmPlugin(ScannerPlugin):
         )
 
 
-def _run_json(command: list[str]) -> dict[str, Any]:
-    logger.debug("npm run command=%s", " ".join(command))
-    result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=60)
-    logger.debug("npm command returncode=%s stdout_bytes=%d stderr_bytes=%d", result.returncode, len(result.stdout), len(result.stderr))
-    # npm outdated returns exit code 1 when there are outdated packages
-    if result.returncode not in {0, 1}:
-        raise RuntimeError(result.stderr.strip() or f"Command failed: {' '.join(command)}")
-    if not result.stdout.strip():
-        return {}
-    try:
-        return json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Invalid JSON from {' '.join(command)}") from exc
