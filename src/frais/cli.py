@@ -7,7 +7,7 @@ import platform
 import signal
 import subprocess
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from pathlib import Path
 from typing import Annotated
 
@@ -20,7 +20,7 @@ from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn
 from rich.rule import Rule
 from rich.table import Table
 
-from .config import CONFIG_PATH, write_config_template
+from .config import CONFIG_PATH, load_config, require_config, save_config
 from .ignore import add_ignored, load_ignored, remove_ignored
 from .models import PluginScanResult, SoftwareItem, SourceKind, ScanResult, UpdateCandidate
 
@@ -38,7 +38,7 @@ Default scope:
 
 Safety model:
   - `doctor`, `config`, `plugins`, and `ignore` are read-only.
-  - `advise` requires BYOK LLM configuration.
+  - `advise` requires LLM provider configuration via `frais config init`.
   - `update` auto-executes packages after interactive confirmation.
 
 Common examples:
@@ -51,19 +51,16 @@ Common examples:
   frais ignore add com.example.app
 """
 
-CONFIG_HELP = """Manage BYOK LLM configuration.
+CONFIG_HELP = """Manage LLM provider configuration.
 
-BYOK means the user supplies their own OpenAI-compatible endpoint, model, and
-API key. Frais does not ship, create, or embed a service-side key.
+Frais supports a curated set of OpenAI-compatible providers. Run `frais config init`
+for interactive setup — no manual file editing needed.
 
 Config file:
   ~/.frais/config/config.toml
 
-Environment variables override the config file:
-  FRAIS_LLM_PROVIDER
-  FRAIS_LLM_API_KEY
-  FRAIS_LLM_BASE_URL
-  FRAIS_LLM_MODEL
+Environment variable:
+  FRAIS_LLM_API_KEY — overrides the API key stored in config
 
 Examples:
   frais config
@@ -198,14 +195,14 @@ def doctor() -> None:
     Example:
       frais doctor
     """
-    from .config import load_llm_config
     from .plugins.registry import all_plugins
     from .system import detect_system
 
     system = detect_system()
-    llm = load_llm_config()
+    llm = load_config()
     logger.info("doctor system=%s %s arch=%s", system.os_name, system.os_version, system.arch)
-    logger.info("doctor llm_ready=%s provider=%s", llm.is_ready, llm.provider)
+    if llm:
+        logger.info("doctor llm_ready=%s provider=%s", llm.is_ready, llm.provider.name)
     table = Table("Key", "Value")
     table.add_row("OS", f"{system.os_name} {system.os_version}")
     table.add_row("Arch", system.arch)
@@ -214,10 +211,13 @@ def doctor() -> None:
         status = "available" if plugin.is_available() else "missing"
         default = "enabled" if plugin.enabled_by_default else "disabled"
         table.add_row(f"Plugin {name}", f"{status}, {default} by default")
-    table.add_row("LLM provider", llm.provider)
-    table.add_row("LLM base_url", llm.base_url or "missing")
-    table.add_row("LLM model", llm.model or "missing")
-    table.add_row("LLM key", f"configured (***{llm.api_key_suffix})" if llm.api_key_suffix else "missing")
+    if llm:
+        masked_key = "***" + llm.api_key[-4:] if len(llm.api_key) >= 4 else "***"
+        table.add_row("LLM provider", llm.provider.name)
+        table.add_row("LLM model", llm.model)
+        table.add_row("LLM key", masked_key)
+    else:
+        table.add_row("LLM", "not configured (run `frais config init`)")
     console.print(table)
 
 
@@ -230,34 +230,111 @@ def config_default(ctx: typer.Context) -> None:
 
 @config_app.command("init")
 def config_init() -> None:
-    """Create a local BYOK config template.
+    """Interactively configure an LLM provider.
 
-    The generated template is written to ~/.frais/config/config.toml.
-    It contains placeholder provider/base_url/model fields and comments for the
-    API key. It does not write a real key.
+    Walk through provider selection, model choice, and API key entry.
+    Writes the result to ~/.frais/config/config.toml.
 
     Example:
       frais config init
     """
-    path = write_config_template()
-    logger.info("config template ready path=%s", path)
-    console.print(f"Config template ready: {path}")
+    from getpass import getpass
+
+    from rich.prompt import IntPrompt
+
+    from .agent import AgentClient
+    from .config import ProviderConfig
+    from .providers import PROVIDERS
+
+    # Step 1: Select provider
+    console.print()
+    console.print("[bold]Select an LLM provider:[/bold]")
+    console.print()
+    for i, p in enumerate(PROVIDERS, 1):
+        console.print(f"  {i}. {p.name}  [dim]({len(p.models)} models)[/dim]")
+    console.print()
+
+    idx = IntPrompt.ask(
+        "Enter provider number",
+        choices=[str(i) for i in range(1, len(PROVIDERS) + 1)],
+        show_choices=False,
+    )
+    provider = PROVIDERS[idx - 1]
+    console.print(f"  [green]{provider.name}[/green] selected.")
+    console.print()
+
+    # Step 2: Select model
+    console.print(f"[bold]Select a model for {provider.name}:[/bold]")
+    console.print()
+    for i, m in enumerate(provider.models, 1):
+        default_mark = " [dim](thinking by default)[/dim]" if m.thinking_default else ""
+        console.print(f"  {i}. {m.name}{default_mark}")
+    console.print()
+
+    model_idx = IntPrompt.ask(
+        "Enter model number",
+        choices=[str(i) for i in range(1, len(provider.models) + 1)],
+        show_choices=False,
+    )
+    model = provider.models[model_idx - 1]
+    console.print(f"  [green]{model.name}[/green] selected.")
+    console.print()
+
+    # Step 3: API key
+    api_key = getpass(f"Enter API key for {provider.name} (input hidden): ").strip()
+    if not api_key:
+        console.print("[red]API key cannot be empty.[/red]")
+        raise typer.Exit(1)
+    console.print("  [green]API key received.[/green]")
+    console.print()
+
+    # Step 4: Test connection
+    console.print(f"[bold]Testing connection to {provider.name}...[/bold]")
+    try:
+        test_config = ProviderConfig(
+            provider=provider,
+            model=model.id,
+            api_key=api_key,
+        )
+        test_text = AgentClient(test_config).test_connection()
+        console.print(f"  [green]Connection OK:[/green] {test_text.strip()}")
+    except Exception as exc:
+        console.print(f"  [yellow]Warning:[/yellow] test request failed: {exc}")
+        if not typer.confirm("Save config anyway?", default=False):
+            raise typer.Exit(1)
+
+    # Step 5: Save
+    save_config(provider.id, model.id, api_key)
+    console.print()
+    console.print(f"[green]Config saved to {CONFIG_PATH}[/green]")
 
 
 @config_app.command("show")
 def config_show() -> None:
-    """Show effective BYOK config with secrets redacted.
+    """Show current LLM provider config with secrets redacted.
 
-    Environment variables override ~/.frais/config/config.toml. The API
-    key is never printed; only presence and a final 4-character suffix are
-    shown when available.
+    The API key is never printed; only presence and a final 4-character suffix
+    are shown when available.
 
     Example:
       frais config show
     """
-    from .config import load_llm_config
+    llm = load_config()
+    if not llm:
+        console.print("[dim]Not configured. Run `frais config init` to set up.[/dim]")
+        return
 
-    console.print_json(json.dumps(load_llm_config().safe_dict(), ensure_ascii=False))
+    table = Table("Key", "Value")
+    table.add_row("Provider", llm.provider.name)
+    table.add_row("Model", llm.model)
+    if llm.api_key:
+        masked = "***" + llm.api_key[-4:] if len(llm.api_key) >= 4 else "***"
+        table.add_row("API key", masked)
+    else:
+        table.add_row("API key", "missing")
+    if llm.api_key_source:
+        table.add_row("Key source", llm.api_key_source)
+    console.print(table)
 
 
 @config_app.command("path")
@@ -272,23 +349,22 @@ def config_path() -> None:
 
 @config_app.command("test")
 def config_test() -> None:
-    """Send a minimal BYOK LLM request to validate provider settings.
+    """Send a minimal LLM request to validate provider settings.
 
-    This never prints the API key. It reports the effective chat completions
-    URL, model, and a short success or provider error message.
+    This never prints the API key. It reports the provider, model,
+    chat completions URL, and a short success or error message.
 
     Example:
       frais config test
     """
-    from .agent import AgentClient, LLMRequestError, chat_completions_url
-    from .config import require_raw_llm_config
+    from .agent import AgentClient, LLMRequestError
 
     try:
-        raw_config = require_raw_llm_config()
-        console.print(f"Provider: {raw_config.provider}")
-        console.print(f"Model: {raw_config.model}")
-        console.print(f"Chat completions URL: {chat_completions_url(raw_config.base_url)}")
-        text = AgentClient(raw_config).test_connection()
+        config = require_config()
+        console.print(f"Provider: {config.provider.name}")
+        console.print(f"Model: {config.model}")
+        console.print(f"Chat completions URL: {config.provider.chat_url}")
+        text = AgentClient(config).test_connection()
     except (ValueError, LLMRequestError) as exc:
         raise click.ClickException(str(exc)) from exc
     console.print(f"LLM test response: {text.strip()}")
@@ -447,12 +523,11 @@ def advise(
         typer.Option("--all", help="Show all installed software, including up-to-date items."),
     ] = False,
 ) -> None:
-    """Scan and generate BYOK LLM update advice.
+    """Scan and generate LLM-powered update advice.
 
-    Requires FRAIS_LLM_API_KEY, FRAIS_LLM_BASE_URL, and
-    FRAIS_LLM_MODEL, or equivalent values in the config file. The LLM is
-    used for release research and summaries; missing or unreliable evidence is
-    reported as unknown instead of being invented.
+    Requires a configured LLM provider (run `frais config init` first).
+    The LLM is used for release research and summaries; missing or
+    unreliable evidence is reported as unknown instead of being invented.
 
     Examples:
       frais advise
@@ -462,16 +537,15 @@ def advise(
       frais advise -j 5
     """
     from .agent import AgentClient
-    from .config import require_raw_llm_config
     from .plugins.registry import all_plugins
     from .system import detect_system
 
     try:
-        raw_config = require_raw_llm_config()
+        config = require_config()
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
-    logger.info("advise using provider=%s base_url=%s model=%s jobs=%d", raw_config.provider, raw_config.base_url, raw_config.model, jobs)
-    agent = AgentClient(raw_config)
+    logger.info("advise using provider=%s model=%s jobs=%d", config.provider.name, config.model, jobs)
+    agent = AgentClient(config)
 
     def _on_interrupt(signum, frame):
         signal.signal(signal.SIGINT, signal.SIG_DFL)
@@ -514,7 +588,6 @@ def advise(
             ignored = load_ignored()
 
             researched_ids: set[str] = set()
-            research_futures: dict = {}
 
             with ThreadPoolExecutor(max_workers=max(1, len(active))) as scan_pool, \
                  ThreadPoolExecutor(max_workers=jobs) as research_pool:
@@ -526,57 +599,64 @@ def advise(
                     scan_fn = plugin.scan_all if show_all else plugin.scan
                     scan_futures[scan_pool.submit(scan_fn, system)] = name
 
-                # As each scan finishes, start its research (if needed) in the same loop
-                for future in as_completed(scan_futures):
-                    name = scan_futures[future]
-                    plugin = all_plugins()[name]
-                    task_id = plugin_tasks[name]
-                    try:
-                        pr = future.result()
-                    except Exception as exc:
-                        logger.warning("scan failed for %s: %s", name, exc)
-                        pr = PluginScanResult(skipped=[str(exc)])
+                # Interleave scan and research completions so progress updates immediately
+                pending: set = set(scan_futures.keys())
+                research_futures: dict = {}
 
-                    # Filter ignored
-                    if ignored:
-                        pr.items = [it for it in pr.items if it.id not in ignored]
-                        pr.candidates = [c for c in pr.candidates if c.item.id not in ignored]
+                while pending:
+                    done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                    for future in done:
+                        if future in scan_futures:
+                            # --- Scan completed ---
+                            name = scan_futures.pop(future)
+                            plugin = all_plugins()[name]
+                            task_id = plugin_tasks[name]
+                            try:
+                                pr = future.result()
+                            except Exception as exc:
+                                logger.warning("scan failed for %s: %s", name, exc)
+                                pr = PluginScanResult(skipped=[str(exc)])
 
-                    result.plugin_results[name] = pr
+                            if ignored:
+                                pr.items = [it for it in pr.items if it.id not in ignored]
+                                pr.candidates = [c for c in pr.candidates if c.item.id not in ignored]
 
-                    if plugin.needs_research:
-                        items_to_research = [it for it in pr.items
-                                             if it.id not in {c.item.id for c in pr.candidates}]
-                        if items_to_research:
-                            progress.update(task_id, total=len(items_to_research), completed=0,
-                                            description=f"{name}    researching")
-                            for it in items_to_research:
-                                r_fut = research_pool.submit(plugin.research, agent, it)
-                                research_futures[r_fut] = (name, it)
+                            result.plugin_results[name] = pr
+
+                            if plugin.needs_research:
+                                items_to_research = [it for it in pr.items
+                                                     if it.id not in {c.item.id for c in pr.candidates}]
+                                if items_to_research:
+                                    progress.update(task_id, total=len(items_to_research), completed=0,
+                                                    description=f"{name}    researching")
+                                    for it in items_to_research:
+                                        r_fut = research_pool.submit(plugin.research, agent, it)
+                                        research_futures[r_fut] = (name, it)
+                                        pending.add(r_fut)
+                                else:
+                                    progress.update(task_id, completed=1,
+                                                    description=f"{name}    {len(pr.items)} items, {len(pr.candidates)} updates")
+                            else:
+                                desc = f"{name}    {len(pr.items)} items"
+                                if pr.candidates:
+                                    desc += f", {len(pr.candidates)} updates"
+                                progress.update(task_id, completed=1, description=desc)
+
                         else:
-                            progress.update(task_id, completed=1,
-                                            description=f"{name}    {len(pr.items)} items, {len(pr.candidates)} updates")
-                    else:
-                        desc = f"{name}    {len(pr.items)} items"
-                        if pr.candidates:
-                            desc += f", {len(pr.candidates)} updates"
-                        progress.update(task_id, completed=1, description=desc)
-
-                # Collect research results as they complete
-                for r_future in as_completed(research_futures):
-                    name, item = research_futures[r_future]
-                    pr = result.plugin_results[name]
-                    task_id = plugin_tasks[name]
-                    researched_ids.add(item.id)
-                    try:
-                        candidate = r_future.result()
-                    except Exception as exc:
-                        logger.warning("research failed for %s: %s", item.name, exc)
-                        progress.advance(task_id)
-                        continue
-                    if candidate:
-                        pr.candidates.append(candidate)
-                    progress.advance(task_id)
+                            # --- Research completed ---
+                            name, item = research_futures.pop(future)
+                            pr = result.plugin_results[name]
+                            task_id = plugin_tasks[name]
+                            researched_ids.add(item.id)
+                            try:
+                                candidate = future.result()
+                            except Exception as exc:
+                                logger.warning("research failed for %s: %s", item.name, exc)
+                                progress.advance(task_id)
+                                continue
+                            if candidate:
+                                pr.candidates.append(candidate)
+                            progress.advance(task_id)
 
             # Finalize research plugin task descriptions
             for name in active:

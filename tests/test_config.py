@@ -2,41 +2,126 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from frais.config import load_llm_config, write_config_template
+import pytest
+
+from frais.config import load_config, require_config, save_config
+from frais.providers import PROVIDERS, get_provider
 
 
-def test_env_overrides_config(monkeypatch, tmp_path: Path) -> None:
+def test_load_config_returns_none_for_missing_file() -> None:
+    assert load_config(Path("/nonexistent/config.toml")) is None
+
+
+def test_load_config_parses_valid_file(tmp_path: Path) -> None:
     config = tmp_path / "config.toml"
     config.write_text(
         """
 [llm]
-provider = "file"
-base_url = "https://file.example/v1"
-model = "file-model"
-api_key = "file-secret"
+provider = "deepseek"
+model = "deepseek-v4-flash"
+api_key = "sk-test-1234"
 """,
         encoding="utf-8",
     )
-    monkeypatch.setenv("FRAIS_LLM_PROVIDER", "env")
-    monkeypatch.setenv("FRAIS_LLM_BASE_URL", "https://env.example/v1")
-    monkeypatch.setenv("FRAIS_LLM_MODEL", "env-model")
-    monkeypatch.setenv("FRAIS_LLM_API_KEY", "env-secret-1234")
 
-    loaded = load_llm_config(config)
-
-    assert loaded.provider == "env"
-    assert loaded.base_url == "https://env.example/v1"
-    assert loaded.model == "env-model"
-    assert loaded.api_key_source == "FRAIS_LLM_API_KEY"
-    assert loaded.api_key_suffix == "1234"
-    assert loaded.safe_dict()["api_key"] == "***1234"
+    loaded = load_config(config)
+    assert loaded is not None
+    assert loaded.provider.id == "deepseek"
+    assert loaded.provider.name == "DeepSeek"
+    assert loaded.model == "deepseek-v4-flash"
+    assert loaded.api_key == "sk-test-1234"
+    assert loaded.is_ready
 
 
-def test_config_template_has_api_key_placeholder(tmp_path: Path) -> None:
+def test_load_config_returns_none_for_unknown_provider(tmp_path: Path) -> None:
     config = tmp_path / "config.toml"
+    config.write_text(
+        """
+[llm]
+provider = "nonexistent"
+model = "some-model"
+api_key = "sk-1234"
+""",
+        encoding="utf-8",
+    )
 
-    write_config_template(config)
+    assert load_config(config) is None
 
+
+def test_load_config_env_var_overrides_key(tmp_path: Path, monkeypatch) -> None:
+    config = tmp_path / "config.toml"
+    config.write_text(
+        """
+[llm]
+provider = "openai"
+model = "gpt-4o"
+api_key = "file-key-1234"
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("FRAIS_LLM_API_KEY", "env-key-5678")
+    loaded = load_config(config)
+    assert loaded is not None
+    assert loaded.api_key == "env-key-5678"
+    assert loaded.api_key_source == "FRAIS_LLM_API_KEY"
+
+
+def test_load_config_openai_env_var_falls_back(tmp_path: Path, monkeypatch) -> None:
+    config = tmp_path / "config.toml"
+    config.write_text(
+        """
+[llm]
+provider = "openai"
+model = "gpt-4o"
+api_key = ""
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-env-key")
+    loaded = load_config(config)
+    assert loaded is not None
+    assert loaded.api_key == "openai-env-key"
+    assert loaded.api_key_source == "OPENAI_API_KEY"
+
+
+def test_save_config_creates_file(tmp_path: Path) -> None:
+    config = tmp_path / "subdir" / "config.toml"
+    save_config("deepseek", "deepseek-v4-pro", "sk-abcdef", config)
+
+    assert config.exists()
     text = config.read_text(encoding="utf-8")
-    assert 'api_key = ""' in text
-    assert 'base_url = "https://api.deepseek.com"' in text
+    assert 'provider = "deepseek"' in text
+    assert 'model = "deepseek-v4-pro"' in text
+    assert 'api_key = "sk-abcdef"' in text
+
+
+def test_require_config_raises_when_missing() -> None:
+    with pytest.raises(ValueError, match="No LLM provider configured"):
+        require_config(Path("/nonexistent/config.toml"))
+
+
+def test_require_config_succeeds_with_valid_config(tmp_path: Path) -> None:
+    config = tmp_path / "config.toml"
+    config.write_text(
+        """
+[llm]
+provider = "mistral"
+model = "mistral-large-latest"
+api_key = "sk-key"
+""",
+        encoding="utf-8",
+    )
+
+    result = require_config(config)
+    assert result.provider.id == "mistral"
+    assert result.model == "mistral-large-latest"
+
+
+def test_all_registered_providers_loadable() -> None:
+    """Verify every provider in the registry resolves via get_provider."""
+    for p in PROVIDERS:
+        found = get_provider(p.id)
+        assert found is not None, f"provider {p.id} not found"
+        assert found is p

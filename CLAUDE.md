@@ -17,7 +17,7 @@ When the user signals a new implementation task (e.g. "新任务", "给你一个
 
 ## Project overview
 
-Frais is a macOS BYOK CLI that scans installed Applications, Homebrew packages, and npm global packages for available updates. It uses an OpenAI-compatible LLM (user-supplied key) with a structured 3-step research pipeline for finding latest versions and generating update advice.
+Frais is a macOS CLI that scans installed Applications, Homebrew packages, and npm global packages for available updates. It uses a curated set of 7 LLM providers (user-supplied key per provider) with a structured 3-step research pipeline for finding latest versions and generating update advice. Thinking-mode control is handled automatically per provider/model.
 
 All scanning is plugin-based — the built-in `applications`, `homebrew`, and `npm` scanners are all `ScannerPlugin` implementations.
 
@@ -52,7 +52,8 @@ src/frais/
   cli.py              Typer app: doctor, advise, update, config, plugins, ignore
   models.py           Dataclasses: SystemProfile, SoftwareItem, UpdateCandidate,
                       PluginScanResult, ScanResult, ResearchResult, etc.
-  config.py           BYOK config: reads ~/.frais/config/config.toml, env var overrides
+  config.py           Provider config: reads ~/.frais/config/config.toml, env var overrides
+  providers.py        Curated provider registry: 7 providers with models, URLs, thinking params
   ignore.py           Ignore list: load/save/add/remove ignored app IDs (~/.frais/config/ignore.txt)
   agent.py            AgentClient — structured 3-step research pipeline (generate queries, pick URLs, extract version)
   tools.py            Web tools: web_search (DDGS), web_fetch, web_fetch_batch (internal, not LLM-exposed)
@@ -139,8 +140,8 @@ class ScanResult:
 
 Three layers of concurrency:
 
-1. **Scan layer**: all enabled plugins run in parallel via a single `ThreadPoolExecutor`. Each plugin writes into its own `PluginScanResult` slot. Per-plugin progress tasks update independently.
-2. **Research layer**: for plugins with `needs_research=True`, each unresearched item is processed concurrently (controlled by `-j`, default 10). Plugins without research skip this phase entirely.
+1. **Scan layer**: all enabled plugins run in parallel via a `ThreadPoolExecutor`. Each plugin writes into its own `PluginScanResult` slot.
+2. **Research layer**: research tasks are submitted as soon as each plugin's scan completes. Research completions are interleaved with pending scan completions via `wait(FIRST_COMPLETED)`, so progress updates immediately rather than waiting for all scans to finish. Concurrency controlled by `-j` (default 10).
 3. **Summary layer**: AI summaries for all candidates across all plugins are generated concurrently.
 
 ## Research flow
@@ -159,14 +160,13 @@ Plugins that don't need research (Homebrew, npm) skip the LLM pipeline entirely 
 
 **`advise` command**:
 1. Select enabled plugins via `_select_plugins()` (respects `--apps-only`, `--plugins`)
-2. Phase 1 — Scan: each plugin runs `scan()` (or `scan_all()` when `--all`) in parallel. One progress task per plugin.
-3. Phase 2 — Research: for `needs_research` plugins only, research each item via `plugin.research(agent, item)` concurrently. Updates the same plugin progress task.
-4. Phase 3 — Summaries: generate Chinese-language LLM summaries for all `all_candidates` in a single progress task.
-5. Display with `_print_advise_result()` — when `--all`, shows up-to-date items grouped by plugin; without `--all`, only shows items with candidates.
+2. Scan + Research interleaved: all plugin scans submitted to a scan pool. As each scan completes, research tasks are submitted to a research pool and their futures tracked. A single `while pending:` loop with `wait(FIRST_COMPLETED)` handles both scan and research completions, so progress bars update immediately — no waiting for slow scans (e.g. homebrew) to finish before showing fast scan (applications) research progress.
+3. Summaries: generate Chinese-language LLM summaries for all `all_candidates` in a single progress task.
+4. Display with `_print_advise_result()` — when `--all`, shows up-to-date items grouped by plugin; without `--all`, only shows items with candidates.
 
 ## Key patterns
 
-- **BYOK model**: LLM config merges env vars (`FRAIS_LLM_*`) over file values. `require_raw_llm_config()` raises `ValueError` listing missing keys. API keys are never logged or printed in full. The `[llm.extra_body]` TOML table is merged into every API request payload for provider-specific parameters (e.g. `thinking = { type = "disabled" }` for DeepSeek).
+- **Provider registry**: 7 curated LLM providers in `providers.py` as `Provider` dataclasses with `ModelInfo` lists and `thinking_param` definitions. `get_model_thinking_param()` returns the correct disable parameter only for models where `thinking_default=True`. Configuration stored as `[llm]` TOML with `provider`, `model`, `api_key`. `FRAIS_LLM_API_KEY` env var overrides the file-stored key; `OPENAI_API_KEY` serves as fallback for the openai provider. API keys are never logged or printed in full.
 - **Testing**: Uses `monkeypatch` (pytest fixture) for all external dependencies — subprocess, filesystem, env vars. No mock library.
 - **Version comparison**: Uses `packaging.version.Version`; strips leading `v`/`V` before comparing.
 - **Source classification**: Applications are classified as APP_STORE, LOCAL_BUILD, NETWORK_DOWNLOAD, APPLICATION, or UNKNOWN based on codesign authority, team ID, and quarantine xattr presence.

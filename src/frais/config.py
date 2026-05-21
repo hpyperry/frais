@@ -2,23 +2,24 @@ from __future__ import annotations
 
 import os
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
-from .models import LLMConfig
+from .providers import PROVIDERS, Provider, get_provider
 
 CONFIG_PATH = Path.home() / ".frais" / "config" / "config.toml"
 
 
-@dataclass(slots=True)
-class RawLLMConfig:
-    provider: str = "openai-compatible"
-    base_url: str | None = None
-    model: str | None = None
-    api_key: str | None = None
+@dataclass
+class ProviderConfig:
+    provider: Provider
+    model: str
+    api_key: str
     api_key_source: str | None = None
-    thinking: bool = False
-    extra_body: dict = field(default_factory=dict)
+
+    @property
+    def is_ready(self) -> bool:
+        return bool(self.api_key and self.model)
 
 
 def _read_config_file(path: Path = CONFIG_PATH) -> dict:
@@ -28,15 +29,22 @@ def _read_config_file(path: Path = CONFIG_PATH) -> dict:
         return tomllib.load(handle)
 
 
-def load_raw_config(path: Path = CONFIG_PATH) -> RawLLMConfig:
+def load_config(path: Path = CONFIG_PATH) -> ProviderConfig | None:
+    """Load provider config from TOML file. Returns None if not configured."""
     file_data = _read_config_file(path).get("llm", {})
-    provider = os.getenv("FRAIS_LLM_PROVIDER") or file_data.get("provider") or "openai-compatible"
-    base_url = os.getenv("FRAIS_LLM_BASE_URL") or file_data.get("base_url")
-    model = os.getenv("FRAIS_LLM_MODEL") or file_data.get("model")
+    if not file_data:
+        return None
 
+    provider_id = file_data.get("provider", "")
+    provider = get_provider(provider_id)
+    if provider is None:
+        return None
+
+    model = file_data.get("model", "")
     env_key = os.getenv("FRAIS_LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
     file_key = file_data.get("api_key")
-    api_key = env_key or file_key
+    api_key = env_key or file_key or ""
+
     api_key_source = None
     if os.getenv("FRAIS_LLM_API_KEY"):
         api_key_source = "FRAIS_LLM_API_KEY"
@@ -45,70 +53,30 @@ def load_raw_config(path: Path = CONFIG_PATH) -> RawLLMConfig:
     elif file_key:
         api_key_source = str(path)
 
-    thinking = file_data.get("thinking", False)
-
-    return RawLLMConfig(
+    return ProviderConfig(
         provider=provider,
-        base_url=base_url,
         model=model,
         api_key=api_key,
         api_key_source=api_key_source,
-        thinking=thinking,
-        extra_body=file_data.get("extra_body") or {},
     )
 
 
-def load_llm_config(path: Path = CONFIG_PATH) -> LLMConfig:
-    raw = load_raw_config(path)
-    suffix = raw.api_key[-4:] if raw.api_key and len(raw.api_key) >= 4 else None
-    return LLMConfig(
-        provider=raw.provider,
-        base_url=raw.base_url,
-        model=raw.model,
-        api_key_source=raw.api_key_source,
-        has_api_key=bool(raw.api_key),
-        api_key_suffix=suffix,
-    )
-
-
-def require_raw_llm_config(path: Path = CONFIG_PATH) -> RawLLMConfig:
-    raw = load_raw_config(path)
-    missing = []
-    if not raw.api_key:
-        missing.append("FRAIS_LLM_API_KEY")
-    if not raw.base_url:
-        missing.append("FRAIS_LLM_BASE_URL")
-    if not raw.model:
-        missing.append("FRAIS_LLM_MODEL")
-    if missing:
-        names = ", ".join(missing)
+def require_config(path: Path = CONFIG_PATH) -> ProviderConfig:
+    config = load_config(path)
+    if config is None or not config.api_key or not config.model:
         raise ValueError(
-            f"Missing BYOK LLM configuration: {names}. Run `frais config init` "
-            "or set the FRAIS_LLM_* environment variables."
+            "No LLM provider configured. Run `frais config init` "
+            "to set up your provider and API key."
         )
-    return raw
+    return config
 
 
-def write_config_template(path: Path = CONFIG_PATH) -> Path:
+def save_config(provider_id: str, model: str, api_key: str, path: Path = CONFIG_PATH) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        return path
-    template = """[llm]
-provider = "openai-compatible"
-base_url = "https://api.example.com/v1"
-model = "your-model-name"
-# Prefer FRAIS_LLM_API_KEY in your shell for better secret hygiene.
-# If you store a key here, keep this file private and never commit it.
-api_key = ""
-
-# DeepSeek example:
-# base_url = "https://api.deepseek.com"
-# model = "deepseek-v4-flash"
-
-# Provider-specific extra body parameters (merged into each API request).
-# Use this for thinking/reasoning control or other provider extensions.
-# [llm.extra_body]
-# DeepSeek: thinking = { type = "disabled" }
-"""
-    path.write_text(template, encoding="utf-8")
-    return path
+    content = (
+        "[llm]\n"
+        f'provider = "{provider_id}"\n'
+        f'model = "{model}"\n'
+        f'api_key = "{api_key}"\n'
+    )
+    path.write_text(content, encoding="utf-8")

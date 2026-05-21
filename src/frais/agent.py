@@ -7,8 +7,9 @@ from typing import Any
 
 import httpx
 
-from .config import RawLLMConfig
+from .config import ProviderConfig
 from .models import ResearchResult, SoftwareItem, UpdateCandidate
+from .providers import get_model_thinking_param
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +48,9 @@ _SUMMARIZE_PROMPT = (
 class AgentClient:
     """OpenAI-compatible BYOK client for structured version research."""
 
-    def __init__(self, config: RawLLMConfig) -> None:
-        if not config.api_key or not config.base_url or not config.model:
-            raise ValueError("LLM config is incomplete.")
+    def __init__(self, config: ProviderConfig) -> None:
+        if not config.is_ready:
+            raise ValueError("LLM config is incomplete. Run `frais config init`.")
         self.config = config
 
     def generate_search_queries(self, item: SoftwareItem) -> list[str]:
@@ -59,7 +60,7 @@ class AgentClient:
             f"current: {item.current_version or 'unknown'}, "
             f"source: {item.source.value}."
         )
-        text = self._chat(_SEARCH_QUERIES_PROMPT, prompt)
+        text = self._chat(_SEARCH_QUERIES_PROMPT, prompt, disable_thinking=True)
         return _parse_json_list(text)
 
     def pick_urls(self, item: SoftwareItem, search_results: list[dict[str, str]]) -> list[str]:
@@ -69,7 +70,7 @@ class AgentClient:
             ensure_ascii=False,
         )
         prompt = f"App: {item.name}\n\nSearch results:\n{results_text}"
-        text = self._chat(_PICK_URLS_PROMPT, prompt)
+        text = self._chat(_PICK_URLS_PROMPT, prompt, disable_thinking=True)
         return _parse_json_list(text)[:3]
 
     def extract_version(self, item: SoftwareItem, fetched_content: dict[str, str]) -> ResearchResult:
@@ -82,7 +83,7 @@ class AgentClient:
             f"App: {item.name}, current version: {item.current_version or 'unknown'}\n\n"
             f"Page contents:\n{content_text}"
         )
-        text = self._chat(_EXTRACT_VERSION_PROMPT, prompt)
+        text = self._chat(_EXTRACT_VERSION_PROMPT, prompt, disable_thinking=True)
         data = _parse_json_object(text)
         return ResearchResult(
             latest_version=data.get("latest_version"),
@@ -105,17 +106,20 @@ class AgentClient:
     def test_connection(self) -> str:
         return self._chat("", "Reply with exactly: ok", max_tokens=64)
 
-    def _chat(self, system: str, user: str, max_tokens: int | None = None) -> str:
-        url = chat_completions_url(self.config.base_url)
+    def _chat(self, system: str, user: str, max_tokens: int | None = None,
+              disable_thinking: bool = False) -> str:
+        url = self.config.provider.chat_url
         messages: list[dict[str, Any]] = []
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": user})
-        response_data = self._post(url, messages, max_tokens=max_tokens)
+        response_data = self._post(url, messages, max_tokens=max_tokens,
+                                   disable_thinking=disable_thinking)
         message = response_data["choices"][0]["message"]
         return message.get("content") or message.get("reasoning_content") or ""
 
-    def _post(self, url: str, messages: list[dict[str, Any]], max_tokens: int | None = None) -> dict[str, Any]:
+    def _post(self, url: str, messages: list[dict[str, Any]], max_tokens: int | None = None,
+              disable_thinking: bool = False) -> dict[str, Any]:
         logger.debug("agent request url=%s model=%s messages=%d", url, self.config.model, len(messages))
         payload: dict[str, Any] = {
             "model": self.config.model,
@@ -124,8 +128,10 @@ class AgentClient:
         }
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
-        if self.config.extra_body:
-            payload.update(self.config.extra_body)
+        if disable_thinking:
+            thinking_param = get_model_thinking_param(self.config.provider, self.config.model)
+            if thinking_param:
+                payload.update(thinking_param)
         response = httpx.post(
             url,
             headers={"Authorization": f"Bearer {self.config.api_key}"},
@@ -159,14 +165,6 @@ class LLMRequestError(RuntimeError):
             response_text=body,
         )
 
-
-def chat_completions_url(base_url: str | None) -> str:
-    if not base_url:
-        raise ValueError("LLM base_url is required.")
-    normalized = base_url.rstrip("/")
-    if normalized.endswith("/chat/completions"):
-        return normalized
-    return normalized + "/chat/completions"
 
 
 def _extract_json(text: str) -> str:

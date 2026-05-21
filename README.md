@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Frais is a macOS BYOK CLI that scans installed Applications, Homebrew, and npm packages for available updates. It uses an OpenAI-compatible LLM (user-supplied key) with a structured research pipeline to find latest versions and generate update advice.
+Frais is a macOS CLI that scans installed Applications, Homebrew, and npm packages for available updates. It uses a curated set of LLM providers (DeepSeek, OpenAI, Kimi, Grok, Mistral, Qwen, Zhipu) with a structured research pipeline to find latest versions and generate update advice.
 
 All scanning is plugin-based — the built-in `applications`, `homebrew`, and `npm` scanners are all `ScannerPlugin` implementations.
 
@@ -14,16 +14,14 @@ uv run frais doctor
 uv run frais config init
 ```
 
-LLM features require user-owned configuration via environment variables or
+LLM features require user-owned configuration stored in
 `~/.frais/config/config.toml`. The project never ships or creates a
-server-side API key.
+server-side API key. Run `frais config init` for interactive setup —
+no manual file editing needed.
 
-> **Note**: DeepSeek models default to thinking mode, which interferes with
-> structured JSON output. Disable it via `[llm.extra_body]` in your config:
-> ```toml
-> [llm.extra_body]
-> thinking = { type = "disabled" }
-> ```
+> **Note**: Thinking-mode control is handled automatically. Providers that
+> default to thinking (DeepSeek, Kimi K2, Grok, Qwen) have it disabled
+> automatically for structured JSON calls. Free-text calls use model defaults.
 
 ## Commands
 
@@ -32,7 +30,7 @@ frais doctor
 ```
 
 Prints detected macOS version, architecture, Applications paths, plugin
-availability, and redacted BYOK status.
+availability, and redacted LLM provider status.
 
 ```bash
 frais advise
@@ -64,22 +62,23 @@ frais config path
 frais config test
 ```
 
-Creates or displays BYOK configuration. `show` never prints the full API key.
+Creates or displays LLM provider configuration. `show` never prints the full API key.
 `test` sends a minimal chat-completions request and prints the effective URL
 without revealing the key.
 
-DeepSeek example:
+Example config (`~/.frais/config/config.toml`):
 
 ```toml
 [llm]
-provider = "openai-compatible"
-base_url = "https://api.deepseek.com"
+provider = "deepseek"
 model = "deepseek-v4-flash"
-api_key = "..."
-
-[llm.extra_body]
-thinking = { type = "disabled" }
+api_key = "sk-..."
 ```
+
+Supported providers: `deepseek`, `openai`, `kimi`, `grok`, `mistral`, `qwen`, `zhipu`.
+Each provider offers a curated set of models. Run `frais config init` to browse them interactively.
+
+`save_config` and `load_config` are exported from `frais.config` for programmatic use.
 
 ```bash
 frais update
@@ -174,5 +173,5 @@ uv run --extra build python scripts/build_binary.py
 ```
 
 The binary is built with PyInstaller and writes no secrets into the artifact.
-LLM access still uses BYOK runtime configuration from environment variables or
-`~/.frais/config/config.toml`.
+LLM access uses the provider config in `~/.frais/config/config.toml`
+(set up via `frais config init`).
