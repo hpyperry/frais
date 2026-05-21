@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Task workflow (mandatory)
+
+For every task the user gives, follow these steps in order:
+
+1. **Enter plan mode** — do not write code before planning is approved.
+2. **Research** — read CLAUDE.md and README.md, analyze recent git log for context.
+3. **Impact analysis** — evaluate the task's impact on the full codebase.
+4. **Write plan** — list detailed changes, files to touch, and implementation approach.
+5. **Test coverage** — review existing tests and add new ones to cover all changed paths.
+6. **Build binary** — run `uv run --extra build python scripts/build_binary.py` and verify with the built artifact.
+7. **Update docs** — update CLAUDE.md and README.md to reflect the changes.
+
 ## Project overview
 
 CheckUpgrade is a macOS BYOK CLI that scans installed Applications, Homebrew packages, and npm global packages for available updates. It uses an OpenAI-compatible LLM (user-supplied key) with a structured 3-step research pipeline for finding latest versions and generating update advice.
@@ -52,6 +64,7 @@ src/checkupgrade/
     __init__.py        Re-exports ScannerPlugin as public API
     base.py            ScannerPlugin ABC with scan, scan_all, research, summarize interface
     registry.py        Plugin registry; discovers built-in + third-party plugins via entry points
+    config.py          Plugin persistence: reads/writes ~/.config/checkupgrade/plugins.toml
     applications/      ApplicationsPlugin — scans /Applications and ~/Applications .app bundles
     homebrew/          HomebrewPlugin — brew outdated --json=v2, brew info --json=v2 --installed
     npm/               NpmPlugin — npm outdated -g --json, npm ls -g --depth=0 --json
@@ -159,3 +172,4 @@ Plugins that don't need research (Homebrew, npm) skip the LLM pipeline entirely 
 - **Progress bar**: Each plugin gets its own `Progress` task row. Scanning fills the row with item/candidate counts. Research (if `needs_research`) updates the same row with progress. Summaries gets a dedicated row. For `show_all`, `scan_all()` is called instead of `scan()`.
 - **Ignore list**: `~/.config/checkupgrade/ignore.txt` stores app IDs to skip during `advise`. Managed via `checkupgrade ignore add/remove/list`. Filtered after scan, before research.
 - **Plugin discovery**: `registry.py` uses `importlib.metadata.entry_points(group="checkupgrade.plugins")` to discover all plugins at runtime. Built-in plugins (applications, homebrew, npm) are always present. Failed loads are logged, not fatal.
+- **Plugin persistence**: `plugins/config.py` manages `~/.config/checkupgrade/plugins.toml`. Only explicitly-set plugins appear. `plugins enable/disable` persist state. `_select_plugins()` uses 3-tier precedence: CLI flags (`--apps-only`, `--plugins`) override persisted config, which overrides `enabled_by_default`.

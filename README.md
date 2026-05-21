@@ -80,10 +80,13 @@ command. v1 only auto-executes Homebrew formula/cask updates.
 ```bash
 checkupgrade plugins
 checkupgrade plugins list
+checkupgrade plugins enable homebrew
+checkupgrade plugins disable homebrew
 ```
 
-Lists available built-in and third-party plugins. v1 includes applications,
-Homebrew, and npm.
+Lists and manages plugins. `enable` / `disable` persist the choice to
+`~/.config/checkupgrade/plugins.toml`. When a plugin is disabled, it is
+skipped during `advise` runs.
 
 ### Writing plugins
 

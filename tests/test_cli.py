@@ -5,7 +5,9 @@ from pathlib import Path
 
 import typer
 
-from checkupgrade.cli import _ADVICE_CACHE, _print_advise_result, update
+import pytest
+
+from checkupgrade.cli import _ADVICE_CACHE, _print_advise_result, _select_plugins, update
 from checkupgrade.models import PluginScanResult, ScanResult, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
 
 
@@ -147,6 +149,157 @@ def test_update_no_cache_exits(monkeypatch, tmp_path: Path) -> None:
     cache = tmp_path / "nonexistent.json"
     monkeypatch.setattr("checkupgrade.cli._ADVICE_CACHE", cache)
 
-    import pytest
     with pytest.raises(typer.Exit):
         update(only=None)
+
+
+# --- _select_plugins with persistence ---
+
+
+def test_select_plugins_apps_only_ignores_persistence(monkeypatch) -> None:
+    monkeypatch.setattr("checkupgrade.plugins.config.load_plugins_config", lambda: {"applications": False})
+    result = _select_plugins(apps_only=True, explicit=None)
+    assert result == ["applications"]
+
+
+def test_select_plugins_explicit_ignores_persistence(monkeypatch) -> None:
+    monkeypatch.setattr("checkupgrade.plugins.config.load_plugins_config", lambda: {"homebrew": False})
+    monkeypatch.setattr("checkupgrade.plugins.registry.all_plugins", lambda: {
+        "homebrew": _fake_plugin("homebrew", True),
+        "npm": _fake_plugin("npm", True),
+    })
+    result = _select_plugins(apps_only=False, explicit=["homebrew"])
+    assert result == ["homebrew"]
+
+
+def test_select_plugins_persisted_disable_removes_default_enabled(monkeypatch) -> None:
+    monkeypatch.setattr("checkupgrade.plugins.config.load_plugins_config", lambda: {"homebrew": False, "npm": False})
+    monkeypatch.setattr("checkupgrade.plugins.registry.all_plugins", lambda: {
+        "applications": _fake_plugin("applications", True),
+        "homebrew": _fake_plugin("homebrew", True),
+        "npm": _fake_plugin("npm", True),
+    })
+    result = _select_plugins(apps_only=False, explicit=None)
+    assert result == ["applications"]
+
+
+def test_select_plugins_persisted_enable_adds_default_disabled(monkeypatch) -> None:
+    monkeypatch.setattr("checkupgrade.plugins.config.load_plugins_config", lambda: {"custom": True})
+    monkeypatch.setattr("checkupgrade.plugins.registry.all_plugins", lambda: {
+        "applications": _fake_plugin("applications", True),
+        "custom": _fake_plugin("custom", False),
+    })
+    result = _select_plugins(apps_only=False, explicit=None)
+    assert "custom" in result
+
+
+def test_select_plugins_uses_default_when_not_persisted(monkeypatch) -> None:
+    monkeypatch.setattr("checkupgrade.plugins.config.load_plugins_config", lambda: {})
+    monkeypatch.setattr("checkupgrade.plugins.registry.all_plugins", lambda: {
+        "a": _fake_plugin("a", True),
+        "b": _fake_plugin("b", False),
+    })
+    result = _select_plugins(apps_only=False, explicit=None)
+    assert result == ["a"]
+
+
+# --- plugins enable/disable CLI ---
+
+
+def test_plugins_enable_persists(monkeypatch, capsys) -> None:
+    from checkupgrade.cli import plugins_enable
+
+    calls = {}
+    def fake_save(name, enabled):
+        calls["name"] = name
+        calls["enabled"] = enabled
+    monkeypatch.setattr("checkupgrade.plugins.config.save_plugin_state", fake_save)
+    monkeypatch.setattr("checkupgrade.plugins.registry.all_plugins", lambda: {"homebrew": _fake_plugin("homebrew", True)})
+
+    plugins_enable("homebrew")
+    captured = capsys.readouterr()
+    assert calls == {"name": "homebrew", "enabled": True}
+    assert "enabled" in captured.out
+
+
+def test_plugins_enable_unknown_plugin(monkeypatch) -> None:
+    from checkupgrade.cli import plugins_enable
+
+    monkeypatch.setattr("checkupgrade.plugins.config.save_plugin_state", lambda name, enabled: None)
+    monkeypatch.setattr("checkupgrade.plugins.registry.all_plugins", lambda: {})
+
+    with pytest.raises(typer.Exit):
+        plugins_enable("nonexistent")
+
+
+def test_plugins_disable_persists(monkeypatch, capsys) -> None:
+    from checkupgrade.cli import plugins_disable
+
+    calls = {}
+    def fake_save(name, enabled):
+        calls["name"] = name
+        calls["enabled"] = enabled
+    monkeypatch.setattr("checkupgrade.plugins.config.save_plugin_state", fake_save)
+    monkeypatch.setattr("checkupgrade.plugins.registry.all_plugins", lambda: {"homebrew": _fake_plugin("homebrew", True)})
+
+    plugins_disable("homebrew")
+    captured = capsys.readouterr()
+    assert calls == {"name": "homebrew", "enabled": False}
+    assert "disabled" in captured.out
+
+
+def test_plugins_disable_unknown_plugin(monkeypatch) -> None:
+    from checkupgrade.cli import plugins_disable
+
+    monkeypatch.setattr("checkupgrade.plugins.config.save_plugin_state", lambda name, enabled: None)
+    monkeypatch.setattr("checkupgrade.plugins.registry.all_plugins", lambda: {})
+
+    with pytest.raises(typer.Exit):
+        plugins_disable("nonexistent")
+
+
+# --- plugins list with persistence ---
+
+
+def test_plugins_list_shows_persisted_state(monkeypatch, capsys) -> None:
+    from checkupgrade.cli import plugins_list
+
+    monkeypatch.setattr("checkupgrade.plugins.config.load_plugins_config", lambda: {"homebrew": False})
+    monkeypatch.setattr("checkupgrade.plugins.registry.all_plugins", lambda: {
+        "applications": _fake_plugin("applications", True),
+        "homebrew": _fake_plugin("homebrew", True),
+        "npm": _fake_plugin("npm", True, available=False),
+    })
+
+    plugins_list()
+    captured = capsys.readouterr()
+    assert "applications" in captured.out
+    assert "homebrew" in captured.out
+    assert "npm" in captured.out
+    assert "disabled" in captured.out  # homebrew Persisted = disabled
+
+
+def test_plugins_list_shows_dash_for_not_persisted(monkeypatch, capsys) -> None:
+    from checkupgrade.cli import plugins_list
+
+    monkeypatch.setattr("checkupgrade.plugins.config.load_plugins_config", lambda: {})
+    monkeypatch.setattr("checkupgrade.plugins.registry.all_plugins", lambda: {
+        "applications": _fake_plugin("applications", True),
+    })
+
+    plugins_list()
+    captured = capsys.readouterr()
+    assert "-" in captured.out
+
+
+# --- helpers ---
+
+
+class _fake_plugin:
+    def __init__(self, name: str, default: bool, available: bool = True):
+        self.name = name
+        self.enabled_by_default = default
+        self._available = available
+
+    def is_available(self) -> bool:
+        return self._available

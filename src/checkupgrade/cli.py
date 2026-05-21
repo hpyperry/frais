@@ -94,7 +94,7 @@ Examples:
   checkupgrade ignore remove com.anthropic.claude-code-url-handler
 """
 
-app = typer.Typer(help=APP_HELP, no_args_is_help=True, rich_markup_mode="rich")
+app = typer.Typer(help=APP_HELP, no_args_is_help=True, rich_markup_mode="rich", add_completion=False)
 config_app = typer.Typer(help=CONFIG_HELP, rich_markup_mode="rich")
 plugins_app = typer.Typer(help=PLUGINS_HELP, rich_markup_mode="rich")
 ignore_app = typer.Typer(help=IGNORE_HELP, rich_markup_mode="rich")
@@ -297,43 +297,70 @@ def plugins_list() -> None:
     """List all known plugins and their status.
 
     Shows all discovered plugins (built-in and third-party), whether the
-    underlying tool is installed, and whether the plugin is enabled by default.
+    underlying tool is installed, default state, any persisted override,
+    and the effective enabled state.
 
     Example:
       checkupgrade plugins list
     """
+    from .plugins.config import load_plugins_config
     from .plugins.registry import all_plugins
 
-    table = Table("Plugin", "Available", "Enabled")
+    persisted = load_plugins_config()
+    table = Table("Plugin", "Available", "Default", "Persisted", "Effective")
     for name, plugin in all_plugins().items():
         available = "yes" if plugin.is_available() else "no"
-        enabled = "yes" if plugin.enabled_by_default else "no"
-        table.add_row(name, available, enabled)
+        default = "enabled" if plugin.enabled_by_default else "disabled"
+        if name in persisted:
+            persisted_str = "enabled" if persisted[name] else "disabled"
+        else:
+            persisted_str = "-"
+        if name in persisted:
+            effective = "enabled" if persisted[name] else "disabled"
+        else:
+            effective = "enabled" if plugin.enabled_by_default else "disabled"
+        table.add_row(name, available, default, persisted_str, effective)
     console.print(table)
-
 
 
 @plugins_app.command("enable")
 def plugins_enable(
     name: Annotated[str, typer.Argument(help="Plugin name, for example: homebrew")],
 ) -> None:
-    """Explain how to enable a plugin for one run.
+    """Persistently enable a plugin.
 
-    Persistent plugin configuration is intentionally not implemented in v1.
+    Example:
+      checkupgrade plugins enable homebrew
     """
-    console.print(f"Plugin persistence is not implemented in v1. Use `--plugins {name}` for one run.")
+    from .plugins.config import save_plugin_state
+    from .plugins.registry import all_plugins
+
+    if name not in all_plugins():
+        console.print(f"[red]Unknown plugin: {name}[/red]")
+        raise typer.Exit(1)
+
+    save_plugin_state(name, True)
+    console.print(f"Plugin [bold]{name}[/bold] enabled (persisted).")
 
 
 @plugins_app.command("disable")
 def plugins_disable(
     name: Annotated[str, typer.Argument(help="Plugin name, for example: homebrew")],
 ) -> None:
-    """Explain how to disable a plugin for one run.
+    """Persistently disable a plugin.
 
-    Persistent plugin configuration is intentionally not implemented in v1.
-    Use `--apps-only` to skip plugins, or `--plugins` to choose a subset.
+    Example:
+      checkupgrade plugins disable homebrew
     """
-    console.print(f"Plugin persistence is not implemented in v1. Use `--apps-only` or `--plugins` for one run.")
+    from .plugins.config import save_plugin_state
+    from .plugins.registry import all_plugins
+
+    if name not in all_plugins():
+        console.print(f"[red]Unknown plugin: {name}[/red]")
+        raise typer.Exit(1)
+
+    save_plugin_state(name, False)
+    console.print(f"Plugin [bold]{name}[/bold] disabled (persisted).")
 
 
 @ignore_app.callback(invoke_without_command=True)
@@ -467,7 +494,6 @@ def advise(
 
         researched_ids: set[str] = set()
         research_futures: dict = {}
-        ignored_count = 0
 
         with ThreadPoolExecutor(max_workers=max(1, len(active))) as scan_pool, \
              ThreadPoolExecutor(max_workers=jobs) as research_pool:
@@ -490,16 +516,10 @@ def advise(
                     logger.warning("scan failed for %s: %s", name, exc)
                     pr = PluginScanResult(skipped=[str(exc)])
 
-                # Filter ignored — count unique IDs since a single ignored app
-                # may appear in both items and candidates (Homebrew/npm plugins).
+                # Filter ignored
                 if ignored:
-                    kept_items = [it for it in pr.items if it.id not in ignored]
-                    kept_cands = [c for c in pr.candidates if c.item.id not in ignored]
-                    removed_item_ids = {it.id for it in pr.items if it.id in ignored}
-                    removed_cand_ids = {c.item.id for c in pr.candidates if c.item.id in ignored}
-                    ignored_count += len(removed_item_ids | removed_cand_ids)
-                    pr.items = kept_items
-                    pr.candidates = kept_cands
+                    pr.items = [it for it in pr.items if it.id not in ignored]
+                    pr.candidates = [c for c in pr.candidates if c.item.id not in ignored]
 
                 result.plugin_results[name] = pr
 
@@ -568,17 +588,27 @@ def advise(
     except OSError as exc:
         logger.warning("failed to save advice cache: %s", exc)
 
-    _print_advise_result(result, researched_ids, ignored_count, show_all=show_all)
+    _print_advise_result(result, researched_ids, len(ignored), show_all=show_all)
 
 
 def _select_plugins(apps_only: bool, explicit: list[str] | None) -> list[str]:
+    from .plugins.config import load_plugins_config
     from .plugins.registry import all_plugins
 
     if apps_only:
         return ["applications"]
     if explicit:
         return [name for name in explicit if name in all_plugins()]
-    return [name for name, p in all_plugins().items() if p.enabled_by_default]
+
+    persisted = load_plugins_config()
+    result: list[str] = []
+    for name, plugin in all_plugins().items():
+        if name in persisted:
+            if persisted[name]:
+                result.append(name)
+        elif plugin.enabled_by_default:
+            result.append(name)
+    return result
 
 
 def _summarize_one(agent: AgentClient, candidate: UpdateCandidate) -> None:
