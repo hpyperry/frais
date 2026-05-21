@@ -28,16 +28,17 @@ _DEFAULT_LOG_FILE = _DEFAULT_LOG_DIR / "checkupgrade.log"
 _ADVICE_CACHE = _DEFAULT_LOG_DIR / "last_advice.json"
 _LOG_MAX_SIZE = 5 * 1024 * 1024  # 5MB
 
-APP_HELP = """CheckUpgrade scans macOS Applications and Homebrew for available updates.
+APP_HELP = """CheckUpgrade scans macOS Applications, Homebrew packages, and npm global packages for updates.
 
 Default scope:
   - Applications in /Applications and ~/Applications
   - Homebrew formulae and casks when `brew` is available
+  - npm global packages when `npm` is available
 
 Safety model:
-  - `doctor`, `config`, and `plugins` are read-only.
+  - `doctor`, `config`, `plugins`, and `ignore` are read-only.
   - `advise` requires BYOK LLM configuration.
-  - `update` only executes Homebrew commands after interactive confirmation.
+  - `update` auto-executes packages after interactive confirmation.
 
 Common examples:
   checkupgrade doctor
@@ -45,7 +46,7 @@ Common examples:
   checkupgrade advise
   checkupgrade advise --apps-only
   checkupgrade advise -j 5
-  checkupgrade update --only node
+  checkupgrade update
   checkupgrade ignore add com.example.app
 """
 
@@ -71,14 +72,16 @@ Examples:
   checkupgrade config test
 """
 
-PLUGINS_HELP = """Manage package manager scanner plugins.
+PLUGINS_HELP = """Manage scanner plugins.
 
-v1 includes the Homebrew plugin. It is enabled by default and scans both
-formulae and casks. Other package managers are future plugin extension points.
+Built-in plugins: applications, homebrew, npm. Third-party plugins can
+be registered via entry points in `checkupgrade.plugins`.
 
 Examples:
   checkupgrade plugins
   checkupgrade plugins list
+  checkupgrade plugins enable homebrew
+  checkupgrade plugins disable npm
 """
 
 IGNORE_HELP = """Manage apps to ignore during advise.
@@ -185,8 +188,8 @@ def doctor() -> None:
     """Show runtime readiness without changing the system.
 
     Prints detected OS version, CPU architecture, scanned Applications paths,
-    Homebrew plugin availability, and redacted BYOK status. This command is
-    safe to run before configuring the tool.
+    plugin availability, and redacted BYOK status. Safe to run before
+    configuring the tool.
 
     Example:
       checkupgrade doctor
@@ -299,8 +302,7 @@ def plugins_list() -> None:
     """List all known plugins and their status.
 
     Shows all discovered plugins (built-in and third-party), whether the
-    underlying tool is installed, default state, any persisted override,
-    and the effective enabled state.
+    underlying tool is installed, default state, and effective enabled state.
 
     Example:
       checkupgrade plugins list
@@ -422,7 +424,7 @@ def advise(
         str | None,
         typer.Option(
             "--plugins",
-            help="Comma-separated plugin names to advise on instead of Applications. v1 supports: homebrew.",
+            help="Comma-separated plugin names to advise on (e.g. homebrew,npm).",
             metavar="NAMES",
         ),
     ] = None,
@@ -665,14 +667,14 @@ def update(
     """Interactively review and execute updates with AI advice.
 
     Loads results from the last `checkupgrade advise` run. Shows each candidate
-    with AI advice for confirmation. Auto-updatable packages (Homebrew) execute
-    directly; others show the recommended action.
+    with AI advice for confirmation. Auto-updatable packages (Homebrew, npm)
+    execute directly; others show the recommended action.
 
     Run `checkupgrade advise` first to generate the update candidates.
 
     Examples:
       checkupgrade update
-      checkupgrade update fr.handbrake.HandBrake
+      checkupgrade update npm
     """
     if not _ADVICE_CACHE.exists():
         console.print("No advice cache found. Run [bold]checkupgrade advise[/bold] first.")

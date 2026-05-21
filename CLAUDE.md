@@ -40,7 +40,7 @@ uv run pytest
 uv run pytest tests/test_cli.py
 uv run pytest tests/test_homebrew.py
 
-# Build macOS binary (requires pyinstaller)
+# Build macOS binary (requires pyinstaller; --noupx for macOS compatibility)
 uv run --extra build python scripts/build_binary.py
 ```
 
@@ -56,15 +56,17 @@ src/checkupgrade/
   agent.py            AgentClient — structured 3-step research pipeline (generate queries, pick URLs, extract version)
   tools.py            Web tools: web_search (DDGS), web_fetch, web_fetch_batch (internal, not LLM-exposed)
   research.py         Orchestrates version research with iTunes fast path + LLM structured pipeline
-  version_checker.py  Fast version checks: iTunes API, GitHub API
+  version_checker.py  Fast version checks: iTunes API
   system.py           macOS detection
   scanners/
     applications.py    Internal helpers: scan_applications, read_application, classify_source
   plugins/
     __init__.py        Re-exports ScannerPlugin as public API
+    _utils.py          Shared helper: run_json() with env isolation for subprocess calls
     base.py            ScannerPlugin ABC with scan, scan_all, research, summarize interface
     registry.py        Plugin registry; discovers built-in + third-party plugins via entry points
-    config.py          Plugin persistence: reads/writes ~/.checkupgrade/config/plugins.toml
+    config.py          Plugin persistence: reads/writes ~/.checkupgrade/config/plugins.toml;
+                       auto-creates file with defaults on first access
     applications/      ApplicationsPlugin — scans /Applications and ~/Applications .app bundles
     homebrew/          HomebrewPlugin — brew outdated --json=v2, brew info --json=v2 --installed
     npm/               NpmPlugin — npm outdated -g --json, npm ls -g --depth=0 --json
@@ -170,6 +172,8 @@ Plugins that don't need research (Homebrew, npm) skip the LLM pipeline entirely 
 - **Structured LLM pipeline**: Agent does NOT use tool calling. Instead, 3 discrete LLM calls per app: generate queries, pick URLs, extract version. Each call returns JSON.
 - **Logging**: `--verbose` sets INFO, `--debug` sets DEBUG. Logs go to stderr and `~/.checkupgrade/log/checkupgrade.log` by default. `--log-file` overrides path, `--no-log` disables file logging. Auto-truncates at 5MB.
 - **Progress bar**: Each plugin gets its own `Progress` task row. Scanning fills the row with item/candidate counts. Research (if `needs_research`) updates the same row with progress. Summaries gets a dedicated row. For `show_all`, `scan_all()` is called instead of `scan()`.
-- **Ignore list**: `~/.checkupgrade/config/ignore.txt` stores app IDs to skip during `advise`. Managed via `checkupgrade ignore add/remove/list`. Filtered after scan, before research.
+- **Ignore list**: `~/.checkupgrade/config/ignore.txt` stores app IDs to skip during `advise`. Auto-created on first access via `init_ignored()`. Managed via `checkupgrade ignore add/remove/list`. Filtered after scan, before research.
 - **Plugin discovery**: `registry.py` uses `importlib.metadata.entry_points(group="checkupgrade.plugins")` to discover all plugins at runtime. Built-in plugins (applications, homebrew, npm) are always present. Failed loads are logged, not fatal.
-- **Plugin persistence**: `plugins/config.py` manages `~/.checkupgrade/config/plugins.toml`. Only explicitly-set plugins appear. `plugins enable/disable` persist state. `_select_plugins()` uses 3-tier precedence: CLI flags (`--apps-only`, `--plugins`) override persisted config, which overrides `enabled_by_default`.
+- **Plugin persistence**: `plugins/config.py` manages `~/.checkupgrade/config/plugins.toml`. First run auto-creates the file with all discovered plugins set to their defaults. `plugins enable/disable` persist state. `_select_plugins()` uses 3-tier precedence: CLI flags (`--apps-only`, `--plugins`) override persisted config, which overrides `enabled_by_default`.
+- **Ctrl+C handling**: `advise` registers a SIGINT handler before entering the Progress/ThreadPoolExecutor block. The handler calls `console.show_cursor()`, flushes stdout/stderr, then `os._exit(130)`. Original handler is restored via `try/finally`. Signal handler (not KeyboardInterrupt) is needed because ThreadPoolExecutor.__exit__ blocks on worker threads.
+- **Subprocess env isolation**: `run_json()` in `plugins/_utils.py` and `_brew_uses()` in `plugins/homebrew/__init__.py` clear `DYLD_LIBRARY_PATH` from the subprocess environment to prevent PyInstaller-bundled dylibs from interfering with system commands.
