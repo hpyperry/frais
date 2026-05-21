@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Annotated
@@ -459,10 +460,9 @@ def advise(
     from .system import detect_system
 
     def _on_interrupt(signum, frame):
-        signal.signal(signal.SIGINT, signal.SIG_DFL)
         console.print()
         console.print("  [dim]Interrupted[/dim]")
-        os._exit(0)
+        sys.exit(0)
 
     orig_handler = signal.signal(signal.SIGINT, _on_interrupt)
     try:
