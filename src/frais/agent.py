@@ -124,6 +124,8 @@ class AgentClient:
         }
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
+        if self.config.extra_body:
+            payload.update(self.config.extra_body)
         response = httpx.post(
             url,
             headers={"Authorization": f"Bearer {self.config.api_key}"},

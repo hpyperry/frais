@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .models import LLMConfig
@@ -18,6 +18,7 @@ class RawLLMConfig:
     api_key: str | None = None
     api_key_source: str | None = None
     thinking: bool = False
+    extra_body: dict = field(default_factory=dict)
 
 
 def _read_config_file(path: Path = CONFIG_PATH) -> dict:
@@ -53,6 +54,7 @@ def load_raw_config(path: Path = CONFIG_PATH) -> RawLLMConfig:
         api_key=api_key,
         api_key_source=api_key_source,
         thinking=thinking,
+        extra_body=file_data.get("extra_body") or {},
     )
 
 
@@ -102,6 +104,11 @@ api_key = ""
 # DeepSeek example:
 # base_url = "https://api.deepseek.com"
 # model = "deepseek-v4-flash"
+
+# Provider-specific extra body parameters (merged into each API request).
+# Use this for thinking/reasoning control or other provider extensions.
+# [llm.extra_body]
+# DeepSeek: thinking = { type = "disabled" }
 """
     path.write_text(template, encoding="utf-8")
     return path

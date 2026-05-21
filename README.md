@@ -18,10 +18,12 @@ LLM features require user-owned configuration via environment variables or
 `~/.frais/config/config.toml`. The project never ships or creates a
 server-side API key.
 
-> **Note**: Thinking/reasoning models (e.g. DeepSeek-R1, o1, o3) are not yet
-> supported. The research pipeline requires clean JSON output which thinking
-> models do not reliably produce. Use a standard model (e.g. deepseek-chat,
-> gpt-4o).
+> **Note**: DeepSeek models default to thinking mode, which interferes with
+> structured JSON output. Disable it via `[llm.extra_body]` in your config:
+> ```toml
+> [llm.extra_body]
+> thinking = { type = "disabled" }
+> ```
 
 ## Commands
 
@@ -72,8 +74,11 @@ DeepSeek example:
 [llm]
 provider = "openai-compatible"
 base_url = "https://api.deepseek.com"
-model = "deepseek-chat"
+model = "deepseek-v4-flash"
 api_key = "..."
+
+[llm.extra_body]
+thinking = { type = "disabled" }
 ```
 
 ```bash

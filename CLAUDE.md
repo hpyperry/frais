@@ -166,7 +166,7 @@ Plugins that don't need research (Homebrew, npm) skip the LLM pipeline entirely 
 
 ## Key patterns
 
-- **BYOK model**: LLM config merges env vars (`FRAIS_LLM_*`) over file values. `require_raw_llm_config()` raises `ValueError` listing missing keys. API keys are never logged or printed in full. Thinking/reasoning models (e.g. DeepSeek-R1, o1, o3) are not yet supported — the structured JSON extraction pipeline requires clean `content` output.
+- **BYOK model**: LLM config merges env vars (`FRAIS_LLM_*`) over file values. `require_raw_llm_config()` raises `ValueError` listing missing keys. API keys are never logged or printed in full. The `[llm.extra_body]` TOML table is merged into every API request payload for provider-specific parameters (e.g. `thinking = { type = "disabled" }` for DeepSeek).
 - **Testing**: Uses `monkeypatch` (pytest fixture) for all external dependencies — subprocess, filesystem, env vars. No mock library.
 - **Version comparison**: Uses `packaging.version.Version`; strips leading `v`/`V` before comparing.
 - **Source classification**: Applications are classified as APP_STORE, LOCAL_BUILD, NETWORK_DOWNLOAD, APPLICATION, or UNKNOWN based on codesign authority, team ID, and quarantine xattr presence.
