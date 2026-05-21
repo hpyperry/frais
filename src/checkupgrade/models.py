@@ -35,7 +35,6 @@ class LLMConfig:
     api_key_source: str | None
     has_api_key: bool
     api_key_suffix: str | None = None
-    thinking: bool = False
 
     @property
     def is_ready(self) -> bool:
@@ -49,7 +48,6 @@ class LLMConfig:
             "api_key_source": self.api_key_source,
             "has_api_key": self.has_api_key,
             "api_key": f"***{self.api_key_suffix}" if self.api_key_suffix else None,
-            "thinking": self.thinking,
             "ready": self.is_ready,
         }
 

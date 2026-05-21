@@ -32,18 +32,6 @@ api_key = "file-secret"
     assert loaded.safe_dict()["api_key"] == "***1234"
 
 
-def test_thinking_env_var_overrides_file(monkeypatch, tmp_path: Path) -> None:
-    config = tmp_path / "config.toml"
-    config.write_text("[llm]\nthinking = false\n", encoding="utf-8")
-    monkeypatch.setenv("CHECKUPGRADE_LLM_THINKING", "true")
-    monkeypatch.setenv("CHECKUPGRADE_LLM_BASE_URL", "https://api.example.com/v1")
-    monkeypatch.setenv("CHECKUPGRADE_LLM_MODEL", "test-model")
-    monkeypatch.setenv("CHECKUPGRADE_LLM_API_KEY", "sk-test")
-
-    loaded = load_llm_config(config)
-    assert loaded.thinking is True
-
-
 def test_config_template_has_api_key_placeholder(tmp_path: Path) -> None:
     config = tmp_path / "config.toml"
 

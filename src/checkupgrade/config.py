@@ -44,8 +44,7 @@ def load_raw_config(path: Path = CONFIG_PATH) -> RawLLMConfig:
     elif file_key:
         api_key_source = str(path)
 
-    thinking_str = os.getenv("CHECKUPGRADE_LLM_THINKING") or file_data.get("thinking")
-    thinking = thinking_str in (True, "true", "1", "yes") if isinstance(thinking_str, str) else bool(thinking_str)
+    thinking = file_data.get("thinking", False)
 
     return RawLLMConfig(
         provider=provider,
@@ -67,7 +66,6 @@ def load_llm_config(path: Path = CONFIG_PATH) -> LLMConfig:
         api_key_source=raw.api_key_source,
         has_api_key=bool(raw.api_key),
         api_key_suffix=suffix,
-        thinking=raw.thinking,
     )
 
 
@@ -100,12 +98,6 @@ model = "your-model-name"
 # Prefer CHECKUPGRADE_LLM_API_KEY in your shell for better secret hygiene.
 # If you store a key here, keep this file private and never commit it.
 api_key = ""
-
-# Thinking mode — enable for models that support extended reasoning.
-# Set to true to let the model think before answering (improves quality).
-# Structured calls (search queries, URL selection, version extraction)
-# always disable thinking to ensure clean JSON output.
-# thinking = false
 
 # DeepSeek example:
 # base_url = "https://api.deepseek.com"

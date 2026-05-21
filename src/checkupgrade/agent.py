@@ -59,7 +59,7 @@ class AgentClient:
             f"current: {item.current_version or 'unknown'}, "
             f"source: {item.source.value}."
         )
-        text = self._chat(_SEARCH_QUERIES_PROMPT, prompt, enable_thinking=False)
+        text = self._chat(_SEARCH_QUERIES_PROMPT, prompt)
         return _parse_json_list(text)
 
     def pick_urls(self, item: SoftwareItem, search_results: list[dict[str, str]]) -> list[str]:
@@ -69,7 +69,7 @@ class AgentClient:
             ensure_ascii=False,
         )
         prompt = f"App: {item.name}\n\nSearch results:\n{results_text}"
-        text = self._chat(_PICK_URLS_PROMPT, prompt, enable_thinking=False)
+        text = self._chat(_PICK_URLS_PROMPT, prompt)
         return _parse_json_list(text)[:3]
 
     def extract_version(self, item: SoftwareItem, fetched_content: dict[str, str]) -> ResearchResult:
@@ -82,7 +82,7 @@ class AgentClient:
             f"App: {item.name}, current version: {item.current_version or 'unknown'}\n\n"
             f"Page contents:\n{content_text}"
         )
-        text = self._chat(_EXTRACT_VERSION_PROMPT, prompt, enable_thinking=False)
+        text = self._chat(_EXTRACT_VERSION_PROMPT, prompt)
         data = _parse_json_object(text)
         return ResearchResult(
             latest_version=data.get("latest_version"),
@@ -105,25 +105,17 @@ class AgentClient:
     def test_connection(self) -> str:
         return self._chat("", "Reply with exactly: ok", max_tokens=64)
 
-    def _chat(self, system: str, user: str, max_tokens: int | None = None,
-              enable_thinking: bool | None = None) -> str:
+    def _chat(self, system: str, user: str, max_tokens: int | None = None) -> str:
         url = chat_completions_url(self.config.base_url)
         messages: list[dict[str, Any]] = []
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": user})
-        response_data = self._post(url, messages, max_tokens=max_tokens,
-                                    enable_thinking=enable_thinking)
+        response_data = self._post(url, messages, max_tokens=max_tokens)
         message = response_data["choices"][0]["message"]
-        content = message.get("content")
-        if not content:
-            content = message.get("reasoning_content") or ""
-            if content:
-                logger.warning("response missing content field, using reasoning_content")
-        return content
+        return message.get("content") or message.get("reasoning_content") or ""
 
-    def _post(self, url: str, messages: list[dict[str, Any]], max_tokens: int | None = None,
-              enable_thinking: bool | None = None) -> dict[str, Any]:
+    def _post(self, url: str, messages: list[dict[str, Any]], max_tokens: int | None = None) -> dict[str, Any]:
         logger.debug("agent request url=%s model=%s messages=%d", url, self.config.model, len(messages))
         payload: dict[str, Any] = {
             "model": self.config.model,
@@ -132,9 +124,6 @@ class AgentClient:
         }
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
-        thinking = enable_thinking if enable_thinking is not None else self.config.thinking
-        if thinking:
-            payload["thinking"] = {"type": "enabled"}
         response = httpx.post(
             url,
             headers={"Authorization": f"Bearer {self.config.api_key}"},
