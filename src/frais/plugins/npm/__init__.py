@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import shutil
-from typing import Any
+from typing import Any, Callable
 
 from ...models import DependencyImpact, PluginScanResult, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
 from .._utils import run_json
@@ -15,13 +15,16 @@ class NpmPlugin(ScannerPlugin):
     name = "npm"
     enabled_by_default = True
     display_color = "bright_magenta"
+    scan_steps = ["checking outdated packages"]
 
     def is_available(self) -> bool:
         path = shutil.which("npm")
         logger.debug("npm which npm=%s", path or "-")
         return path is not None
 
-    def scan(self, system: SystemProfile) -> PluginScanResult:
+    def scan(self, system: SystemProfile,
+             on_progress: Callable[[int, int], None] | None = None,
+             max_workers: int = 10) -> PluginScanResult:
         if not self.is_available():
             logger.info("npm unavailable")
             return PluginScanResult(skipped=["npm is not installed or `npm` is not on PATH."])
@@ -38,9 +41,13 @@ class NpmPlugin(ScannerPlugin):
 
         candidates, items = self._parse_outdated(raw)
         logger.info("npm outdated items=%d", len(items))
+        if on_progress:
+            on_progress(0, len(items))
         return PluginScanResult(items=items, candidates=candidates)
 
-    def scan_all(self, system: SystemProfile) -> PluginScanResult:
+    def scan_all(self, system: SystemProfile,
+                 on_progress: Callable[[int, int], None] | None = None,
+                 max_workers: int = 10) -> PluginScanResult:
         if not self.is_available():
             logger.info("npm unavailable")
             return PluginScanResult(skipped=["npm is not installed or `npm` is not on PATH."])
@@ -55,6 +62,8 @@ class NpmPlugin(ScannerPlugin):
         candidates, _ = self._parse_outdated(outdated_raw)
         all_items = self._parse_installed(installed_raw)
         logger.info("npm scan all items=%d outdated=%d", len(all_items), len(candidates))
+        if on_progress:
+            on_progress(0, len(all_items))
         return PluginScanResult(items=all_items, candidates=candidates)
 
     def _parse_outdated(self, raw: dict[str, Any]) -> tuple[list[UpdateCandidate], list[SoftwareItem]]:

@@ -10,8 +10,8 @@ import typer
 
 import pytest
 
-from frais.cli import _ADVICE_CACHE, _configure_logging, _print_advise_result, _select_plugins, _split_plugins, update
-from frais.summarize import generate_summaries, _summarize_one
+from frais.cli import _ADVICE_CACHE, _configure_logging, _print_advise_result, _split_plugins, update
+from frais.coordinator import select_plugins
 from frais.plugins.applications._store import resolve_app_store_command
 from frais.models import PluginScanResult, ScanResult, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
 
@@ -20,7 +20,7 @@ def test_print_advise_result_shows_ignored_count(capsys) -> None:
     system = SystemProfile(os_name="macOS", os_version="15.0", arch="arm64", applications_paths=["/Applications"])
     result = ScanResult(system=system)
 
-    _print_advise_result(result, researched_ids=set(), ignored_count=3)
+    _print_advise_result(result, ignored_count=3)
 
     captured = capsys.readouterr()
     assert "3 app(s) ignored" in captured.out
@@ -30,7 +30,7 @@ def test_print_advise_result_no_ignored_shows_nothing(capsys) -> None:
     system = SystemProfile(os_name="macOS", os_version="15.0", arch="arm64", applications_paths=["/Applications"])
     result = ScanResult(system=system)
 
-    _print_advise_result(result, researched_ids=set(), ignored_count=0)
+    _print_advise_result(result, ignored_count=0)
 
     captured = capsys.readouterr()
     assert "ignored" not in captured.out
@@ -158,54 +158,54 @@ def test_update_no_cache_exits(monkeypatch, tmp_path: Path) -> None:
         update(only=None)
 
 
-# --- _select_plugins with persistence ---
+# --- select_plugins with persistence ---
 
 
-def test_select_plugins_apps_only_ignores_persistence(monkeypatch) -> None:
+def testselect_plugins_apps_only_ignores_persistence(monkeypatch) -> None:
     monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {"applications": False})
-    result = _select_plugins(apps_only=True, explicit=None)
-    assert result == ["applications"]
+    result = select_plugins(apps_only=True, explicit=None)
+    assert list(result.keys()) == ["applications"]
 
 
-def test_select_plugins_explicit_ignores_persistence(monkeypatch) -> None:
+def testselect_plugins_explicit_ignores_persistence(monkeypatch) -> None:
     monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {"homebrew": False})
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {
         "homebrew": _fake_plugin("homebrew", True),
         "npm": _fake_plugin("npm", True),
     })
-    result = _select_plugins(apps_only=False, explicit=["homebrew"])
-    assert result == ["homebrew"]
+    result = select_plugins(apps_only=False, explicit=["homebrew"])
+    assert list(result.keys()) == ["homebrew"]
 
 
-def test_select_plugins_persisted_disable_removes_default_enabled(monkeypatch) -> None:
+def testselect_plugins_persisted_disable_removes_default_enabled(monkeypatch) -> None:
     monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {"homebrew": False, "npm": False})
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {
         "applications": _fake_plugin("applications", True),
         "homebrew": _fake_plugin("homebrew", True),
         "npm": _fake_plugin("npm", True),
     })
-    result = _select_plugins(apps_only=False, explicit=None)
-    assert result == ["applications"]
+    result = select_plugins(apps_only=False, explicit=None)
+    assert list(result.keys()) == ["applications"]
 
 
-def test_select_plugins_persisted_enable_adds_default_disabled(monkeypatch) -> None:
+def testselect_plugins_persisted_enable_adds_default_disabled(monkeypatch) -> None:
     monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {"custom": True})
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {
         "applications": _fake_plugin("applications", True),
         "custom": _fake_plugin("custom", False),
     })
-    result = _select_plugins(apps_only=False, explicit=None)
+    result = select_plugins(apps_only=False, explicit=None)
     assert "custom" in result
 
 
-def test_select_plugins_uses_default_when_not_persisted(monkeypatch) -> None:
+def testselect_plugins_uses_default_when_not_persisted(monkeypatch) -> None:
     monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {})
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {
         "a": _fake_plugin("a", True),
         "b": _fake_plugin("b", False),
     })
-    result = _select_plugins(apps_only=False, explicit=None)
-    assert result == ["a"]
+    result = select_plugins(apps_only=False, explicit=None)
+    assert list(result.keys()) == ["a"]
 
 
 # --- plugins enable/disable CLI ---
@@ -303,131 +303,15 @@ def test_plugins_list_uses_default_when_not_persisted(monkeypatch, capsys) -> No
     assert "enabled" in captured.out
 
 
-# --- _select_plugins edge cases ---
+# --- select_plugins edge cases ---
 
 
-def test_select_plugins_silently_drops_unknown_names(monkeypatch) -> None:
+def testselect_plugins_silently_drops_unknown_names(monkeypatch) -> None:
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {
         "applications": _fake_plugin("applications", True),
     })
-    result = _select_plugins(apps_only=False, explicit=["applications", "nonexistent"])
-    assert result == ["applications"]
-
-
-# --- _summarize_one / _summarize_concurrent ---
-
-
-class _FakeSummarizeAgent:
-    """Test agent for summary concurrency tests. Supports optional delay to verify parallelism."""
-
-    def __init__(self, delay: float = 0.0) -> None:
-        self.delay = delay
-        self.call_count = 0
-
-    def summarize_candidate(self, candidate: UpdateCandidate) -> str:
-        self.call_count += 1
-        if self.delay:
-            time.sleep(self.delay)
-        return f"Summary for {candidate.item.name}"
-
-
-class _FailingSummarizeAgent:
-    """Agent whose summarize_candidate always raises."""
-
-    def summarize_candidate(self, candidate: UpdateCandidate) -> str:
-        raise RuntimeError("LLM unavailable")
-
-
-def _make_candidate(name: str = "TestApp") -> UpdateCandidate:
-    item = SoftwareItem(
-        id=f"com.example.{name.lower()}",
-        name=name,
-        kind="application",
-        source=SourceKind.APPLICATION,
-        current_version="1.0",
-    )
-    return UpdateCandidate(item=item, latest_version="2.0")
-
-
-def test_summarize_one_sets_ai_summary() -> None:
-    agent = _FakeSummarizeAgent()
-    candidate = _make_candidate()
-
-    _summarize_one(agent, candidate)
-
-    assert candidate.ai_summary == "Summary for TestApp"
-    assert agent.call_count == 1
-
-
-def test_summarize_one_handles_exception(monkeypatch) -> None:
-    warnings = []
-    monkeypatch.setattr("frais.summarize.logger.warning", lambda msg, *args: warnings.append(msg))
-
-    agent = _FailingSummarizeAgent()
-    candidate = _make_candidate()
-
-    _summarize_one(agent, candidate)
-
-    assert candidate.ai_summary is None
-    assert len(warnings) == 1
-    assert "summary failed" in warnings[0]
-
-
-def test_summarize_concurrent_empty_candidates() -> None:
-    generate_summaries(_FakeSummarizeAgent(), [], max_workers=5)
-    # Should not raise
-
-
-def test_summarize_concurrent_single_candidate() -> None:
-    agent = _FakeSummarizeAgent()
-    candidate = _make_candidate()
-
-    generate_summaries(agent, [candidate], max_workers=5)
-
-    assert candidate.ai_summary == "Summary for TestApp"
-    assert agent.call_count == 1
-
-
-def test_summarize_concurrent_processes_all() -> None:
-    agent = _FakeSummarizeAgent()
-    candidates = [_make_candidate(f"App{i}") for i in range(5)]
-
-    generate_summaries(agent, candidates, max_workers=5)
-
-    assert agent.call_count == 5
-    for i, c in enumerate(candidates):
-        assert c.ai_summary == f"Summary for App{i}"
-
-
-def test_summarize_concurrent_runs_concurrently() -> None:
-    delay = 0.15
-    agent = _FakeSummarizeAgent(delay=delay)
-    candidates = [_make_candidate(f"App{i}") for i in range(5)]
-
-    start = time.monotonic()
-    generate_summaries(agent, candidates, max_workers=5)
-    elapsed = time.monotonic() - start
-
-    # If concurrent: ~0.15s + overhead. If sequential: ~0.75s + overhead.
-    # Use generous threshold: must be under 0.45s for 5 * 0.15s tasks.
-    assert elapsed < 0.45, f"Expected concurrent execution, took {elapsed:.2f}s"
-
-
-def test_summarize_concurrent_with_progress(monkeypatch) -> None:
-    advances = []
-    task_id = object()
-
-    class _MockProgress:
-        def advance(self, tid):
-            if tid is task_id:
-                advances.append(1)
-
-    agent = _FakeSummarizeAgent()
-    candidates = [_make_candidate(f"App{i}") for i in range(3)]
-
-    generate_summaries(agent, candidates, max_workers=3, progress=_MockProgress(), task_id=task_id)
-
-    assert len(advances) == 3
+    result = select_plugins(apps_only=False, explicit=["applications", "nonexistent"])
+    assert list(result.keys()) == ["applications"]
 
 
 # --- _split_plugins ---
@@ -489,7 +373,7 @@ def test_print_advise_result_show_all_up_to_date(capsys) -> None:
     system = SystemProfile(os_name="macOS", os_version="15.0", arch="arm64", applications_paths=["/Applications"])
     result = ScanResult(system=system, plugin_results={"applications": pr})
 
-    _print_advise_result(result, researched_ids={"com.example.ok"}, ignored_count=0, show_all=True)
+    _print_advise_result(result, ignored_count=0, show_all=True)
 
     captured = capsys.readouterr()
     assert "up to date" in captured.out
@@ -500,7 +384,7 @@ def test_print_advise_result_shows_skipped(capsys) -> None:
     system = SystemProfile(os_name="macOS", os_version="15.0", arch="arm64", applications_paths=["/Applications"])
     result = ScanResult(system=system, plugin_results={"homebrew": pr})
 
-    _print_advise_result(result, researched_ids=set(), ignored_count=0)
+    _print_advise_result(result, ignored_count=0)
 
     captured = capsys.readouterr()
     assert "brew not found" in captured.out
@@ -513,7 +397,7 @@ def test_print_advise_result_shows_updates_section(capsys) -> None:
     system = SystemProfile(os_name="macOS", os_version="15.0", arch="arm64", applications_paths=["/Applications"])
     result = ScanResult(system=system, plugin_results={"applications": pr})
 
-    _print_advise_result(result, researched_ids=set(), ignored_count=0)
+    _print_advise_result(result, ignored_count=0)
 
     captured = capsys.readouterr()
     assert "Updates available" in captured.out

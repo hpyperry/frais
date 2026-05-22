@@ -1,16 +1,87 @@
 from __future__ import annotations
 
+import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from packaging.version import InvalidVersion, Version
 
-from ...llm import LLMClient
+from ...llm import LLMClient, _ensure_list, _parse_json_list, _parse_json_object
 from ...models import ResearchResult, SourceKind, SoftwareItem, UpdateCandidate
 from ...tools import web_fetch_batch, web_search
 from ._store import check_app_store_version
 
 logger = logging.getLogger(__name__)
+
+_SEARCH_QUERIES_PROMPT = (
+    "You are a macOS software update research assistant. "
+    "Given an application, generate 2-3 web search queries to find its latest version. "
+    "Return ONLY a JSON array of query strings.\n"
+    "Example: [\"Keka macOS latest version download\", \"Keka changelog 2026\"]\n"
+    "Focus on: official download pages, GitHub releases, changelog pages."
+)
+
+_PICK_URLS_PROMPT = (
+    "You are a macOS software update research assistant. "
+    "Given search results for an application, pick the top 3 URLs most likely to contain "
+    "the latest version number. Return ONLY a JSON array of URL strings.\n"
+    "Prefer: official download pages, GitHub releases, version history pages.\n"
+    "Avoid: forums, blog posts, review sites."
+)
+
+_EXTRACT_VERSION_PROMPT = (
+    "You are a macOS software update research assistant. "
+    "Given web page content, extract the latest version of the application.\n"
+    "Return ONLY JSON:\n"
+    '{"latest_version":"x.y.z or null","confidence":"high/medium/low/unknown",'
+    '"evidence":["..."],"release_notes_url":"...","download_url":"...",'
+    '"source_repo_url":"...","release_notes":"..."}'
+)
+
+
+def generate_search_queries(llm: LLMClient, item: SoftwareItem) -> list[str]:
+    """Step 1: generate search queries for finding the latest version."""
+    prompt = (
+        f"App: {item.name}, bundle: {item.id}, "
+        f"current: {item.current_version or 'unknown'}, "
+        f"source: {item.source.value}."
+    )
+    text = llm.chat(_SEARCH_QUERIES_PROMPT, prompt, disable_thinking=True)
+    return _parse_json_list(text)
+
+
+def pick_urls(llm: LLMClient, item: SoftwareItem, search_results: list[dict[str, str]]) -> list[str]:
+    """Step 2: pick the most promising URLs from search results."""
+    results_text = json.dumps(
+        [{"title": r["title"], "url": r["url"], "snippet": r.get("snippet", "")} for r in search_results],
+        ensure_ascii=False,
+    )
+    prompt = f"App: {item.name}\n\nSearch results:\n{results_text}"
+    text = llm.chat(_PICK_URLS_PROMPT, prompt, disable_thinking=True)
+    return _parse_json_list(text)[:3]
+
+
+def extract_version(llm: LLMClient, item: SoftwareItem, fetched_content: dict[str, str]) -> ResearchResult:
+    """Step 3: extract version info from fetched page content."""
+    content_text = json.dumps(
+        [{"url": url, "content": content[:3000]} for url, content in fetched_content.items()],
+        ensure_ascii=False,
+    )
+    prompt = (
+        f"App: {item.name}, current version: {item.current_version or 'unknown'}\n\n"
+        f"Page contents:\n{content_text}"
+    )
+    text = llm.chat(_EXTRACT_VERSION_PROMPT, prompt, disable_thinking=True)
+    data = _parse_json_object(text)
+    return ResearchResult(
+        latest_version=data.get("latest_version"),
+        release_notes_url=data.get("release_notes_url"),
+        download_url=data.get("download_url"),
+        source_repo_url=data.get("source_repo_url"),
+        confidence=data.get("confidence") or "unknown",
+        evidence=_ensure_list(data.get("evidence")),
+        release_notes=data.get("release_notes"),
+    )
 
 
 def research_application_update(llm: LLMClient, item: SoftwareItem) -> UpdateCandidate | None:
@@ -33,7 +104,7 @@ def _llm_structured_research(llm: LLMClient, item: SoftwareItem) -> ResearchResu
     """3-step structured research: LLM generates queries, we search & fetch, LLM extracts version."""
     # Step 1: LLM generates search queries
     try:
-        queries = llm.generate_search_queries(item)
+        queries = generate_search_queries(llm, item)
     except Exception as exc:
         logger.warning("generate_search_queries failed for %s: %s", item.name, exc)
         return None
@@ -71,7 +142,7 @@ def _llm_structured_research(llm: LLMClient, item: SoftwareItem) -> ResearchResu
 
     # Step 2: LLM picks best URLs
     try:
-        urls = llm.pick_urls(item, unique_results)
+        urls = pick_urls(llm, item, unique_results)
     except Exception as exc:
         logger.warning("pick_urls failed for %s: %s", item.name, exc)
         return None
@@ -87,7 +158,7 @@ def _llm_structured_research(llm: LLMClient, item: SoftwareItem) -> ResearchResu
 
     # Step 3: LLM extracts version from fetched content
     try:
-        return llm.extract_version(item, fetched)
+        return extract_version(llm, item, fetched)
     except Exception as exc:
         logger.warning("extract_version failed for %s: %s", item.name, exc)
         return None

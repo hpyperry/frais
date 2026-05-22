@@ -1,43 +1,125 @@
 from __future__ import annotations
 
+import json
+
+from frais.llm import LLMClient
 from frais.models import ResearchResult, SoftwareItem, SourceKind, UpdateCandidate
 from frais.plugins.applications import _research as research
-from frais.plugins.applications._research import _digits_only, _is_newer, _normalize, research_application_update
+from frais.plugins.applications._research import (
+    _digits_only, _is_newer, _normalize, extract_version,
+    generate_search_queries, pick_urls, research_application_update,
+)
 
 
-class FakeAgent:
-    def generate_search_queries(self, item):
-        return ["Tool macOS latest version"]
+def _raise(exc):
+    raise exc
 
-    def pick_urls(self, item, search_results):
-        return ["https://github.com/example/tool/releases"]
 
-    def extract_version(self, item, fetched_content):
-        return ResearchResult(
-            latest_version="0.4.0",
-            confidence="high",
-            evidence=["https://github.com/example/tool/releases/tag/v0.4.0"],
-            release_notes="fixes",
-        )
+def _dummy_llm(chat_return: str = '["q"]') -> LLMClient:
+    """Create an LLMClient with a patched chat method."""
+    from frais.config import ProviderConfig
+    from frais.providers import ModelInfo, Provider
 
-    def summarize_candidate(self, candidate):
-        return "发现上游新版本，建议重新构建。"
+    p = Provider(id="test", name="Test", base_url="https://api.test.com",
+                 models=[ModelInfo(id="test-model", name="Test Model")])
+    config = ProviderConfig(provider=p, model="test-model", api_key="sk-test")
+    client = LLMClient(config)
+    return client
+
+
+# --- standalone research function tests ---
+
+
+def test_generate_search_queries_parses_json_array(monkeypatch) -> None:
+    client = _dummy_llm()
+    monkeypatch.setattr(client, "chat", lambda *a, **kw: '["query one", "query two"]')
+    item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
+    result = generate_search_queries(client, item)
+    assert result == ["query one", "query two"]
+
+
+def test_generate_search_queries_extracts_from_markdown(monkeypatch) -> None:
+    client = _dummy_llm()
+    monkeypatch.setattr(client, "chat", lambda *a, **kw: '```json\n["q1", "q2"]\n```')
+    item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
+    result = generate_search_queries(client, item)
+    assert result == ["q1", "q2"]
+
+
+def test_generate_search_queries_empty_on_parse_failure(monkeypatch) -> None:
+    client = _dummy_llm()
+    monkeypatch.setattr(client, "chat", lambda *a, **kw: "not json at all")
+    item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
+    result = generate_search_queries(client, item)
+    assert result == []
+
+
+def test_generate_search_queries_passes_disable_thinking(monkeypatch) -> None:
+    client = _dummy_llm()
+    calls = []
+    def capture(system, user, max_tokens=None, disable_thinking=False):
+        calls.append(disable_thinking)
+        return '["q"]'
+    monkeypatch.setattr(client, "chat", capture)
+    item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
+    generate_search_queries(client, item)
+    assert calls == [True]
+
+
+def test_pick_urls_limits_to_three(monkeypatch) -> None:
+    client = _dummy_llm()
+    monkeypatch.setattr(client, "chat", lambda *a, **kw: '["u1","u2","u3","u4"]')
+    item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
+    result = pick_urls(client, item, [{"title": "t", "url": "u", "snippet": "s"}])
+    assert result == ["u1", "u2", "u3"]
+
+
+def test_pick_urls_passes_disable_thinking(monkeypatch) -> None:
+    client = _dummy_llm()
+    calls = []
+    monkeypatch.setattr(client, "chat", lambda *a, **kw: calls.append(kw.get("disable_thinking")) or '["u"]')
+    item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
+    pick_urls(client, item, [])
+    assert calls == [True]
+
+
+def test_extract_version_returns_research_result(monkeypatch) -> None:
+    client = _dummy_llm()
+    response = json.dumps({"latest_version": "2.0", "confidence": "high", "evidence": ["changelog"], "release_notes": "Bug fixes"})
+    monkeypatch.setattr(client, "chat", lambda *a, **kw: response)
+    item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
+    result = extract_version(client, item, {"https://example.com": "content"})
+    assert result.latest_version == "2.0"
+    assert result.confidence == "high"
+    assert result.evidence == ["changelog"]
+    assert result.release_notes == "Bug fixes"
+
+
+def test_extract_version_passes_disable_thinking(monkeypatch) -> None:
+    client = _dummy_llm()
+    calls = []
+    monkeypatch.setattr(client, "chat", lambda *a, **kw: calls.append(kw.get("disable_thinking")) or "{}")
+    item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
+    extract_version(client, item, {})
+    assert calls == [True]
+
+
+# --- research_application_update tests ---
 
 
 def test_local_build_can_be_update_candidate(monkeypatch) -> None:
-    # Mock web_search and web_fetch_batch to avoid network calls
+    monkeypatch.setattr(research, "generate_search_queries", lambda llm, item: ["Tool macOS latest version"])
+    monkeypatch.setattr(research, "pick_urls", lambda llm, item, results: ["https://github.com/example/tool/releases"])
+    monkeypatch.setattr(research, "extract_version", lambda llm, item, content: ResearchResult(
+        latest_version="0.4.0", confidence="high",
+        evidence=["https://github.com/example/tool/releases/tag/v0.4.0"],
+        release_notes="fixes",
+    ))
     monkeypatch.setattr(research, "web_search", lambda q: [{"title": "Tool", "url": "https://github.com/example/tool/releases", "snippet": ""}])
     monkeypatch.setattr(research, "web_fetch_batch", lambda urls: {u: "Tag: v0.4.0" for u in urls})
 
-    item = SoftwareItem(
-        id="com.example.tool",
-        name="Tool",
-        kind="application",
-        source=SourceKind.LOCAL_BUILD,
-        current_version="0.3.0",
-    )
-
-    candidate = research.research_application_update(FakeAgent(), item)
+    item = SoftwareItem(id="com.example.tool", name="Tool", kind="application", source=SourceKind.LOCAL_BUILD, current_version="0.3.0")
+    candidate = research_application_update(_dummy_llm(), item)
 
     assert candidate is not None
     assert candidate.latest_version == "0.4.0"
@@ -62,27 +144,13 @@ def test_is_newer_handles_missing_versions() -> None:
     assert not _is_newer("1.0", None)
 
 
-# --- attach_ai_summaries ---
-
-
-def _make_test_candidate(name: str = "TestApp") -> UpdateCandidate:
-    item = SoftwareItem(
-        id=f"com.example.{name.lower()}",
-        name=name,
-        kind="application",
-        source=SourceKind.APPLICATION,
-        current_version="1.0",
-    )
-    return UpdateCandidate(item=item, latest_version="2.0")
-
-
 # --- research_application_update iTunes fast path ---
 
 
 def test_research_app_store_returns_candidate_when_newer(monkeypatch) -> None:
     monkeypatch.setattr(research, "check_app_store_version", lambda item: ("2.0", 12345))
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APP_STORE, current_version="1.0")
-    result = research_application_update(FakeAgent(), item)
+    result = research_application_update(_dummy_llm(), item)
     assert result is not None
     assert result.latest_version == "2.0"
     assert result.command == ["open", "macappstore://apps.apple.com/app/id12345"]
@@ -91,17 +159,19 @@ def test_research_app_store_returns_candidate_when_newer(monkeypatch) -> None:
 def test_research_app_store_returns_none_when_up_to_date(monkeypatch) -> None:
     monkeypatch.setattr(research, "check_app_store_version", lambda item: ("1.0", None))
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APP_STORE, current_version="1.0")
-    result = research_application_update(FakeAgent(), item)
+    result = research_application_update(_dummy_llm(), item)
     assert result is None
 
 
 def test_research_app_store_falls_through_when_no_itunes_result(monkeypatch) -> None:
-    # FakeAgent returns latest_version "0.4.0" — make current older so it's newer
     monkeypatch.setattr(research, "check_app_store_version", lambda item: (None, None))
+    monkeypatch.setattr(research, "generate_search_queries", lambda llm, item: ["q"])
+    monkeypatch.setattr(research, "pick_urls", lambda llm, item, results: ["https://example.com"])
+    monkeypatch.setattr(research, "extract_version", lambda llm, item, content: ResearchResult(latest_version="0.4.0", confidence="high"))
     monkeypatch.setattr(research, "web_search", lambda q: [{"title": "T", "url": "https://example.com", "snippet": ""}])
     monkeypatch.setattr(research, "web_fetch_batch", lambda urls: {u: "v0.4.0" for u in urls})
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APP_STORE, current_version="0.3.0")
-    result = research_application_update(FakeAgent(), item)
+    result = research_application_update(_dummy_llm(), item)
     assert result is not None
     assert result.latest_version == "0.4.0"
 
@@ -109,92 +179,46 @@ def test_research_app_store_falls_through_when_no_itunes_result(monkeypatch) -> 
 # --- _llm_structured_research failure paths ---
 
 
-class _FailingQueriesAgent:
-    def generate_search_queries(self, item):
-        raise RuntimeError("network error")
-
-    def pick_urls(self, item, results):
-        return []
-
-    def extract_version(self, item, fetched):
-        return ResearchResult()
-
-
 def test_structured_research_returns_none_when_generate_queries_fails(monkeypatch) -> None:
+    monkeypatch.setattr(research, "generate_search_queries", lambda llm, item: _raise(RuntimeError("network error")))
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
-    result = research_application_update(_FailingQueriesAgent(), item)
+    result = research_application_update(_dummy_llm(), item)
     assert result is None
-
-
-class _EmptyQueriesAgent:
-    def generate_search_queries(self, item):
-        return []
-
-    def pick_urls(self, item, results):
-        return []
-
-    def extract_version(self, item, fetched):
-        return ResearchResult()
 
 
 def test_structured_research_returns_none_when_no_queries(monkeypatch) -> None:
+    monkeypatch.setattr(research, "generate_search_queries", lambda llm, item: [])
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
-    result = research_application_update(_EmptyQueriesAgent(), item)
+    result = research_application_update(_dummy_llm(), item)
     assert result is None
-
-
-class _FailingPickUrlsAgent:
-    def generate_search_queries(self, item):
-        return ["q"]
-
-    def pick_urls(self, item, results):
-        raise RuntimeError("fail")
-
-    def extract_version(self, item, fetched):
-        return ResearchResult()
 
 
 def test_structured_research_returns_none_when_pick_urls_fails(monkeypatch) -> None:
+    monkeypatch.setattr(research, "generate_search_queries", lambda llm, item: ["q"])
+    monkeypatch.setattr(research, "pick_urls", lambda llm, item, results: _raise(RuntimeError("fail")))
     monkeypatch.setattr(research, "web_search", lambda q: [{"title": "T", "url": "https://x.com", "snippet": ""}])
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
-    result = research_application_update(_FailingPickUrlsAgent(), item)
+    result = research_application_update(_dummy_llm(), item)
     assert result is None
-
-
-class _EmptyPickUrlsAgent:
-    def generate_search_queries(self, item):
-        return ["q"]
-
-    def pick_urls(self, item, results):
-        return []
-
-    def extract_version(self, item, fetched):
-        return ResearchResult()
 
 
 def test_structured_research_returns_none_when_no_urls_picked(monkeypatch) -> None:
+    monkeypatch.setattr(research, "generate_search_queries", lambda llm, item: ["q"])
+    monkeypatch.setattr(research, "pick_urls", lambda llm, item, results: [])
     monkeypatch.setattr(research, "web_search", lambda q: [{"title": "T", "url": "https://x.com", "snippet": ""}])
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
-    result = research_application_update(_EmptyPickUrlsAgent(), item)
+    result = research_application_update(_dummy_llm(), item)
     assert result is None
 
 
-class _FailingExtractAgent:
-    def generate_search_queries(self, item):
-        return ["q"]
-
-    def pick_urls(self, item, results):
-        return ["https://x.com"]
-
-    def extract_version(self, item, fetched):
-        raise RuntimeError("fail")
-
-
 def test_structured_research_returns_none_when_extract_fails(monkeypatch) -> None:
+    monkeypatch.setattr(research, "generate_search_queries", lambda llm, item: ["q"])
+    monkeypatch.setattr(research, "pick_urls", lambda llm, item, results: ["https://x.com"])
+    monkeypatch.setattr(research, "extract_version", lambda llm, item, content: _raise(RuntimeError("fail")))
     monkeypatch.setattr(research, "web_search", lambda q: [{"title": "T", "url": "https://x.com", "snippet": ""}])
     monkeypatch.setattr(research, "web_fetch_batch", lambda urls: {u: "content" for u in urls})
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
-    result = research_application_update(_FailingExtractAgent(), item)
+    result = research_application_update(_dummy_llm(), item)
     assert result is None
 
 

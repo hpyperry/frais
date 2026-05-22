@@ -1,61 +1,50 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Callable
 
-from ..models import PluginScanResult, SoftwareItem, SystemProfile, UpdateCandidate
+from ..models import PluginScanResult, SystemProfile, UpdateCandidate
 
 
 class ScannerPlugin(ABC):
     name: str
     enabled_by_default: bool = False
     display_color: str = "white"
+    scan_steps: list[str] = []
 
     @abstractmethod
     def is_available(self) -> bool:
         raise NotImplementedError
 
     @abstractmethod
-    def scan(self, system: SystemProfile) -> PluginScanResult:
-        """Return items that need attention. For --all mode see scan_all()."""
+    def scan(self, system: SystemProfile,
+             on_progress: Callable[[int, int], None] | None = None,
+             max_workers: int = 10) -> PluginScanResult:
+        """Return items that need attention, with candidates for outdated software.
+
+        *on_progress(step_index, items_done)* is called by the plugin to report
+        progress through its :attr:`scan_steps`. The CLI uses this to drive
+        the progress bar — plugins own the step definitions and pacing.
+
+        *max_workers* controls internal concurrency for plugins that do
+        parallel research (e.g. ApplicationsPlugin LLM pipeline).
+        """
         raise NotImplementedError
 
-    def scan_all(self, system: SystemProfile) -> PluginScanResult:
-        """Return ALL installed items. Default: same as scan()."""
-        return self.scan(system)
-
-    def research(self, agent, item: SoftwareItem) -> UpdateCandidate | None:
-        """Research whether a newer version exists for *item*. Override to enable.
-
-        The *agent* parameter is an :class:`LLMClient` for LLM-based research.
-        Plugins may ignore it and use their own strategy (e.g. a package-registry
-        API).  Return ``None`` when the item is already up-to-date or research is
-        not possible.
-        """
-        return None
-
-    @property
-    def needs_research(self) -> bool:
-        """True when the plugin overrides :meth:`research`."""
-        return type(self).research is not ScannerPlugin.research
+    def scan_all(self, system: SystemProfile,
+                 on_progress: Callable[[int, int], None] | None = None,
+                 max_workers: int = 10) -> PluginScanResult:
+        """Return ALL installed items. Default: same as :meth:`scan`."""
+        return self.scan(system, on_progress=on_progress, max_workers=max_workers)
 
     def update(self, candidate: UpdateCandidate) -> bool:
-        """Execute the update for *candidate*. Return True on success.
-
-        The default runs ``candidate.command`` via ``subprocess``.
-        Override for plugin-specific update behavior (e.g. opening the
-        App Store page).
-        """
+        """Execute the update for *candidate*. Default: subprocess.run(candidate.command)."""
         if candidate.can_auto_update and candidate.command:
             import subprocess
             subprocess.run(candidate.command, check=False)
             return True
         return False
 
-    @property
-    def needs_update(self) -> bool:
-        """True when the plugin overrides :meth:`update`."""
-        return type(self).update is not ScannerPlugin.update
-
     def summarize(self, agent, candidate: UpdateCandidate) -> str | None:
-        """Generate a human-readable summary for a candidate. Default: LLM."""
+        """Generate a human-readable summary. Default: uses LLM."""
         return agent.summarize_candidate(candidate)

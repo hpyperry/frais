@@ -8,35 +8,10 @@ from typing import Any
 import httpx
 
 from .config import ProviderConfig
-from .models import ResearchResult, SoftwareItem, UpdateCandidate
+from .models import UpdateCandidate
 from .providers import get_model_thinking_param
 
 logger = logging.getLogger(__name__)
-
-_SEARCH_QUERIES_PROMPT = (
-    "You are a macOS software update research assistant. "
-    "Given an application, generate 2-3 web search queries to find its latest version. "
-    "Return ONLY a JSON array of query strings.\n"
-    "Example: [\"Keka macOS latest version download\", \"Keka changelog 2026\"]\n"
-    "Focus on: official download pages, GitHub releases, changelog pages."
-)
-
-_PICK_URLS_PROMPT = (
-    "You are a macOS software update research assistant. "
-    "Given search results for an application, pick the top 3 URLs most likely to contain "
-    "the latest version number. Return ONLY a JSON array of URL strings.\n"
-    "Prefer: official download pages, GitHub releases, version history pages.\n"
-    "Avoid: forums, blog posts, review sites."
-)
-
-_EXTRACT_VERSION_PROMPT = (
-    "You are a macOS software update research assistant. "
-    "Given web page content, extract the latest version of the application.\n"
-    "Return ONLY JSON:\n"
-    '{"latest_version":"x.y.z or null","confidence":"high/medium/low/unknown",'
-    '"evidence":["..."],"release_notes_url":"...","download_url":"...",'
-    '"source_repo_url":"...","release_notes":"..."}'
-)
 
 _SUMMARIZE_PROMPT = (
     "Summarize the update recommendation for this software in concise Chinese. "
@@ -53,61 +28,19 @@ class LLMClient:
             raise ValueError("LLM config is incomplete. Run `frais config manage`.")
         self.config = config
 
-    def generate_search_queries(self, item: SoftwareItem) -> list[str]:
-        """Step 1: LLM generates search queries for finding the latest version."""
-        prompt = (
-            f"App: {item.name}, bundle: {item.id}, "
-            f"current: {item.current_version or 'unknown'}, "
-            f"source: {item.source.value}."
-        )
-        text = self._chat(_SEARCH_QUERIES_PROMPT, prompt, disable_thinking=True)
-        return _parse_json_list(text)
-
-    def pick_urls(self, item: SoftwareItem, search_results: list[dict[str, str]]) -> list[str]:
-        """Step 2: LLM picks the most promising URLs from search results."""
-        results_text = json.dumps(
-            [{"title": r["title"], "url": r["url"], "snippet": r.get("snippet", "")} for r in search_results],
-            ensure_ascii=False,
-        )
-        prompt = f"App: {item.name}\n\nSearch results:\n{results_text}"
-        text = self._chat(_PICK_URLS_PROMPT, prompt, disable_thinking=True)
-        return _parse_json_list(text)[:3]
-
-    def extract_version(self, item: SoftwareItem, fetched_content: dict[str, str]) -> ResearchResult:
-        """Step 3: LLM extracts version info from fetched page content."""
-        content_text = json.dumps(
-            [{"url": url, "content": content[:3000]} for url, content in fetched_content.items()],
-            ensure_ascii=False,
-        )
-        prompt = (
-            f"App: {item.name}, current version: {item.current_version or 'unknown'}\n\n"
-            f"Page contents:\n{content_text}"
-        )
-        text = self._chat(_EXTRACT_VERSION_PROMPT, prompt, disable_thinking=True)
-        data = _parse_json_object(text)
-        return ResearchResult(
-            latest_version=data.get("latest_version"),
-            release_notes_url=data.get("release_notes_url"),
-            download_url=data.get("download_url"),
-            source_repo_url=data.get("source_repo_url"),
-            confidence=data.get("confidence") or "unknown",
-            evidence=_ensure_list(data.get("evidence")),
-            release_notes=data.get("release_notes"),
-        )
-
     def summarize_candidate(self, candidate: UpdateCandidate) -> str:
         """Generate Chinese-language update summary."""
         prompt = (
             f"{_SUMMARIZE_PROMPT}\n\n"
             f"Candidate: {json.dumps(candidate.to_dict(), ensure_ascii=False)}"
         )
-        return self._chat("", prompt)
+        return self.chat("", prompt)
 
     def test_connection(self) -> str:
-        return self._chat("", "Reply with exactly: ok", max_tokens=64)
+        return self.chat("", "Reply with exactly: ok", max_tokens=64)
 
-    def _chat(self, system: str, user: str, max_tokens: int | None = None,
-              disable_thinking: bool = False) -> str:
+    def chat(self, system: str, user: str, max_tokens: int | None = None,
+             disable_thinking: bool = False) -> str:
         url = self.config.provider.chat_url
         messages: list[dict[str, Any]] = []
         if system:

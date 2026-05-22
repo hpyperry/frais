@@ -4,7 +4,9 @@ import hashlib
 import logging
 import plistlib
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Callable
 
 from ...models import PluginScanResult, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
 from ..base import ScannerPlugin
@@ -18,22 +20,53 @@ class ApplicationsPlugin(ScannerPlugin):
     name = "applications"
     enabled_by_default = True
     display_color = "cyan"
+    scan_steps = ["discovering apps", "researching latest versions"]
 
     def is_available(self) -> bool:
         return True
 
-    def scan(self, system: SystemProfile) -> PluginScanResult:
+    def scan(self, system: SystemProfile,
+             on_progress: Callable[[int, int], None] | None = None,
+             max_workers: int = 10) -> PluginScanResult:
+        # Step 1: discover all installed applications
         items = scan_applications(system.applications_paths)
         logger.info("applications scan found=%d", len(items))
-        return PluginScanResult(items=items, candidates=[], skipped=[])
+        if on_progress:
+            on_progress(0, len(items))
 
-    def research(self, llm, item: SoftwareItem) -> UpdateCandidate | None:
-        """Use the 3-step LLM pipeline to find latest versions."""
+        # Step 2: research latest versions for non-App-Store apps
+        from ...config import require_config
+        from ...llm import LLMClient
+
         try:
-            return research_application_update(llm, item)
-        except Exception as exc:
-            logger.warning("research failed for %s: %s", item.name, exc)
-            return None
+            config = require_config()
+            llm = LLMClient(config)
+        except (ValueError, RuntimeError) as exc:
+            logger.warning("LLM not available for applications research: %s", exc)
+            return PluginScanResult(items=items, candidates=[], skipped=[str(exc)])
+
+        candidates: list[UpdateCandidate] = []
+        to_research = [it for it in items if it.source != SourceKind.APP_STORE]
+        researched = 0
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {pool.submit(research_application_update, llm, it): it for it in to_research}
+            for future in as_completed(futures):
+                researched += 1
+                try:
+                    candidate = future.result()
+                except Exception as exc:
+                    logger.warning("research failed: %s", exc)
+                    if on_progress:
+                        on_progress(1, researched)
+                    continue
+                if candidate:
+                    candidates.append(candidate)
+                if on_progress:
+                    on_progress(1, researched)
+
+        logger.info("applications research done candidates=%d", len(candidates))
+        return PluginScanResult(items=items, candidates=candidates)
 
     def update(self, candidate: UpdateCandidate) -> bool:
         if candidate.item.source == SourceKind.APP_STORE:

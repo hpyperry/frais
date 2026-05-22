@@ -65,9 +65,6 @@ class ResearchResult:
     evidence: list[str] = field(default_factory=list)
     release_notes: str | None = None
 
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
 
 @dataclass(slots=True)
 class DependencyImpact:
@@ -148,20 +145,6 @@ class ScanResult:
         for pr in self.plugin_results.values():
             candidates.extend(pr.candidates)
         return candidates
-
-    @property
-    def all_items(self) -> list[SoftwareItem]:
-        items: list[SoftwareItem] = []
-        for pr in self.plugin_results.values():
-            items.extend(pr.items)
-        return items
-
-    @property
-    def all_skipped(self) -> list[str]:
-        skipped: list[str] = []
-        for pr in self.plugin_results.values():
-            skipped.extend(pr.skipped)
-        return skipped
 
     def to_dict(self) -> dict[str, Any]:
         return {

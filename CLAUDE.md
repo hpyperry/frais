@@ -54,10 +54,11 @@ src/frais/
                         #   PluginScanResult, ScanResult, ResearchResult, etc.
   providers.py          # Curated provider registry: 7 providers with models, URLs, thinking params
   config.py             # ProviderConfig: reads ~/.frais/config/config.toml, env var overrides
-  llm.py                # LLMClient — structured 3-step research calls (generate queries, pick URLs,
-                        #   extract version) + JSON helpers + LLMRequestError
+  llm.py                # LLMClient — chat, summarize_candidate, test_connection,
+                        #   JSON helpers + LLMRequestError (generic LLM infrastructure)
+  coordinator.py        # Orchestration: select_plugins, run_scan, run_summaries
+                        #   Shared by advise, scan, summarize commands
   tools.py              # Web tools: web_search (DDGS), web_fetch, web_fetch_batch
-  summarize.py          # Batch LLM summary generation (generate_summaries)
   system.py             # macOS detection
   ignore.py             # Ignore list: load/save/add/remove (~/.frais/config/ignore.txt)
   cli.py                # Typer app: doctor, advise, update, config, plugins, ignore
@@ -71,14 +72,15 @@ src/frais/
     applications/
       __init__.py        # ApplicationsPlugin + scan_applications, read_application, classify_source
       _store.py          # iTunes API (check_app_store_version, resolve_app_store_command)
-      _research.py       # LLM 3-step pipeline + version helpers (_is_newer, _normalize, etc.)
+      _research.py       # LLM 3-step pipeline (generate_search_queries, pick_urls,
+                        #   extract_version) + version helpers + research_application_update
     homebrew/
       __init__.py        # HomebrewPlugin + brew info/uses helpers
     npm/
       __init__.py        # NpmPlugin
 ```
 
-Design principle: all functionality is plugin-based. The CLI only provides `plugins`, `config`, `ignore`, and `doctor` commands. The `advise` command is a pure dispatcher that delegates everything (scan, research, update) to plugins via the `ScannerPlugin` ABC. Each plugin lives in its own subdirectory under `plugins/`. `applications/_store.py` and `applications/_research.py` are private to the applications plugin — the iTunes fast path and LLM research pipeline are internal implementation details of `ApplicationsPlugin`, not general capabilities.
+Design principle: all functionality is plugin-based. The CLI provides `plugins`, `config`, `ignore`, `doctor`, and the new atomic commands `scan` and `summarize` (for agent/LLM consumption). The `advise` command is a convenience dispatcher that composes scan + summarize. Each plugin owns its entire scan pipeline internally — ApplicationsPlugin does discovery + LLM research in one call; Homebrew/npm do a single step. `applications/_store.py` and `applications/_research.py` are private to the applications plugin.
 
 ## Plugin interface
 
@@ -86,37 +88,30 @@ Design principle: all functionality is plugin-based. The CLI only provides `plug
 class ScannerPlugin(ABC):
     name: str
     enabled_by_default: bool = False
-    display_color: str = "white"  # Rich color for result headers
+    display_color: str = "white"
+    scan_steps: list[str] = []   # e.g. ["discovering apps", "researching"]
 
     @abstractmethod
     def is_available(self) -> bool: ...
 
     @abstractmethod
-    def scan(self, system) -> PluginScanResult: ...
-    """Return items that need attention (outdated / to-research)."""
+    def scan(self, system, on_progress=None, max_workers=10) -> PluginScanResult:
+        """Discover items and determine which need updates.
+        Plugins own their entire scan pipeline internally — ApplicationsPlugin
+        does discovery + LLM research in one call; Homebrew/npm do a single step.
+        on_progress(step_index, items_done) drives CLI progress bars."""
 
-    def scan_all(self, system) -> PluginScanResult:
-        """Return ALL installed items. Used when --all is passed. Default: =scan()."""
-        return self.scan(system)
-
-    def research(self, llm, item) -> UpdateCandidate | None:
-        """Research latest version for a single item. Override to enable.
-        Returns None if up-to-date or not possible. Default no-op."""
-
-    @property
-    def needs_research(self) -> bool:
-        """True if subclass overrides research(). Auto-detected."""
+    def scan_all(self, system, on_progress=None, max_workers=10) -> PluginScanResult:
+        """Return ALL installed items. Default: same as scan()."""
+        return self.scan(system, on_progress=on_progress, max_workers=max_workers)
 
     def update(self, candidate) -> bool:
         """Execute the update. Default: subprocess.run(candidate.command).
         Override for plugin-specific behavior (e.g. App Store deep link)."""
 
-    @property
-    def needs_update(self) -> bool:
-        """True if subclass overrides update(). Auto-detected."""
-
     def summarize(self, llm, candidate) -> str | None:
-        """Generate human-readable summary. Default: uses LLMClient."""
+        """Generate human-readable summary. Default: uses LLMClient.
+        Called by CLI advise for each candidate. Override for custom summaries."""
 ```
 
 All plugins are registered via entry points in `pyproject.toml`:
@@ -152,15 +147,14 @@ class ScanResult:
 
 ## Concurrency model
 
-Three layers of concurrency:
+Two layers of concurrency:
 
-1. **Scan layer**: all enabled plugins run in parallel via a `ThreadPoolExecutor`. Each plugin writes into its own `PluginScanResult` slot.
-2. **Research layer**: research tasks are submitted as soon as each plugin's scan completes. Research completions are interleaved with pending scan completions via `wait(FIRST_COMPLETED)`, so progress updates immediately rather than waiting for all scans to finish. Concurrency controlled by `-j` (default 10).
-3. **Summary layer**: AI summaries for all candidates across all plugins are generated concurrently.
+1. **Scan layer**: all enabled plugins run in parallel via a `ThreadPoolExecutor`. Each plugin owns its internal concurrency — ApplicationsPlugin uses `max_workers` for parallel LLM research during scan; Homebrew/npm do a single subprocess call.
+2. **Summary layer**: `plugin.summarize()` called concurrently for all candidates via `coordinator.run_summaries()`.
 
 ## Research flow (ApplicationsPlugin-private)
 
-The LLM 3-step research pipeline lives in `plugins/applications/_research.py` — it is an internal implementation detail of `ApplicationsPlugin`, not a general capability.
+The LLM 3-step research pipeline lives in `plugins/applications/_research.py` — an internal implementation detail of `ApplicationsPlugin.scan()`, not a general capability.
 
 Each non-App Store app goes through a structured 3-step pipeline:
 
@@ -175,10 +169,18 @@ Plugins that don't need research (Homebrew, npm) skip the LLM pipeline entirely 
 ## Data flow
 
 **`advise` command**:
-1. Select enabled plugins via `_select_plugins()` (respects `--apps-only`, `--plugins`)
-2. Scan + Research interleaved: all plugin scans submitted to a scan pool. As each scan completes, research tasks are submitted to a research pool and their futures tracked. A single `while pending:` loop with `wait(FIRST_COMPLETED)` handles both scan and research completions, so progress bars update immediately — no waiting for slow scans (e.g. homebrew) to finish before showing fast scan (applications) research progress.
-3. Summaries: generate Chinese-language LLM summaries for all `all_candidates` in a single progress task.
-4. Display with `_print_advise_result()` — when `--all`, shows up-to-date items grouped by plugin; without `--all`, only shows items with candidates.
+1. Select enabled plugins via `coordinator.select_plugins()` (respects `--apps-only`, `--plugins`)
+2. Scan: all plugins call `plugin.scan()` concurrently via `coordinator.run_scan()`. Each plugin owns its internal steps — ApplicationsPlugin does discovery + LLM research; Homebrew/npm do a single package-manager call. Plugins report progress via `on_progress(step_index, items_done)` which drives the Rich progress bar.
+3. Summaries: `coordinator.run_summaries()` calls `plugin.summarize()` for each candidate, run concurrently.
+4. Display with `_print_advise_result()` — when `--all`, shows up-to-date items grouped by plugin; otherwise only shows items with candidates.
+
+**`scan` command** (agent tool):
+1. Same scan logic as advise step 2, without summaries or Rich UI.
+2. `--json` outputs machine-readable JSON for external agent consumption.
+
+**`summarize <id>` command** (agent tool):
+1. Loads cached scan result, finds candidate by item_id.
+2. Calls `plugin.summarize()` and prints the result.
 
 ## Key patterns
 

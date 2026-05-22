@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import json
-
 import httpx
 import pytest
 
 from frais.llm import LLMClient, LLMRequestError, _ensure_list, _extract_json, _parse_json_list, _parse_json_object
 from frais.config import ProviderConfig
-from frais.models import ResearchResult, SoftwareItem, SourceKind, UpdateCandidate
+from frais.models import SoftwareItem, SourceKind, UpdateCandidate
 from frais.providers import PROVIDERS, ModelInfo, Provider, get_model_thinking_param, get_provider
 
 
@@ -106,81 +104,9 @@ class TestLLMClientInit:
         assert client.config.model == "test-model"
 
 
-class TestGenerateSearchQueries:
-    def test_parses_json_array(self, monkeypatch) -> None:
-        monkeypatch.setattr(LLMClient, "_chat", lambda *a, **kw: '["query one", "query two"]')
-        client = LLMClient(_test_config())
-        item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
-        result = client.generate_search_queries(item)
-        assert result == ["query one", "query two"]
-
-    def test_extracts_from_markdown_fence(self, monkeypatch) -> None:
-        monkeypatch.setattr(LLMClient, "_chat", lambda *a, **kw: '```json\n["q1", "q2"]\n```')
-        client = LLMClient(_test_config())
-        item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
-        result = client.generate_search_queries(item)
-        assert result == ["q1", "q2"]
-
-    def test_returns_empty_on_parse_failure(self, monkeypatch) -> None:
-        monkeypatch.setattr(LLMClient, "_chat", lambda *a, **kw: "not json at all")
-        client = LLMClient(_test_config())
-        item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
-        result = client.generate_search_queries(item)
-        assert result == []
-
-    def test_passes_disable_thinking_true(self, monkeypatch) -> None:
-        calls = []
-        def capture_chat(inst, system, user, max_tokens=None, disable_thinking=False):
-            calls.append(disable_thinking)
-            return '["q"]'
-        monkeypatch.setattr(LLMClient, "_chat", capture_chat)
-        client = LLMClient(_test_config())
-        item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
-        client.generate_search_queries(item)
-        assert calls == [True]
-
-
-class TestPickUrls:
-    def test_limits_to_three(self, monkeypatch) -> None:
-        monkeypatch.setattr(LLMClient, "_chat", lambda *a, **kw: '["u1","u2","u3","u4"]')
-        client = LLMClient(_test_config())
-        item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
-        result = client.pick_urls(item, [{"title": "t", "url": "u", "snippet": "s"}])
-        assert result == ["u1", "u2", "u3"]
-
-    def test_passes_disable_thinking(self, monkeypatch) -> None:
-        calls = []
-        monkeypatch.setattr(LLMClient, "_chat", lambda *a, **kw: calls.append(kw.get("disable_thinking")) or '["u"]')
-        client = LLMClient(_test_config())
-        item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
-        client.pick_urls(item, [])
-        assert calls == [True]
-
-
-class TestExtractVersion:
-    def test_returns_research_result(self, monkeypatch) -> None:
-        response = json.dumps({"latest_version": "2.0", "confidence": "high", "evidence": ["changelog"], "release_notes": "Bug fixes"})
-        monkeypatch.setattr(LLMClient, "_chat", lambda *a, **kw: response)
-        client = LLMClient(_test_config())
-        item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
-        result = client.extract_version(item, {"https://example.com": "content"})
-        assert result.latest_version == "2.0"
-        assert result.confidence == "high"
-        assert result.evidence == ["changelog"]
-        assert result.release_notes == "Bug fixes"
-
-    def test_passes_disable_thinking(self, monkeypatch) -> None:
-        calls = []
-        monkeypatch.setattr(LLMClient, "_chat", lambda *a, **kw: calls.append(kw.get("disable_thinking")) or "{}")
-        client = LLMClient(_test_config())
-        item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
-        client.extract_version(item, {})
-        assert calls == [True]
-
-
 class TestSummarizeCandidate:
     def test_returns_summary_string(self, monkeypatch) -> None:
-        monkeypatch.setattr(LLMClient, "_chat", lambda *a, **kw: "建议立即更新")
+        monkeypatch.setattr(LLMClient, "chat", lambda *a, **kw: "建议立即更新")
         client = LLMClient(_test_config())
         item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
         candidate = UpdateCandidate(item=item, latest_version="2.0")
@@ -190,7 +116,7 @@ class TestSummarizeCandidate:
 
 class TestTestConnection:
     def test_returns_ok(self, monkeypatch) -> None:
-        monkeypatch.setattr(LLMClient, "_chat", lambda *a, **kw: "ok")
+        monkeypatch.setattr(LLMClient, "chat", lambda *a, **kw: "ok")
         client = LLMClient(_test_config())
         assert client.test_connection() == "ok"
 
@@ -201,7 +127,7 @@ class TestChat:
             return {"choices": [{"message": {"content": "hello"}}]}
         monkeypatch.setattr(LLMClient, "_post", fake_post)
         client = LLMClient(_test_config())
-        result = client._chat("system prompt", "user prompt")
+        result = client.chat("system prompt", "user prompt")
         assert result == "hello"
 
     def test_falls_back_to_reasoning_content(self, monkeypatch) -> None:
@@ -209,7 +135,7 @@ class TestChat:
             return {"choices": [{"message": {"reasoning_content": "thinking..."}}]}
         monkeypatch.setattr(LLMClient, "_post", fake_post)
         client = LLMClient(_test_config())
-        result = client._chat("", "user prompt")
+        result = client.chat("", "user prompt")
         assert result == "thinking..."
 
 

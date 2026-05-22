@@ -20,18 +20,22 @@ LLM features require user-owned configuration in `~/.frais/config/config.toml`. 
 ## Architecture
 
 ```
-User  ──▶  CLI (cli.py)  ──▶  Scan (plugins/)  ──▶  Research (plugin-private)  ──▶  Update (plugins/)
-         Pure dispatcher        │                              │
-                                │  applications/               │  applications/_store.py (iTunes)
-                                │  homebrew/                   │  applications/_research.py (LLM)
-                                │  npm/                        │  homebrew/npm skip research
-                                │                              │
-                           PluginScanResult              UpdateCandidate
+Agent LLM ──▶ frais scan --json           (structured output)
+              frais summarize <id> --json  (single summary)
+
+User     ──▶ frais advise                 (scan + summarize + Rich UI)
+              frais update                 (interactive execution)
+
+Internal:
+  CLI  ──▶ coordinator.py  ──▶ plugins/
+           select_plugins        applications/  (discover → research)
+           run_scan              homebrew/      (brew outdated)
+           run_summaries         npm/           (npm outdated)
 ```
 
 **Scan layer** — each plugin discovers installed software via its own `scan()` / `scan_all()` methods. Homebrew and NPM plugins can directly identify outdated packages from their package managers.
 
-**Research layer** (plugin-private) — only `ApplicationsPlugin` overrides `research()`. It uses a structured 3-step LLM pipeline: generate search queries → pick best URLs → extract version. App Store apps use the iTunes API directly (~1s). Both the iTunes fast path (`applications/_store.py`) and the LLM pipeline (`applications/_research.py`) are private to the applications plugin — they are not general infrastructure.
+**Research layer** (plugin-private) — only `ApplicationsPlugin` overrides `research()`. It uses a structured 3-step LLM pipeline: generate search queries → pick best URLs → extract version. App Store apps use the iTunes API directly (~1s). Both the iTunes fast path (`applications/_store.py`) and the LLM pipeline (`applications/_research.py`) are private to the applications plugin. Summaries are generated via `plugin.summarize()` per-candidate.
 
 **Update layer** — each plugin provides its own `update()` method. Homebrew runs `brew upgrade`, NPM runs `npm install -g`, and Applications resolve App Store deep links or prompt to open the `.app` bundle.
 

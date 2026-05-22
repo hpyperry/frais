@@ -83,32 +83,6 @@ def test_scan_result_all_candidates() -> None:
     assert len(result.all_candidates) == 2
 
 
-def test_scan_result_all_items() -> None:
-    item = SoftwareItem(id="a", name="A", kind="app", source=SourceKind.APPLICATION, current_version="1.0")
-    system = SystemProfile(os_name="macOS", os_version="15.0", arch="arm64", applications_paths=["/Applications"])
-    result = ScanResult(system=system, plugin_results={"apps": PluginScanResult(items=[item], candidates=[])})
-    assert len(result.all_items) == 1
-
-
-def test_scan_result_all_skipped() -> None:
-    system = SystemProfile(os_name="macOS", os_version="15.0", arch="arm64", applications_paths=["/Applications"])
-    result = ScanResult(system=system, plugin_results={
-        "apps": PluginScanResult(items=[], candidates=[], skipped=["err1"]),
-        "brew": PluginScanResult(items=[], candidates=[], skipped=["err2"]),
-    })
-    assert sorted(result.all_skipped) == ["err1", "err2"]
-
-
-# --- ResearchResult ---
-
-
-def test_research_result_to_dict() -> None:
-    rr = ResearchResult(latest_version="3.0", confidence="high", evidence=["https://example.com"], release_notes="New features")
-    data = rr.to_dict()
-    assert data["latest_version"] == "3.0"
-    assert data["confidence"] == "high"
-
-
 # --- DependencyImpact ---
 
 

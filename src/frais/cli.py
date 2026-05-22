@@ -6,7 +6,6 @@ import os
 import platform
 import signal
 import subprocess
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from pathlib import Path
 from typing import Annotated
 
@@ -21,8 +20,8 @@ from rich.table import Table
 
 from .config import CONFIG_PATH, load_config, require_config, save_config
 from .ignore import add_ignored, load_ignored, remove_ignored
-from .models import PluginScanResult, SoftwareItem, SourceKind, ScanResult, UpdateCandidate
-from .summarize import generate_summaries
+from .models import PluginScanResult, SourceKind, ScanResult, UpdateCandidate
+
 
 _DEFAULT_LOG_DIR = Path.home() / ".frais" / "log"
 _DEFAULT_LOG_FILE = _DEFAULT_LOG_DIR / "frais.log"
@@ -554,13 +553,16 @@ def advise(
 
     orig_handler = signal.signal(signal.SIGINT, _on_interrupt)
     try:
+        from .coordinator import run_summaries, select_plugins as _coord_select
+        from .plugins.registry import all_plugins
+
         system = detect_system()
         _explicit_plugins = _split_plugins(plugins)
-        active = _select_plugins(apps_only, _explicit_plugins)
+        active_plugins = _coord_select(apps_only, _explicit_plugins)
 
-        # Print system banner before scanning
+        # Print system banner
         console.print()
-        plugin_labels = ", ".join(active)
+        plugin_labels = ", ".join(active_plugins)
         console.print(
             f"  [bold cyan]OS:[/] {system.os_name} {system.os_version}  "
             f"[bold cyan]Arch:[/] {system.arch}  "
@@ -576,108 +578,70 @@ def advise(
             TimeElapsedColumn(),
             console=console,
         ) as progress:
-            # Phase 1: Scan + Research per-plugin (research starts as soon as scan done)
+            # Per-plugin scan tasks — step names from plugin.scan_steps
             plugin_tasks: dict[str, int] = {}
-            for name in active:
-                plugin_tasks[name] = progress.add_task(name, total=1)
-            result = ScanResult(system=system)
+            plugin_steps: dict[str, int] = {}  # current step index per plugin
+            plugin_active: dict[str, ScannerPlugin] = {}
+
+            for name in active_plugins:
+                p = all_plugins()[name]
+                plugin_active[name] = p
+                plugin_steps[name] = 0
+                label = p.scan_steps[0] if p.scan_steps else name
+                plugin_tasks[name] = progress.add_task(label, total=1)
+
+            def _on_plugin_progress(pname: str, step: int, done: int) -> None:
+                task_id = plugin_tasks.get(pname)
+                if task_id is None:
+                    return
+                plugin = plugin_active.get(pname)
+                if plugin and step != plugin_steps.get(pname):
+                    plugin_steps[pname] = step
+                    label = (plugin.scan_steps[step]
+                              if step < len(plugin.scan_steps)
+                              else pname)
+                    progress.update(task_id, description=label, total=1, completed=0)
+                progress.update(task_id, completed=done)
+
+            # Phase 1: concurrent scans — plugins own their steps
+            from .coordinator import run_scan
+            result = run_scan(plugin_active, system, show_all=show_all,
+                              jobs=jobs, on_plugin_progress=_on_plugin_progress)
+
+            # Apply ignore list
             ignored = load_ignored()
+            if ignored:
+                for pr in result.plugin_results.values():
+                    pr.items = [it for it in pr.items if it.id not in ignored]
+                    pr.candidates = [c for c in pr.candidates if c.item.id not in ignored]
 
-            researched_ids: set[str] = set()
-
-            with ThreadPoolExecutor(max_workers=max(1, len(active))) as scan_pool, \
-                 ThreadPoolExecutor(max_workers=jobs) as research_pool:
-
-                # Submit all scans
-                scan_futures: dict = {}
-                for name in active:
-                    plugin = all_plugins()[name]
-                    scan_fn = plugin.scan_all if show_all else plugin.scan
-                    scan_futures[scan_pool.submit(scan_fn, system)] = name
-
-                # Interleave scan and research completions so progress updates immediately
-                pending: set = set(scan_futures.keys())
-                research_futures: dict = {}
-
-                while pending:
-                    done, pending = wait(pending, return_when=FIRST_COMPLETED)
-                    for future in done:
-                        if future in scan_futures:
-                            # --- Scan completed ---
-                            name = scan_futures.pop(future)
-                            plugin = all_plugins()[name]
-                            task_id = plugin_tasks[name]
-                            try:
-                                pr = future.result()
-                            except Exception as exc:
-                                logger.warning("scan failed for %s: %s", name, exc)
-                                pr = PluginScanResult(skipped=[str(exc)])
-
-                            if ignored:
-                                pr.items = [it for it in pr.items if it.id not in ignored]
-                                pr.candidates = [c for c in pr.candidates if c.item.id not in ignored]
-
-                            result.plugin_results[name] = pr
-
-                            if plugin.needs_research:
-                                items_to_research = [it for it in pr.items
-                                                     if it.id not in {c.item.id for c in pr.candidates}]
-                                if items_to_research:
-                                    progress.update(task_id, total=len(items_to_research), completed=0,
-                                                    description=f"{name}    researching")
-                                    for it in items_to_research:
-                                        r_fut = research_pool.submit(plugin.research, llm, it)
-                                        research_futures[r_fut] = (name, it)
-                                        pending.add(r_fut)
-                                else:
-                                    progress.update(task_id, completed=1,
-                                                    description=f"{name}    {len(pr.items)} items, {len(pr.candidates)} updates")
-                            else:
-                                desc = f"{name}    {len(pr.items)} items"
-                                if pr.candidates:
-                                    desc += f", {len(pr.candidates)} updates"
-                                progress.update(task_id, completed=1, description=desc)
-
-                        else:
-                            # --- Research completed ---
-                            name, item = research_futures.pop(future)
-                            pr = result.plugin_results[name]
-                            task_id = plugin_tasks[name]
-                            researched_ids.add(item.id)
-                            try:
-                                candidate = future.result()
-                            except Exception as exc:
-                                logger.warning("research failed for %s: %s", item.name, exc)
-                                progress.advance(task_id)
-                                continue
-                            if candidate:
-                                pr.candidates.append(candidate)
-                            progress.advance(task_id)
-
-            # Finalize research plugin task descriptions
-            for name in active:
-                pr = result.plugin_results[name]
-                plugin = all_plugins()[name]
+            # Finalize scan task descriptions
+            for name in active_plugins:
+                pr = result.plugin_results.get(name)
+                if pr is None:
+                    continue
                 desc = f"{name}    {len(pr.items)} items"
                 if pr.candidates:
                     desc += f", {len(pr.candidates)} updates"
-                if plugin.needs_research:
-                    progress.update(plugin_tasks[name], total=1, completed=1, description=desc)
+                progress.update(plugin_tasks[name], total=1, completed=1, description=desc)
 
-
-
-
-            # Phase 3: Summaries
+            # Phase 2: Summaries
             all_candidates = result.all_candidates
             if all_candidates:
                 summarize_task = progress.add_task("Summaries", total=len(all_candidates))
-                generate_summaries(llm, all_candidates, max_workers=jobs, progress=progress, task_id=summarize_task)
+                candidate_plugin_map: dict[int, str] = {}
+                for pname, pr in result.plugin_results.items():
+                    for c in pr.candidates:
+                        candidate_plugin_map[id(c)] = pname
+                run_summaries(llm, all_candidates, candidate_plugin_map,
+                              plugin_active, max_workers=jobs,
+                              on_progress=lambda: progress.advance(summarize_task))
 
         if json_output:
             console.print_json(json.dumps(result.to_dict(), ensure_ascii=False))
             return
 
-        # Save advice cache for update command (atomic write via temp file)
+        # Save advice cache
         try:
             _DEFAULT_LOG_DIR.mkdir(parents=True, exist_ok=True)
             tmp_path = _ADVICE_CACHE.with_suffix(".tmp")
@@ -687,30 +651,148 @@ def advise(
         except OSError as exc:
             logger.warning("failed to save advice cache: %s", exc)
 
-        _print_advise_result(result, researched_ids, len(ignored), show_all=show_all)
-
+        _print_advise_result(result, len(ignored), show_all=show_all)
 
     finally:
         signal.signal(signal.SIGINT, orig_handler)
 
-def _select_plugins(apps_only: bool, explicit: list[str] | None) -> list[str]:
-    from .plugins.config import load_plugins_config
+
+@app.command()
+def scan(
+    plugins: Annotated[
+        str | None,
+        typer.Option(
+            "--plugins",
+            help="Comma-separated plugin names to scan (e.g. homebrew,npm).",
+            metavar="NAMES",
+        ),
+    ] = None,
+    show_all: Annotated[
+        bool,
+        typer.Option("--all", help="Show all installed software, including up-to-date items."),
+    ] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output structured JSON (for agent consumption)."),
+    ] = False,
+) -> None:
+    """Scan installed software for available updates.
+
+    Runs every enabled plugin's scan step and reports discovered items
+    and update candidates. With --json, prints machine-readable JSON
+    suitable for consumption by external agents.
+
+    Examples:
+      frais scan
+      frais scan --plugins applications --json
+      frais scan --all
+    """
+    from .coordinator import select_plugins as _coord_select
+    from .plugins.registry import all_plugins
+    from .system import detect_system
+
+    system = detect_system()
+    _explicit = _split_plugins(plugins)
+    active = _coord_select(apps_only=False, explicit=_explicit)
+
+    # Simple text-based progress for agent mode
+    if not json_output:
+        console.print()
+        console.print(f"Scanning with: {', '.join(active)}")
+
+    def _on_progress(pname: str, step: int, done: int) -> None:
+        if not json_output:
+            p = active.get(pname)
+            label = (p.scan_steps[step] if p and step < len(p.scan_steps) else pname)
+            console.print(f"  {pname}: {label} ({done})")
+
+    from .coordinator import run_scan as _run_scan
+    result = _run_scan(active, system, show_all=show_all,
+                       jobs=10, on_plugin_progress=_on_progress)
+
+    # Apply ignore list
+    from .ignore import load_ignored
+    ignored = load_ignored()
+    if ignored:
+        for pr in result.plugin_results.values():
+            pr.items = [it for it in pr.items if it.id not in ignored]
+            pr.candidates = [c for c in pr.candidates if c.item.id not in ignored]
+
+    if json_output:
+        console.print_json(json.dumps(result.to_dict(), ensure_ascii=False))
+    else:
+        _print_advise_result(result, len(ignored), show_all=show_all)
+
+
+@app.command()
+def summarize(
+    item_id: Annotated[
+        str,
+        typer.Argument(help="Item ID from a previous scan (e.g. com.example.app)."),
+    ],
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output structured JSON."),
+    ] = False,
+) -> None:
+    """Generate an AI summary for a single candidate.
+
+    Loads the cached result from the last `frais advise` or `frais scan` run,
+    finds the candidate matching *item_id*, and calls its plugin's summarize().
+
+    Examples:
+      frais summarize com.google.Chrome
+      frais summarize brew:node --json
+    """
+    if not _ADVICE_CACHE.exists():
+        console.print("No scan cache found. Run [bold]frais advise[/bold] or [bold]frais scan[/bold] first.")
+        raise typer.Exit(1)
+
+    try:
+        data = json.loads(_ADVICE_CACHE.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        console.print(f"Failed to read scan cache: {exc}")
+        raise typer.Exit(1)
+
+    from .llm import LLMClient
     from .plugins.registry import all_plugins
 
-    if apps_only:
-        return ["applications"]
-    if explicit:
-        return [name for name in explicit if name in all_plugins()]
+    # Find candidate and its plugin
+    candidate: UpdateCandidate | None = None
+    plugin_name: str | None = None
+    if "plugin_results" in data:
+        for pname, pr in data["plugin_results"].items():
+            for raw in pr.get("candidates", []):
+                if raw.get("item", {}).get("id") == item_id:
+                    try:
+                        candidate = UpdateCandidate.from_dict(raw)
+                    except Exception:
+                        continue
+                    plugin_name = pname
+                    break
+            if candidate:
+                break
 
-    persisted = load_plugins_config()
-    result: list[str] = []
-    for name, plugin in all_plugins().items():
-        if name in persisted:
-            if persisted[name]:
-                result.append(name)
-        elif plugin.enabled_by_default:
-            result.append(name)
-    return result
+    if candidate is None:
+        console.print(f"[red]No candidate found for: {item_id}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        config = require_config()
+        llm = LLMClient(config)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    plugin = all_plugins().get(plugin_name or "")
+    if plugin is None:
+        console.print(f"[red]Plugin not found: {plugin_name}[/red]")
+        raise typer.Exit(1)
+
+    summary = plugin.summarize(llm, candidate)
+    if json_output:
+        console.print_json(json.dumps({"item_id": item_id, "ai_summary": summary}, ensure_ascii=False))
+    else:
+        console.print(summary or "(no summary generated)")
 
 
 @app.command()
@@ -817,7 +899,7 @@ def _split_plugins(value: str | None) -> list[str] | None:
     return [part.strip() for part in value.split(",") if part.strip()]
 
 
-def _print_advise_result(result: ScanResult, researched_ids: set[str], ignored_count: int = 0,
+def _print_advise_result(result: ScanResult, ignored_count: int = 0,
                          show_all: bool = False) -> None:
     from .plugins.registry import all_plugins
 
@@ -834,16 +916,8 @@ def _print_advise_result(result: ScanResult, researched_ids: set[str], ignored_c
                 for item in sorted(current_items, key=lambda x: x.name.lower()):
                     current = item.current_version or "unknown"
                     source = item.source.value
-                    if item.id in researched_ids:
-                        console.print(f"  {item.id}")
-                        console.print(f"    {item.name} | {source} | {current}  [dim]up to date[/dim]")
-                    elif item.source in (SourceKind.HOMEBREW_FORMULA, SourceKind.HOMEBREW_CASK,
-                                         SourceKind.NPM_GLOBAL):
-                        console.print(f"  {item.id}")
-                        console.print(f"    {item.name} | {current}  [dim]up to date[/dim]")
-                    else:
-                        console.print(f"  {item.id}")
-                        console.print(f"    {item.name} | {source} | {current}  [red]failed[/red]")
+                    console.print(f"  {item.id}")
+                    console.print(f"    {item.name} | {source} | {current}  [dim]up to date[/dim]")
                 console.print()
         for skipped in pr.skipped:
             console.print(f"  [dim]Skipped ({name}): {skipped}[/dim]")
