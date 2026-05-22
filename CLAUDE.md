@@ -61,8 +61,15 @@ src/frais/
   tools.py              # Web tools: web_search (DDGS), web_fetch, web_fetch_batch
   system.py             # macOS detection
   ignore.py             # Ignore list: load/save/add/remove (~/.frais/config/ignore.txt)
-  cli.py                # Typer app: doctor, advise, update, config, plugins, ignore
-                        #   CLI is a pure dispatcher — all business logic lives in plugins
+  cli.py                # Typer app: doctor, config, plugins, ignore
+                        #   Action commands delegated to commands/ modules
+  commands/
+    __init__.py          # _split_plugins helper
+    _scan_core.py        # run_scan_phase — shared Rich progress + cache logic
+    advise.py            # advise command (scan + summaries + total time)
+    scan.py              # scan command (agent-facing, --json output)
+    summarize.py         # summarize <id> command (single-candidate summary)
+    update.py            # update command (interactive confirmation → plugin.update)
   plugins/
     __init__.py          # Re-exports ScannerPlugin as public API
     base.py              # ScannerPlugin ABC: scan, scan_all, research, update, summarize
@@ -80,7 +87,7 @@ src/frais/
       __init__.py        # NpmPlugin
 ```
 
-Design principle: all functionality is plugin-based. The CLI provides `plugins`, `config`, `ignore`, `doctor`, and the new atomic commands `scan` and `summarize` (for agent/LLM consumption). The `advise` command is a convenience dispatcher that composes scan + summarize. Each plugin owns its entire scan pipeline internally — ApplicationsPlugin does discovery + LLM research in one call; Homebrew/npm do a single step. `applications/_store.py` and `applications/_research.py` are private to the applications plugin.
+Design principle: all functionality is plugin-based. The CLI provides `plugins`, `config`, `ignore`, `doctor`. Agent-facing atomic commands: `scan` (structured output), `summarize <id>` (single summary), `update <id>` (execute). `advise` is a convenience command = scan + summaries + display. Each plugin owns its entire scan pipeline internally — ApplicationsPlugin does discovery + LLM research in one call; Homebrew/npm do a single step. `applications/_store.py` and `applications/_research.py` are private to the applications plugin.
 
 ## Plugin interface
 
@@ -149,8 +156,12 @@ class ScanResult:
 
 Two layers of concurrency:
 
-1. **Scan layer**: all enabled plugins run in parallel via a `ThreadPoolExecutor`. Each plugin owns its internal concurrency — ApplicationsPlugin uses `max_workers` for parallel LLM research during scan; Homebrew/npm do a single subprocess call.
-2. **Summary layer**: `plugin.summarize()` called concurrently for all candidates via `coordinator.run_summaries()`.
+1. **Scan layer**: `coordinator.run_scan()` — all plugins scan concurrently. Each plugin owns internal concurrency (ApplicationsPlugin uses `max_workers` for parallel LLM research; Homebrew/npm do a single subprocess call). Progress driven by `on_progress(step, done, total)` callback.
+2. **Summary layer**: `coordinator.run_summaries()` — `plugin.summarize()` called concurrently for all candidates. Default delegates to `LLMClient.summarize_candidate()`.
+
+## Progress bar
+
+`_scan_core.run_scan_phase()` renders a Rich `Progress` bar. Each plugin gets one task row labeled with its `scan_steps`. The `on_progress` callback updates the task's description (step name) and completed/total. Per-task `TimeElapsedColumn` shows live elapsed time independently. After all scans, the total time (= max scan time + summarize time) is printed.
 
 ## Research flow (ApplicationsPlugin-private)
 
@@ -169,18 +180,24 @@ Plugins that don't need research (Homebrew, npm) skip the LLM pipeline entirely 
 ## Data flow
 
 **`advise` command**:
-1. Select enabled plugins via `coordinator.select_plugins()` (respects `--apps-only`, `--plugins`)
-2. Scan: all plugins call `plugin.scan()` concurrently via `coordinator.run_scan()`. Each plugin owns its internal steps — ApplicationsPlugin does discovery + LLM research; Homebrew/npm do a single package-manager call. Plugins report progress via `on_progress(step_index, items_done)` which drives the Rich progress bar.
-3. Summaries: `coordinator.run_summaries()` calls `plugin.summarize()` for each candidate, run concurrently.
-4. Display with `_print_advise_result()` — when `--all`, shows up-to-date items grouped by plugin; otherwise only shows items with candidates.
+1. `coordinator.select_plugins()` (respects `--apps-only`, `--plugins`)
+2. `_scan_core.run_scan_phase()` — concurrent scans with Rich progress. Each plugin owns its internal steps.
+3. `coordinator.run_summaries()` — `plugin.summarize()` for each candidate, concurrently.
+4. Display with `_print_advise_result()` — shows AI Analysis per candidate.
 
 **`scan` command** (agent tool):
-1. Same scan logic as advise step 2, without summaries or Rich UI.
-2. `--json` outputs machine-readable JSON for external agent consumption.
+1. Same `_scan_core.run_scan_phase()` as advise step 2. `--json` skips progress bar.
+2. Saves cache for `summarize`/`update` to consume.
+3. Displays result (no summaries, no total time).
 
-**`summarize <id>` command** (agent tool):
+**`summarize <id>`** (agent tool):
 1. Loads cached scan result, finds candidate by item_id.
-2. Calls `plugin.summarize()` and prints the result.
+2. Calls `plugin.summarize()`, writes `ai_summary` back to cache.
+3. Prints result.
+
+**`update [id]`**:
+1. Loads cache, parses candidates, filters by optional id/name.
+2. For each candidate: display info + AI Analysis → Proceed? → `plugin.update()`.
 
 ## Key patterns
 

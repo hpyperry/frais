@@ -55,18 +55,40 @@ Prints macOS version, architecture, Applications paths, plugin availability, and
 frais advise
 frais advise --all
 frais advise --apps-only
+frais advise --plugins homebrew,npm
 frais advise -j 5
 frais advise --json
 ```
 
-Scans enabled plugins, researches latest versions, and generates Chinese-language AI summaries. Progress is shown with a live progress bar — one row per plugin.
+Scans enabled plugins, researches latest versions, generates AI summaries, and displays results. Progress is shown with a live Rich progress bar — one row per plugin, independent per-task timers. Displays AI Analysis alongside each update candidate.
 
 | Flag | Effect |
 |------|--------|
 | `--all` | Show all installed software including up-to-date items |
 | `--apps-only` | Skip package manager plugins (Homebrew, NPM) |
-| `--json` | Machine-readable output |
+| `--plugins NAMES` | Comma-separated plugin names to advise on |
+| `--json` | Machine-readable JSON (for agent consumption) |
 | `-j N` | Concurrency limit (default 10, max 20) |
+
+### `scan`
+
+```bash
+frais scan
+frais scan --plugins applications
+frais scan --all
+frais scan --json
+```
+
+Same scan logic as `advise` without summaries. JSON output is suitable for external agent LLM consumption. Saves cache for `summarize` and `update` to consume later.
+
+### `summarize`
+
+```bash
+frais summarize com.google.Chrome
+frais summarize brew:node --json
+```
+
+Generates an AI summary for a single candidate from the last scan cache. Writes the result back to cache so `update` can display it. Useful for agent workflows: `scan` → pick a candidate → `summarize` → `update`.
 
 ### `config`
 
