@@ -13,7 +13,7 @@ When the user signals a new implementation task (e.g. "新任务", "给你一个
 5. **Test coverage** — review existing tests and add new ones to cover all changed paths.
 6. **Build binary** — run `uv run --extra build python scripts/build_binary.py` and verify with the built artifact.
 7. **Update docs** — update CLAUDE.md and README.md to reflect the changes.
-8. **Git commit** — Commit the changes. The Co-Authored-By trailer must use the name of the model that performed the work (e.g. `DeepSeek-V4-Pro`, not a hardcoded Claude model name).
+8. **Git commit** — Ask the user whether to commit. If yes, commit with Co-Authored-By using the model that performed the work (e.g. `DeepSeek-V4-Pro`, not a hardcoded Claude model name).
 
 ## Project overview
 
