@@ -1,7 +1,7 @@
 # Frais
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Coverage](https://img.shields.io/badge/coverage-84%25-green)](https://github.com/hpyperry/frais)
+[![Coverage](https://img.shields.io/badge/coverage-79%25-green)](https://github.com/hpyperry/frais)
 
 macOS update checker CLI with LLM-powered version research. Three-layer architecture: **scan** (plugin-based) → **research** (structured LLM pipeline, optional) → **update** (plugin-provided).
 
