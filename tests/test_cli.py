@@ -106,8 +106,8 @@ def test_update_auto_skipped_on_no(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr("frais.cli.subprocess.run", lambda cmd, **kw: ran.append(cmd))
     monkeypatch.setattr("frais.cli.typer.confirm", lambda *a, **kw: False)
 
-    with pytest.raises(typer.Exit):
-        update(only=None)
+    update(only=None)
+    assert ran == []
 
 
 def test_update_manual_opens_app_on_confirm(monkeypatch, tmp_path: Path) -> None:
@@ -132,9 +132,7 @@ def test_update_manual_skipped_on_no_confirm(monkeypatch, tmp_path: Path) -> Non
     confirm_calls = []
     monkeypatch.setattr("frais.cli.typer.confirm", lambda *a, **kw: confirm_calls.append(a[0]) or False)
 
-    with pytest.raises(typer.Exit):
-        update(only=None)
-
+    update(only=None)
     assert len(confirm_calls) == 1
 
 

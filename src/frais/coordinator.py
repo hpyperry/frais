@@ -98,7 +98,7 @@ def run_summaries(llm: LLMClient,
         for future in as_completed(futures):
             try:
                 future.result()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("summary failed: %s", exc)
             if on_progress:
                 on_progress()

@@ -129,6 +129,9 @@ def _configure_logging(verbose: bool, debug: bool, log_file: str | None, no_log:
         force=True,
     )
     logging.getLogger("httpx").setLevel(logging.INFO if debug else logging.WARNING)
+    # Always suppress HTTP-level loggers — they may emit Authorization headers at DEBUG
+    for logger_name in ("httpcore", "urllib3", "ddgs", "primp"):
+        logging.getLogger(logger_name).setLevel(logging.INFO)
 
 
 @app.callback()

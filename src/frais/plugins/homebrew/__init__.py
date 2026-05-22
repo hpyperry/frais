@@ -178,14 +178,18 @@ def _brew_uses(name: str) -> list[str]:
     logger.debug("homebrew run command=brew uses --installed %s", name)
     env = os.environ.copy()
     env.pop("DYLD_LIBRARY_PATH", None)
-    result = subprocess.run(
-        ["brew", "uses", "--installed", name],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=30,
-        env=env,
-    )
+    try:
+        result = subprocess.run(
+            ["brew", "uses", "--installed", name],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        logger.debug("homebrew uses timed out name=%s", name)
+        return []
     if result.returncode != 0:
         logger.debug("homebrew uses failed name=%s returncode=%s", name, result.returncode)
         return []

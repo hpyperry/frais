@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import plistlib
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -182,12 +183,15 @@ def _path_id(path: Path) -> str:
 def _signing_summary(path: Path) -> dict[str, str | None]:
     try:
         logger.debug("applications running codesign path=%s", path)
+        env = os.environ.copy()
+        env.pop("DYLD_LIBRARY_PATH", None)
         result = subprocess.run(
             ["codesign", "-dv", "--verbose=4", str(path)],
             check=False,
             capture_output=True,
             text=True,
             timeout=10,
+            env=env,
         )
     except (OSError, subprocess.TimeoutExpired):
         logger.debug("applications codesign failed path=%s", path, exc_info=True)
@@ -209,12 +213,15 @@ def _signing_summary(path: Path) -> dict[str, str | None]:
 def _quarantine_summary(path: Path) -> str | None:
     try:
         logger.debug("applications reading quarantine xattr path=%s", path)
+        env = os.environ.copy()
+        env.pop("DYLD_LIBRARY_PATH", None)
         result = subprocess.run(
             ["xattr", "-p", "com.apple.quarantine", str(path)],
             check=False,
             capture_output=True,
             text=True,
             timeout=5,
+            env=env,
         )
     except (OSError, subprocess.TimeoutExpired):
         logger.debug("applications xattr failed path=%s", path, exc_info=True)

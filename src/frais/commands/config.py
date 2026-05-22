@@ -59,7 +59,7 @@ def _config_manage_flow() -> None:
         provider, model = _pick_provider_and_model(current)
     else:
         provider = current.provider
-        model = next(m for m in provider.models if m.id == current.model)
+        model = next((m for m in provider.models if m.id == current.model), provider.models[0])
 
     if choice in ("key", "everything"):
         api_key = _ask_api_key(provider, current)

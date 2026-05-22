@@ -47,4 +47,6 @@ def _write_plugins_config(config: dict[str, bool], path: Path) -> None:
     lines = ["[plugins]"]
     for k in sorted(config):
         lines.append(f"{k} = {'true' if config[k] else 'false'}")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    tmp.replace(path)

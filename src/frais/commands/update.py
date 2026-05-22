@@ -99,7 +99,7 @@ def update(
 
         if not typer.confirm("  Proceed?", default=False):
             logger.info("update skipped name=%s", candidate.item.name)
-            raise typer.Exit(0)
+            continue
 
         plugin_name = plugin_map.get(candidate.item.id)
         plugin = plugins.get(plugin_name) if plugin_name else None

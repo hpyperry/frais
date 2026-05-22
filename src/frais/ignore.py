@@ -21,7 +21,9 @@ def init_ignored(path: Path = IGNORE_PATH) -> None:
 
 def save_ignored(ids: set[str], path: Path = IGNORE_PATH) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(sorted(ids)) + "\n", encoding="utf-8")
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text("\n".join(sorted(ids)) + "\n", encoding="utf-8")
+    tmp.replace(path)
 
 
 def add_ignored(app_id: str, path: Path = IGNORE_PATH) -> bool:

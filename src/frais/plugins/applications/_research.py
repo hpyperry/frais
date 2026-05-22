@@ -256,7 +256,14 @@ def _is_newer(current: str | None, latest: str | None) -> bool:
     try:
         return Version(l2) > Version(c2)
     except InvalidVersion:
-        return tuple(int(x) for x in l2.split(".")) > tuple(int(x) for x in c2.split("."))
+        try:
+            l_parts = [int(x) for x in l2.split(".") if x != ""]
+            c_parts = [int(x) for x in c2.split(".") if x != ""]
+        except (ValueError, TypeError):
+            return False
+        if not l_parts or not c_parts:
+            return False
+        return tuple(l_parts) > tuple(c_parts)
 
 
 def _normalize(value: str) -> str:

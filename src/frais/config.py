@@ -71,12 +71,19 @@ def require_config(path: Path = CONFIG_PATH) -> ProviderConfig:
     return config
 
 
+def _toml_escape(value: str) -> str:
+    """Escape backslashes and double-quotes for TOML string values."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def save_config(provider_id: str, model: str, api_key: str, path: Path = CONFIG_PATH) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     content = (
         "[llm]\n"
-        f'provider = "{provider_id}"\n'
-        f'model = "{model}"\n'
-        f'api_key = "{api_key}"\n'
+        f'provider = "{_toml_escape(provider_id)}"\n'
+        f'model = "{_toml_escape(model)}"\n'
+        f'api_key = "{_toml_escape(api_key)}"\n'
     )
-    path.write_text(content, encoding="utf-8")
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(content, encoding="utf-8")
+    tmp.replace(path)

@@ -106,11 +106,14 @@ class LLMRequestError(RuntimeError):
     @classmethod
     def from_response(cls, response: httpx.Response) -> "LLMRequestError":
         body = response.text.strip()
-        if len(body) > 1200:
-            body = body[:1200] + "...<truncated>"
+        if len(body) > 300:
+            body = body[:300] + "...<truncated>"
+        url_str = str(response.url)
+        if len(url_str) > 200:
+            url_str = url_str[:200] + "..."
         return cls(
             (
-                f"LLM request failed with HTTP {response.status_code} at {response.url}. "
+                f"LLM request failed with HTTP {response.status_code} at {url_str}. "
                 f"Response body: {body or '<empty>'}"
             ),
             status_code=response.status_code,

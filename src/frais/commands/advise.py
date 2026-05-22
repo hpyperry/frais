@@ -127,8 +127,10 @@ def advise(
     llm = LLMClient(config)
 
     def _on_interrupt(signum, frame):
-        signal.signal(signal.SIGINT, signal.SIG_DFL)
-        os.write(1, b"\033[?25h\n")
+        try:
+            os.write(1, b"\033[?25h\n")
+        except OSError:
+            pass
         os._exit(130)
 
     orig_handler = signal.signal(signal.SIGINT, _on_interrupt)

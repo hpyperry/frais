@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -22,7 +23,7 @@ class Provider:
     @property
     def chat_url(self) -> str:
         base = self.base_url.rstrip("/")
-        if base.endswith("/v1"):
+        if re.search(r"/v\d+$", base):
             return f"{base}/chat/completions"
         return f"{base}/v1/chat/completions"
 

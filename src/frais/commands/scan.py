@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import signal
 from typing import Annotated
 
 import typer
@@ -64,10 +66,21 @@ def scan(
         console.print()
         console.print(f"Scanning with: {', '.join(active)}")
 
-    result, ignored_count, scan_elapsed = run_scan_phase(
-        active, system, show_all=show_all,
-        json_output=json_output, cache_path=_ADVICE_CACHE,
-    )
+    def _on_interrupt(signum, frame):
+        try:
+            os.write(1, b"\033[?25h\n")
+        except OSError:
+            pass
+        os._exit(130)
+
+    orig_handler = signal.signal(signal.SIGINT, _on_interrupt)
+    try:
+        result, ignored_count, scan_elapsed = run_scan_phase(
+            active, system, show_all=show_all,
+            json_output=json_output, cache_path=_ADVICE_CACHE,
+        )
+    finally:
+        signal.signal(signal.SIGINT, orig_handler)
 
     if json_output:
         console.print_json(json.dumps(result.to_dict(), ensure_ascii=False))
