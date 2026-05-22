@@ -51,12 +51,14 @@ def _print_advise_result(result: ScanResult, ignored_count: int = 0,
         console.print(Rule(f"[bold]Updates available[/] ({len(result.all_candidates)})", style="green"))
         console.print()
         for candidate in result.all_candidates:
-            console.print(f"  {candidate.item.id}")
-            console.print(f"    {candidate.item.name} | {candidate.item.source.value}")
+            console.print(f"  [bold]{candidate.item.name}[/bold]  [dim]({candidate.item.id})[/dim]")
             console.print(
-                f"    {candidate.item.current_version or 'unknown'} → "
+                f"  {candidate.item.current_version or 'unknown'} → "
                 f"[green]{candidate.latest_version or 'unknown'}[/green]"
             )
+            if candidate.ai_summary:
+                console.print(f"  [bold cyan]AI Analysis[/]")
+                console.print(f"    {candidate.ai_summary}")
             console.print()
 
     if ignored_count:
