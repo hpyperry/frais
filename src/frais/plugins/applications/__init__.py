@@ -72,12 +72,21 @@ class ApplicationsPlugin(ScannerPlugin):
         return PluginScanResult(items=items, candidates=candidates)
 
     def update(self, candidate: UpdateCandidate) -> bool:
+        import typer
+
         if candidate.item.source == SourceKind.APP_STORE:
             cmd, can_auto = resolve_app_store_command(candidate.item)
             if can_auto and cmd:
                 subprocess.run(cmd, check=False)
                 return True
-        return super().update(candidate)
+        if candidate.can_auto_update and candidate.command:
+            return super().update(candidate)
+        if candidate.item.path:
+            if typer.confirm("    Open app for manual update?", default=False):
+                subprocess.run(["open", candidate.item.path], check=False)
+                return True
+            return False
+        return False
 
 
 def scan_applications(paths: list[str]) -> list[SoftwareItem]:

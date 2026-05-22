@@ -897,6 +897,8 @@ def update(
         )
         if candidate.ai_summary:
             console.print(Padding(Markdown(candidate.ai_summary), (0, 0, 0, 4)))
+        else:
+            console.print(f"    [dim]No AI summary — run `frais summarize {candidate.item.id}` for advice[/dim]")
         if candidate.can_auto_update and candidate.item.source != SourceKind.APP_STORE:
             console.print(f"    Command: {' '.join(candidate.command)}")
         elif not candidate.can_auto_update:
@@ -904,19 +906,13 @@ def update(
 
         if not typer.confirm("Proceed?", default=False):
             logger.info("update skipped name=%s", candidate.item.name)
-            continue
+            raise typer.Exit(0)
 
         plugin_name = plugin_map.get(candidate.item.id)
         plugin = plugins.get(plugin_name) if plugin_name else None
-        if plugin and plugin.update(candidate):
-            logger.info("update executed plugin=%s name=%s", plugin_name, candidate.item.name)
-        elif not candidate.can_auto_update and candidate.item.path:
-            if typer.confirm("    Open app for update?", default=False):
-                subprocess.run(["open", candidate.item.path], check=False)
-            else:
-                console.print("    Skipped.")
-        else:
-            console.print("    [dim]Update not available.[/dim]")
+        if plugin:
+            ok = plugin.update(candidate)
+            logger.info("update executed plugin=%s name=%s ok=%s", plugin_name, candidate.item.name, ok)
 
 
 
