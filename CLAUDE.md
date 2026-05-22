@@ -72,7 +72,7 @@ src/frais/
     update.py            # update command (interactive confirmation → plugin.update)
   plugins/
     __init__.py          # Re-exports ScannerPlugin as public API
-    base.py              # ScannerPlugin ABC: scan, scan_all, research, update, summarize
+    base.py              # ScannerPlugin ABC: scan, scan_all, update, summarize
     _utils.py            # Shared helper: run_json() with env isolation for subprocess calls
     registry.py          # Plugin registry; discovers built-in + third-party plugins via entry points
     config.py            # Plugin persistence: reads/writes ~/.frais/config/plugins.toml
@@ -87,7 +87,7 @@ src/frais/
       __init__.py        # NpmPlugin
 ```
 
-Design principle: all functionality is plugin-based. The CLI provides `plugins`, `config`, `ignore`, `doctor`. Agent-facing atomic commands: `scan` (structured output), `summarize <id>` (single summary), `update <id>` (execute). `advise` is a convenience command = scan + summaries + display. Each plugin owns its entire scan pipeline internally — ApplicationsPlugin does discovery + LLM research in one call; Homebrew/npm do a single step. `applications/_store.py` and `applications/_research.py` are private to the applications plugin.
+Design principle: all functionality is plugin-based. The CLI provides `plugins`, `config`, `ignore`, `doctor`. Agent-facing atomic commands: `scan` (structured output), `summarize <id>` (single summary), `update` (execute). `advise` is a convenience command = scan + summaries + display. Each plugin owns its entire scan pipeline internally — ApplicationsPlugin does discovery + LLM research in one call; Homebrew/npm do a single step. `applications/_store.py` and `applications/_research.py` are private to the applications plugin. `--plugins` respects persisted enable/disable state; disabled or unknown plugins show a warning.
 
 ## Plugin interface
 
@@ -106,10 +106,10 @@ class ScannerPlugin(ABC):
         """Discover items and determine which need updates.
         Plugins own their entire scan pipeline internally — ApplicationsPlugin
         does discovery + LLM research in one call; Homebrew/npm do a single step.
-        on_progress(step_index, items_done) drives CLI progress bars."""
+        on_progress(step_index, done, total) drives CLI progress bars."""
 
     def scan_all(self, system, on_progress=None, max_workers=10) -> PluginScanResult:
-        """Return ALL installed items. Default: same as scan()."""
+        """Return ALL installed items. Used when --all is passed."""
         return self.scan(system, on_progress=on_progress, max_workers=max_workers)
 
     def update(self, candidate) -> bool:

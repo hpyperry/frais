@@ -35,7 +35,7 @@ Internal:
 
 **Scan layer** — each plugin discovers installed software via its own `scan()` / `scan_all()` methods. Homebrew and NPM plugins can directly identify outdated packages from their package managers.
 
-**Research layer** (plugin-private) — only `ApplicationsPlugin` overrides `research()`. It uses a structured 3-step LLM pipeline: generate search queries → pick best URLs → extract version. App Store apps use the iTunes API directly (~1s). Both the iTunes fast path (`applications/_store.py`) and the LLM pipeline (`applications/_research.py`) are private to the applications plugin. Summaries are generated via `plugin.summarize()` per-candidate.
+**Research layer** (plugin-private) — `ApplicationsPlugin.scan()` internally runs a structured 3-step LLM pipeline: generate search queries → pick best URLs → extract version. App Store apps use the iTunes API directly (~1s). Both the iTunes fast path (`applications/_store.py`) and the LLM pipeline (`applications/_research.py`) are private to the applications plugin. Summaries are generated via `plugin.summarize()` per-candidate.
 
 **Update layer** — each plugin provides its own `update()` method. Homebrew runs `brew upgrade`, NPM runs `npm install -g`, and Applications resolve App Store deep links or prompt to open the `.app` bundle.
 
