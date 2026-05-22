@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Coverage](https://img.shields.io/badge/coverage-79%25-green)](https://github.com/hpyperry/frais)
 
-macOS update checker CLI with LLM-powered version research. Three-layer architecture: **scan** (plugin-based) → **research** (structured LLM pipeline, optional) → **update** (plugin-provided).
+macOS update checker CLI with LLM-powered version research. Three-phase pipeline: **scan** (plugin-based discovery + optional LLM research) → **summarize** (AI-generated update advice) → **update** (plugin-provided execution).
 
 Supports 7 curated LLM providers (DeepSeek, OpenAI, Kimi, Grok, Mistral, Qwen, Zhipu) with automatic thinking-mode control.
 
