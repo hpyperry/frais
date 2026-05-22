@@ -131,6 +131,9 @@ def advise(
         active_plugins = _coord_select(apps_only, _explicit_plugins)
         if _explicit_plugins:
             unknown = set(_explicit_plugins) - set(active_plugins)
+            if not active_plugins:
+                console.print("[red]No matching plugins found.[/red]")
+                raise typer.Exit(1)
             if unknown:
                 console.print(f"[yellow]Unknown plugins: {', '.join(sorted(unknown))}[/yellow]")
 

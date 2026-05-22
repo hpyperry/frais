@@ -55,6 +55,9 @@ def scan(
     active = _coord_select(apps_only=False, explicit=_explicit)
     if _explicit:
         unknown = set(_explicit) - set(active)
+        if not active:
+            console.print("[red]No matching plugins found.[/red]")
+            raise typer.Exit(1)
         if unknown:
             console.print(f"[yellow]Unknown plugins: {', '.join(sorted(unknown))}[/yellow]")
 
