@@ -169,14 +169,14 @@ def test_select_plugins_apps_only_ignores_persistence(monkeypatch) -> None:
     assert list(result.keys()) == ["applications"]
 
 
-def test_select_plugins_explicit_ignores_persistence(monkeypatch) -> None:
+def test_select_plugins_explicit_respects_disabled(monkeypatch) -> None:
     monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {"homebrew": False})
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {
         "homebrew": _fake_plugin("homebrew", True),
         "npm": _fake_plugin("npm", True),
     })
     result = select_plugins(apps_only=False, explicit=["homebrew"])
-    assert list(result.keys()) == ["homebrew"]
+    assert list(result.keys()) == []  # homebrew is disabled
 
 
 def test_select_plugins_persisted_disable_removes_default_enabled(monkeypatch) -> None:
