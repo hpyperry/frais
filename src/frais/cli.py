@@ -629,7 +629,7 @@ def advise(
                 desc = f"{name}    {len(pr.items)} items"
                 if pr.candidates:
                     desc += f", {len(pr.candidates)} updates"
-                progress.update(plugin_tasks[name], total=1, completed=1, description=desc)
+                progress.update(plugin_tasks[name], description=desc)
 
             max_scan_time = max(scan_elapsed.values()) if scan_elapsed else 0.0
 
