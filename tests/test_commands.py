@@ -42,7 +42,6 @@ def test_run_scan_phase_json_mode(monkeypatch) -> None:
         return ScanResult(system=system, plugin_results={"test": pr})
 
     monkeypatch.setattr("frais.coordinator.run_scan", fake_run_scan)
-    # No ignore file
     monkeypatch.setattr("frais.commands._scan_core.load_ignored", lambda: set())
 
     result, ignored_count, scan_elapsed = run_scan_phase(
@@ -125,7 +124,6 @@ def test_summarize_success(monkeypatch, tmp_path: Path) -> None:
         "system": {"os_name": "macOS", "os_version": "15.0", "arch": "arm64", "applications_paths": []},
         "plugin_results": {"applications": {"items": [], "candidates": [candidate_dict], "skipped": []}},
     }))
-    # Patch everything needed
     monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
     monkeypatch.setattr("frais.commands.summarize.require_config", lambda: _fake_llm_config())
 
@@ -136,7 +134,6 @@ def test_summarize_success(monkeypatch, tmp_path: Path) -> None:
 
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {"applications": FakePlugin()})
 
-    # Should not raise
     summarize(item_id="com.example.app")
 
 
@@ -150,11 +147,10 @@ def test_update_empty_cache(monkeypatch, tmp_path: Path) -> None:
         "plugin_results": {},
     }))
     monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
-    # No candidates — should print message and return
     update(only=None)
 
 
-# --- coordinator tests ---
+# --- coordinator: run_scan error ---
 
 
 def test_run_scan_handles_exception(monkeypatch) -> None:
@@ -171,6 +167,60 @@ def test_run_scan_handles_exception(monkeypatch) -> None:
     result = run_scan({"fail": FailingPlugin()}, system)
     assert "fail" in result.plugin_results
     assert result.plugin_results["fail"].skipped == ["boom"]
+
+
+# --- coordinator: run_summaries ---
+
+
+def test_run_summaries_empty(monkeypatch) -> None:
+    from frais.coordinator import run_summaries
+    run_summaries(None, [], {}, {})
+
+
+def test_run_summaries_calls_plugin(monkeypatch) -> None:
+    from frais.coordinator import run_summaries
+
+    item = SoftwareItem(id="a", name="A", kind="app", source=SourceKind.APPLICATION, current_version="1.0")
+    candidate = UpdateCandidate(item=item, latest_version="2.0")
+
+    calls = []
+    class FakePlugin:
+        def summarize(self, llm, c):
+            calls.append(c)
+            return "summary"
+
+    run_summaries(None, [candidate], {id(candidate): "test"}, {"test": FakePlugin()}, max_workers=1)
+    assert len(calls) == 1
+
+
+def test_run_summaries_handles_exception(monkeypatch) -> None:
+    from frais.coordinator import run_summaries
+
+    item = SoftwareItem(id="a", name="A", kind="app", source=SourceKind.APPLICATION, current_version="1.0")
+    candidate = UpdateCandidate(item=item, latest_version="2.0")
+
+    class FailingPlugin:
+        def summarize(self, llm, c):
+            raise RuntimeError("fail")
+
+    # Should not raise
+    run_summaries(None, [candidate], {id(candidate): "test"}, {"test": FailingPlugin()}, max_workers=1)
+
+
+def test_run_summaries_with_progress(monkeypatch) -> None:
+    from frais.coordinator import run_summaries
+
+    item = SoftwareItem(id="a", name="A", kind="app", source=SourceKind.APPLICATION, current_version="1.0")
+    candidate = UpdateCandidate(item=item, latest_version="2.0")
+
+    advances = []
+    class FakePlugin:
+        def summarize(self, llm, c):
+            return "ok"
+
+    run_summaries(None, [candidate], {id(candidate): "test"}, {"test": FakePlugin()},
+                  max_workers=1, on_progress=lambda: advances.append(1))
+    assert len(advances) == 1
 
 
 # --- helpers ---
