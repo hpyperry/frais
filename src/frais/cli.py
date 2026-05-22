@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Annotated
 
 import click
+import time
 import typer
 from rich.console import Console
-from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.rule import Rule
@@ -580,13 +580,15 @@ def advise(
         ) as progress:
             # Per-plugin scan tasks — step names from plugin.scan_steps
             plugin_tasks: dict[str, int] = {}
-            plugin_steps: dict[str, int] = {}  # current step index per plugin
+            plugin_steps: dict[str, int] = {}
             plugin_active: dict[str, ScannerPlugin] = {}
+            plugin_start_times: dict[str, float] = {}
 
             for name in active_plugins:
                 p = all_plugins()[name]
                 plugin_active[name] = p
                 plugin_steps[name] = 0
+                plugin_start_times[name] = time.monotonic()
                 step_label = p.scan_steps[0] if p.scan_steps else ""
                 plugin_tasks[name] = progress.add_task(f"{name}    {step_label}", total=1)
 
@@ -617,26 +619,37 @@ def advise(
                     pr.candidates = [c for c in pr.candidates if c.item.id not in ignored]
 
             # Finalize scan task descriptions
+            scan_elapsed: dict[str, float] = {}
             for name in active_plugins:
                 pr = result.plugin_results.get(name)
                 if pr is None:
                     continue
+                elapsed = time.monotonic() - plugin_start_times.get(name, 0)
+                scan_elapsed[name] = elapsed
                 desc = f"{name}    {len(pr.items)} items"
                 if pr.candidates:
                     desc += f", {len(pr.candidates)} updates"
                 progress.update(plugin_tasks[name], total=1, completed=1, description=desc)
 
+            max_scan_time = max(scan_elapsed.values()) if scan_elapsed else 0.0
+
             # Phase 2: Summaries
             all_candidates = result.all_candidates
+            summarize_elapsed = 0.0
             if all_candidates:
                 summarize_task = progress.add_task("Summaries", total=len(all_candidates))
                 candidate_plugin_map: dict[int, str] = {}
                 for pname, pr in result.plugin_results.items():
                     for c in pr.candidates:
                         candidate_plugin_map[id(c)] = pname
+                t0 = time.monotonic()
                 run_summaries(llm, all_candidates, candidate_plugin_map,
                               plugin_active, max_workers=jobs,
                               on_progress=lambda: progress.advance(summarize_task))
+                summarize_elapsed = time.monotonic() - t0
+
+            total_time = max_scan_time + summarize_elapsed
+            console.print(f"  [dim]Total: {total_time:.1f}s[/dim]")
 
         if json_output:
             console.print_json(json.dumps(result.to_dict(), ensure_ascii=False))
@@ -889,22 +902,25 @@ def update(
 
     for candidate in candidates:
         console.print()
-        console.print(f"  {candidate.item.id}")
-        console.print(f"    {candidate.item.name} | {candidate.item.source.value}")
+        console.print(f"  [bold]{candidate.item.name}[/bold]  [dim]({candidate.item.id})[/dim]")
         console.print(
-            f"    {candidate.item.current_version or 'unknown'} → "
+            f"  {candidate.item.current_version or 'unknown'} → "
             f"[green]{candidate.latest_version or 'unknown'}[/green]"
         )
         if candidate.ai_summary:
-            console.print(Padding(Markdown(candidate.ai_summary), (0, 0, 0, 4)))
+            console.print()
+            console.print(f"  [bold cyan]AI Analysis[/]")
+            console.print(Padding(candidate.ai_summary, (0, 0, 0, 4)))
         else:
-            console.print(f"    [dim]No AI summary — run `frais summarize {candidate.item.id}` for advice[/dim]")
-        if candidate.can_auto_update and candidate.item.source != SourceKind.APP_STORE:
-            console.print(f"    Command: {' '.join(candidate.command)}")
-        elif not candidate.can_auto_update:
-            console.print(f"    [dim]Manual update required[/dim]")
+            console.print()
+            console.print(f"  [dim]No AI summary yet — `frais summarize {candidate.item.id}`[/dim]")
 
-        if not typer.confirm("Proceed?", default=False):
+        if candidate.can_auto_update and candidate.item.source != SourceKind.APP_STORE:
+            console.print(f"    [dim]cmd: {' '.join(candidate.command)}[/dim]")
+        elif not candidate.can_auto_update:
+            console.print(f"    [dim]manual update[/dim]")
+
+        if not typer.confirm("  Proceed?", default=False):
             logger.info("update skipped name=%s", candidate.item.name)
             raise typer.Exit(0)
 
