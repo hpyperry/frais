@@ -10,7 +10,10 @@ import typer
 
 import pytest
 
-from frais.cli import _ADVICE_CACHE, _configure_logging, _print_advise_result, _split_plugins, update
+from frais.cli import _ADVICE_CACHE, _configure_logging
+from frais.commands import _split_plugins
+from frais.commands.advise import _print_advise_result
+from frais.commands.update import update
 from frais.coordinator import select_plugins
 from frais.plugins.applications._store import resolve_app_store_command
 from frais.models import PluginScanResult, ScanResult, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
