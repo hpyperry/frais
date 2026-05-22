@@ -6,7 +6,8 @@ from frais.llm import LLMClient
 from frais.models import ResearchResult, SoftwareItem, SourceKind, UpdateCandidate
 from frais.plugins.applications import _research as research
 from frais.plugins.applications._research import (
-    _digits_only, _is_newer, _normalize, extract_version,
+    _digits_only, _ensure_list, _extract_json, _is_newer, _normalize,
+    _parse_json_list, _parse_json_object, extract_version,
     generate_search_queries, pick_urls, research_application_update,
 )
 
@@ -305,3 +306,58 @@ def test_digits_only_keeps_numbers_and_dots() -> None:
 
 def test_digits_only_no_digits() -> None:
     assert _digits_only("abc") == ""
+
+
+# --- JSON helpers ---
+
+
+class TestEnsureList:
+    def test_list_of_ints(self) -> None:
+        assert _ensure_list([1, 2]) == ["1", "2"]
+
+    def test_single_string(self) -> None:
+        assert _ensure_list("foo") == ["foo"]
+
+    def test_none(self) -> None:
+        assert _ensure_list(None) == []
+
+    def test_empty_list(self) -> None:
+        assert _ensure_list([]) == []
+
+
+class TestParseJsonListError:
+    def test_returns_empty_on_malformed(self) -> None:
+        assert _parse_json_list("not json") == []
+
+    def test_returns_empty_on_unexpected_type(self) -> None:
+        assert _parse_json_list('{"key": "val"}') == []
+
+
+class TestParseJsonObjectError:
+    def test_returns_empty_on_malformed(self) -> None:
+        assert _parse_json_object("not json") == {}
+
+    def test_returns_empty_on_array(self) -> None:
+        assert _parse_json_object("[1, 2]") == {}
+
+
+class TestExtractJson:
+    def test_strips_markdown_fence(self) -> None:
+        result = _extract_json('```json\n{"key":"val"}\n```')
+        assert result == '{"key":"val"}'
+
+    def test_strips_tick_fence_only(self) -> None:
+        result = _extract_json('```\n{"key":"val"}\n```')
+        assert result == '{"key":"val"}'
+
+    def test_extracts_json_from_text(self) -> None:
+        result = _extract_json('prefix text {"key":"val"} suffix')
+        assert result == '{"key":"val"}'
+
+    def test_extracts_nested_json(self) -> None:
+        result = _extract_json('text {"outer": {"inner": 1}} more')
+        assert '"outer"' in result
+
+    def test_returns_original_when_no_json_found(self) -> None:
+        result = _extract_json("just plain text")
+        assert result == "just plain text"

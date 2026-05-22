@@ -25,7 +25,7 @@ class HomebrewPlugin(ScannerPlugin):
         return path is not None
 
     def scan(self, system: SystemProfile,
-             on_progress: Callable[[int, int], None] | None = None,
+             on_progress: Callable[[int, int, int], None] | None = None,
              max_workers: int = 10) -> PluginScanResult:
         if not self.is_available():
             logger.info("homebrew unavailable")
@@ -40,11 +40,11 @@ class HomebrewPlugin(ScannerPlugin):
         candidates, items = self._parse_outdated(raw)
         logger.info("homebrew outdated items=%d", len(items))
         if on_progress:
-            on_progress(0, len(items))
+            on_progress(0, len(items), len(items))
         return PluginScanResult(items=items, candidates=candidates)
 
     def scan_all(self, system: SystemProfile,
-                 on_progress: Callable[[int, int], None] | None = None,
+                 on_progress: Callable[[int, int, int], None] | None = None,
                  max_workers: int = 10) -> PluginScanResult:
         if not self.is_available():
             logger.info("homebrew unavailable")
@@ -61,7 +61,7 @@ class HomebrewPlugin(ScannerPlugin):
         all_items = self._parse_installed(installed_raw)
         logger.info("homebrew scan all items=%d outdated=%d", len(all_items), len(candidates))
         if on_progress:
-            on_progress(0, len(all_items))
+            on_progress(0, len(all_items), len(all_items))
         return PluginScanResult(items=all_items, candidates=candidates)
 
     def _parse_outdated(self, raw: dict[str, Any]) -> tuple[list[UpdateCandidate], list[SoftwareItem]]:

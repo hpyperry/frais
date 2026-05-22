@@ -20,7 +20,7 @@ from rich.table import Table
 
 from .config import CONFIG_PATH, load_config, require_config, save_config
 from .ignore import add_ignored, load_ignored, remove_ignored
-from .models import PluginScanResult, SourceKind, ScanResult, UpdateCandidate
+from .models import SourceKind, ScanResult, UpdateCandidate
 
 
 _DEFAULT_LOG_DIR = Path.home() / ".frais" / "log"
@@ -587,21 +587,22 @@ def advise(
                 p = all_plugins()[name]
                 plugin_active[name] = p
                 plugin_steps[name] = 0
-                label = p.scan_steps[0] if p.scan_steps else name
-                plugin_tasks[name] = progress.add_task(label, total=1)
+                step_label = p.scan_steps[0] if p.scan_steps else ""
+                plugin_tasks[name] = progress.add_task(f"{name}    {step_label}", total=1)
 
-            def _on_plugin_progress(pname: str, step: int, done: int) -> None:
+            def _on_plugin_progress(pname: str, step: int, done: int, total: int) -> None:
                 task_id = plugin_tasks.get(pname)
                 if task_id is None:
                     return
                 plugin = plugin_active.get(pname)
                 if plugin and step != plugin_steps.get(pname):
                     plugin_steps[pname] = step
-                    label = (plugin.scan_steps[step]
-                              if step < len(plugin.scan_steps)
-                              else pname)
-                    progress.update(task_id, description=label, total=1, completed=0)
-                progress.update(task_id, completed=done)
+                    step_label = (plugin.scan_steps[step]
+                                  if step < len(plugin.scan_steps)
+                                  else "")
+                    progress.update(task_id, description=f"{pname}    {step_label}",
+                                    total=total, completed=0)
+                progress.update(task_id, total=total, completed=done)
 
             # Phase 1: concurrent scans — plugins own their steps
             from .coordinator import run_scan
@@ -700,11 +701,11 @@ def scan(
         console.print()
         console.print(f"Scanning with: {', '.join(active)}")
 
-    def _on_progress(pname: str, step: int, done: int) -> None:
+    def _on_progress(pname: str, step: int, done: int, total: int) -> None:
         if not json_output:
             p = active.get(pname)
             label = (p.scan_steps[step] if p and step < len(p.scan_steps) else pname)
-            console.print(f"  {pname}: {label} ({done})")
+            console.print(f"  {pname}: {label} ({done}/{total})")
 
     from .coordinator import run_scan as _run_scan
     result = _run_scan(active, system, show_all=show_all,

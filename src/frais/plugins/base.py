@@ -18,13 +18,13 @@ class ScannerPlugin(ABC):
 
     @abstractmethod
     def scan(self, system: SystemProfile,
-             on_progress: Callable[[int, int], None] | None = None,
+             on_progress: Callable[[int, int, int], None] | None = None,
              max_workers: int = 10) -> PluginScanResult:
         """Return items that need attention, with candidates for outdated software.
 
-        *on_progress(step_index, items_done)* is called by the plugin to report
-        progress through its :attr:`scan_steps`. The CLI uses this to drive
-        the progress bar — plugins own the step definitions and pacing.
+        *on_progress(step_index, items_done, total)* — called to report
+        progress through :attr:`scan_steps`. Plugins own step definitions
+        and pacing; the CLI uses this to drive the progress bar.
 
         *max_workers* controls internal concurrency for plugins that do
         parallel research (e.g. ApplicationsPlugin LLM pipeline).
@@ -32,7 +32,7 @@ class ScannerPlugin(ABC):
         raise NotImplementedError
 
     def scan_all(self, system: SystemProfile,
-                 on_progress: Callable[[int, int], None] | None = None,
+                 on_progress: Callable[[int, int, int], None] | None = None,
                  max_workers: int = 10) -> PluginScanResult:
         """Return ALL installed items. Default: same as :meth:`scan`."""
         return self.scan(system, on_progress=on_progress, max_workers=max_workers)

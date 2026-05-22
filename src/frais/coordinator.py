@@ -38,7 +38,7 @@ def run_scan(plugins: dict[str, ScannerPlugin],
              system: SystemProfile,
              show_all: bool = False,
              jobs: int = 10,
-             on_plugin_progress: Callable[[str, int, int], None] | None = None
+             on_plugin_progress: Callable[[str, int, int, int], None] | None = None
              ) -> ScanResult:
     """Scan all plugins concurrently. Each plugin drives its own progress callback."""
     result = ScanResult(system=system)
@@ -48,9 +48,9 @@ def run_scan(plugins: dict[str, ScannerPlugin],
         for name, plugin in plugins.items():
             scan_fn = plugin.scan_all if show_all else plugin.scan
 
-            def _progress_wrapper(step: int, done: int, pname: str = name) -> None:
+            def _progress_wrapper(step: int, done: int, total: int, pname: str = name) -> None:
                 if on_plugin_progress:
-                    on_plugin_progress(pname, step, done)
+                    on_plugin_progress(pname, step, done, total)
 
             futures[pool.submit(scan_fn, system, on_progress=_progress_wrapper,
                                 max_workers=jobs)] = name

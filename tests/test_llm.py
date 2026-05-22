@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from frais.llm import LLMClient, LLMRequestError, _ensure_list, _extract_json, _parse_json_list, _parse_json_object
+from frais.llm import LLMClient, LLMRequestError
 from frais.config import ProviderConfig
 from frais.models import SoftwareItem, SourceKind, UpdateCandidate
 from frais.providers import PROVIDERS, ModelInfo, Provider, get_model_thinking_param, get_provider
@@ -185,53 +185,3 @@ class TestLLMRequestError:
         assert "<empty>" in str(err)
 
 
-class TestEnsureList:
-    def test_list_of_ints(self) -> None:
-        assert _ensure_list([1, 2]) == ["1", "2"]
-
-    def test_single_string(self) -> None:
-        assert _ensure_list("foo") == ["foo"]
-
-    def test_none(self) -> None:
-        assert _ensure_list(None) == []
-
-    def test_empty_list(self) -> None:
-        assert _ensure_list([]) == []
-
-
-class TestParseJsonListError:
-    def test_returns_empty_on_malformed(self) -> None:
-        assert _parse_json_list("not json") == []
-
-    def test_returns_empty_on_unexpected_type(self) -> None:
-        assert _parse_json_list('{"key": "val"}') == []
-
-
-class TestParseJsonObjectError:
-    def test_returns_empty_on_malformed(self) -> None:
-        assert _parse_json_object("not json") == {}
-
-    def test_returns_empty_on_array(self) -> None:
-        assert _parse_json_object("[1, 2]") == {}
-
-
-class TestExtractJson:
-    def test_strips_markdown_fence(self) -> None:
-        result = _extract_json('```json\n{"key":"val"}\n```')
-        assert result == '{"key":"val"}'
-
-    def test_strips_tick_fence_only(self) -> None:
-        result = _extract_json('```\n{"key":"val"}\n```')
-        assert result == '{"key":"val"}'
-
-    def test_extracts_json_from_text(self) -> None:
-        result = _extract_json('prefix text {"key":"val"} suffix')
-        assert result == '{"key":"val"}'
-
-    def test_extracts_nested_json(self) -> None:
-        result = _extract_json('text {"outer": {"inner": 1}} more')
-        assert '"outer"' in result
-
-    def test_returns_original_when_no_json_found(self) -> None:
-        result = _extract_json("just plain text")
-        assert result == "just plain text"

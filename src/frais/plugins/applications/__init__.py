@@ -26,13 +26,13 @@ class ApplicationsPlugin(ScannerPlugin):
         return True
 
     def scan(self, system: SystemProfile,
-             on_progress: Callable[[int, int], None] | None = None,
+             on_progress: Callable[[int, int, int], None] | None = None,
              max_workers: int = 10) -> PluginScanResult:
         # Step 1: discover all installed applications
         items = scan_applications(system.applications_paths)
         logger.info("applications scan found=%d", len(items))
         if on_progress:
-            on_progress(0, len(items))
+            on_progress(0, len(items), len(items))
 
         # Step 2: research latest versions for non-App-Store apps
         from ...config import require_config
@@ -49,6 +49,9 @@ class ApplicationsPlugin(ScannerPlugin):
         to_research = [it for it in items if it.source != SourceKind.APP_STORE]
         researched = 0
 
+        if on_progress:
+            on_progress(1, 0, len(to_research))
+
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
             futures = {pool.submit(research_application_update, llm, it): it for it in to_research}
             for future in as_completed(futures):
@@ -58,12 +61,12 @@ class ApplicationsPlugin(ScannerPlugin):
                 except Exception as exc:
                     logger.warning("research failed: %s", exc)
                     if on_progress:
-                        on_progress(1, researched)
+                        on_progress(1, researched, len(to_research))
                     continue
                 if candidate:
                     candidates.append(candidate)
                 if on_progress:
-                    on_progress(1, researched)
+                    on_progress(1, researched, len(to_research))
 
         logger.info("applications research done candidates=%d", len(candidates))
         return PluginScanResult(items=items, candidates=candidates)
