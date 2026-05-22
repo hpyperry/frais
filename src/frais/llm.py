@@ -13,9 +13,16 @@ from .providers import get_model_thinking_param
 logger = logging.getLogger(__name__)
 
 _SUMMARIZE_PROMPT = (
-    "Summarize the update recommendation for this software in concise Chinese. "
-    "Mention risk, dependency impact, and whether the user should update now. "
-    "Do not invent facts beyond the provided evidence."
+    "You are helping a macOS user decide whether to update installed software. "
+    "Write a concise update recommendation in Chinese.\n"
+    "\n"
+    "Rules:\n"
+    "- Output 3-4 short bullet lines (each starting with \"- \"), no preamble or closing.\n"
+    "- Use **bold** for version numbers, risk levels, and key actions.\n"
+    "- Mention: what changed, risk level, dependency impact (if any), and a clear recommendation.\n"
+    "- If the evidence includes URLs, reference the most credible one.\n"
+    "- Never invent version numbers, CVEs, or changelog details not present in the data.\n"
+    "- If evidence is weak or missing, say so honestly — prefer \"信息不足\" over guessing."
 )
 
 
@@ -29,11 +36,24 @@ class LLMClient:
 
     def summarize_candidate(self, candidate: UpdateCandidate) -> str:
         """Generate Chinese-language update summary."""
+        d = candidate.to_dict()
+        item = d.get("item", {})
+        dep = d.get("dependency_impact", {})
         prompt = (
             f"{_SUMMARIZE_PROMPT}\n\n"
-            f"Candidate: {json.dumps(candidate.to_dict(), ensure_ascii=False)}"
+            f"Name: {item.get('name', 'unknown')}\n"
+            f"Type: {item.get('kind', 'unknown')} ({item.get('source', 'unknown')})\n"
+            f"Current version: {item.get('current_version', 'unknown')}\n"
+            f"Latest version: {d.get('latest_version', 'unknown')}\n"
+            f"Risk level: {d.get('risk_level', 'unknown')}\n"
+            f"Auto-update available: {d.get('can_auto_update', False)}\n"
+            f"Update command: {' '.join(d.get('command', [])) or '(manual)'}\n"
+            f"Dependencies: {len(dep.get('depends_on', []))} packages\n"
+            f"Used by: {len(dep.get('used_by', []))} packages\n"
+            f"Evidence: {json.dumps(d.get('evidence', []), ensure_ascii=False)}\n"
+            f"Release notes: {d.get('release_notes') or '(none)'}"
         )
-        return self.chat("", prompt)
+        return self.chat("", prompt, max_tokens=500)
 
     def test_connection(self) -> str:
         return self.chat("", "Reply with exactly: ok", max_tokens=64)

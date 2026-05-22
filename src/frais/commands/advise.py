@@ -49,16 +49,26 @@ def _print_advise_result(result: ScanResult, ignored_count: int = 0,
 
     if result.all_candidates:
         console.print(Rule(f"[bold]Updates available[/] ({len(result.all_candidates)})", style="green"))
-        console.print()
         for candidate in result.all_candidates:
-            console.print(f"  [bold]{candidate.item.name}[/bold]  [dim]({candidate.item.id})[/dim]")
+            console.print()
+            console.print(f"  [bold white]{candidate.item.id}[/bold white]")
+            parts = []
+            if candidate.item.name and candidate.item.name != candidate.item.id:
+                parts.append(candidate.item.name)
+            parts.append(candidate.item.source.value)
+            console.print(f"  [dim]{' | '.join(parts)}[/dim]")
             console.print(
-                f"  {candidate.item.current_version or 'unknown'} → "
-                f"[green]{candidate.latest_version or 'unknown'}[/green]"
+                f"  [bold]{candidate.item.current_version or '?'}[/bold] → "
+                f"[bold green]{candidate.latest_version or '?'}[/bold green]"
             )
             if candidate.ai_summary:
-                console.print(f"  [bold cyan]AI Analysis[/]")
-                console.print(f"    {candidate.ai_summary}")
+                import re
+                from rich.markdown import Markdown
+                # Normalise runs of 4+ asterisks to ** (LLMs sometimes over-escape bold)
+                summary = re.sub(r'\*{4,}', '**', candidate.ai_summary)
+                console.print()
+                console.print(f"  [dim]Analysis[/dim]")
+                console.print(Markdown(summary))
             console.print()
 
     if ignored_count:
