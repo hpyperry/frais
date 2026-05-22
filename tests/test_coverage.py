@@ -119,7 +119,7 @@ def test_scan_no_matching_plugins(monkeypatch) -> None:
         "applications": _make_plugin("applications", True),
     })
     monkeypatch.setattr("frais.coordinator.select_plugins",
-        lambda apps_only, explicit: {})
+        lambda explicit: {})
     with pytest.raises(typer.Exit):
         scan(plugins="nonexistent")
 
@@ -683,7 +683,7 @@ def test_select_plugins_explicit_with_enabled(monkeypatch) -> None:
     available = {"homebrew": _make_plugin("homebrew", True)}
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: available)
 
-    result = select_plugins(apps_only=False, explicit=["homebrew"])
+    result = select_plugins(explicit=["homebrew"])
     assert "homebrew" in result
 
 
@@ -694,20 +694,11 @@ def test_select_plugins_default_enabled_no_persist(monkeypatch) -> None:
     available = {"homebrew": _make_plugin("homebrew", True)}
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: available)
 
-    result = select_plugins(apps_only=False, explicit=["homebrew"])
+    result = select_plugins(explicit=["homebrew"])
     assert "homebrew" in result
 
 
 # --- coordinator: select_plugins edge cases ---
-
-
-def test_select_plugins_apps_only(monkeypatch) -> None:
-    from frais.coordinator import select_plugins
-
-    available = {"applications": _make_plugin("applications", True)}
-    monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: available)
-    result = select_plugins(apps_only=True, explicit=None)
-    assert list(result.keys()) == ["applications"]
 
 
 def test_select_plugins_default_persisted_disabled(monkeypatch) -> None:
@@ -717,7 +708,7 @@ def test_select_plugins_default_persisted_disabled(monkeypatch) -> None:
         lambda: {"homebrew": False})
     available = {"homebrew": _make_plugin("homebrew", True)}
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: available)
-    result = select_plugins(apps_only=False, explicit=None)
+    result = select_plugins(explicit=None)
     assert "homebrew" not in result
 
 

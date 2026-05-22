@@ -70,10 +70,6 @@ def advise(
         bool,
         typer.Option("--json", help="Print scan results and advice as machine-readable JSON."),
     ] = False,
-    apps_only: Annotated[
-        bool,
-        typer.Option("--apps-only", help="Only advise on Applications; skip package manager plugins."),
-    ] = False,
     plugins: Annotated[
         str | None,
         typer.Option(
@@ -106,7 +102,6 @@ def advise(
     Examples:
       frais advise
       frais advise --all
-      frais advise --apps-only
       frais advise --json
       frais advise -j 5
     """
@@ -130,7 +125,7 @@ def advise(
     try:
         system = detect_system()
         _explicit_plugins = _split_plugins(plugins)
-        active_plugins = _coord_select(apps_only, _explicit_plugins)
+        active_plugins = _coord_select(_explicit_plugins)
         if _explicit_plugins:
             unknown = set(_explicit_plugins) - set(active_plugins)
             if unknown:

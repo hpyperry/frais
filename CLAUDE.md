@@ -31,7 +31,6 @@ uv sync --extra dev
 uv run frais doctor
 uv run frais advise
 uv run frais advise --all
-uv run frais advise --apps-only
 uv run frais advise -j 5
 
 # Run all tests
@@ -178,7 +177,7 @@ Plugins that don't need research (Homebrew, npm) skip the LLM pipeline entirely 
 ## Data flow
 
 **`advise` command**:
-1. `coordinator.select_plugins()` (respects `--apps-only`, `--plugins`)
+1. `coordinator.select_plugins()` (respects `--plugins`, persisted enable/disable state)
 2. `_scan_core.run_scan_phase()` — concurrent scans with Rich progress. Each plugin owns its internal steps.
 3. `coordinator.run_summaries()` — `plugin.summarize()` for each candidate, concurrently.
 4. Display with `_print_advise_result()` — shows AI Analysis per candidate.
@@ -208,6 +207,6 @@ Plugins that don't need research (Homebrew, npm) skip the LLM pipeline entirely 
 - **Progress bar**: `_scan_core.run_scan_phase()` renders a Rich `Progress` bar with one task row per plugin. Each row shows the plugin's current `scan_steps` label with live `TimeElapsedColumn`. Progress is driven by `on_progress(step, done, total)`. After scans, a dedicated task row shows Summaries progress. Total time = max(scan times) + summarize time.
 - **Ignore list**: `~/.frais/config/ignore.txt` stores app IDs to skip during `advise`. Auto-created on first access via `init_ignored()`. Managed via `frais ignore add/remove/list`. Filtered after scan, before research.
 - **Plugin discovery**: `registry.py` uses `importlib.metadata.entry_points(group="frais.plugins")` to discover all plugins at runtime. Built-in plugins (applications, homebrew, npm) are always present. Failed loads are logged, not fatal.
-- **Plugin persistence**: `plugins/config.py` manages `~/.frais/config/plugins.toml`. First run auto-creates the file with all discovered plugins set to their defaults. `plugins enable/disable` persist state. `_select_plugins()` uses 3-tier precedence: CLI flags (`--apps-only`, `--plugins`) override persisted config, which overrides `enabled_by_default`.
+- **Plugin persistence**: `plugins/config.py` manages `~/.frais/config/plugins.toml`. First run auto-creates the file with all discovered plugins set to their defaults. `plugins enable/disable` persist state. `select_plugins()` precedence: `--plugins` (explicit) overrides persisted config; default path uses `enabled_by_default` when not persisted.
 - **Ctrl+C handling**: `advise` registers a SIGINT handler before entering the Progress/ThreadPoolExecutor block. The handler uses `os.write(1, b"\033[?25h\n")` to directly write the cursor-show ANSI escape to the stdout fd — bypassing Rich's internal segment buffer, which can swallow escapes when a nested `with self.console:` context is held (e.g. by Progress's auto-refresh thread). Then `os._exit(130)`. Original handler is restored via `try/finally`. Signal handler (not KeyboardInterrupt) is needed because ThreadPoolExecutor.__exit__ blocks on worker threads. The handler must only call async-signal-safe functions (`os.write`, `os._exit`) — no logging, no Rich API calls, no string formatting.
 - **Subprocess env isolation**: `run_json()` in `plugins/_utils.py` and `_brew_uses()` in `plugins/homebrew.py` clear `DYLD_LIBRARY_PATH` from the subprocess environment to prevent PyInstaller-bundled dylibs from interfering with system commands.

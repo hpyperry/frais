@@ -39,7 +39,6 @@ Common examples:
   frais doctor
   frais config manage
   frais advise
-  frais advise --apps-only
   frais advise -j 5
   frais update
   frais ignore add com.example.app

@@ -54,7 +54,6 @@ Prints macOS version, architecture, Applications paths, plugin availability, and
 ```bash
 frais advise
 frais advise --all
-frais advise --apps-only
 frais advise --plugins homebrew,npm
 frais advise -j 5
 frais advise --json
@@ -65,7 +64,6 @@ Scans enabled plugins, researches latest versions, generates AI summaries, and d
 | Flag | Effect |
 |------|--------|
 | `--all` | Show all installed software including up-to-date items |
-| `--apps-only` | Skip package manager plugins (Homebrew, NPM) |
 | `--plugins NAMES` | Comma-separated plugin names to advise on |
 | `--json` | Machine-readable JSON (for agent consumption) |
 | `-j N` | Concurrency limit (default 10, max 20) |

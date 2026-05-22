@@ -163,19 +163,13 @@ def test_update_no_cache_exits(monkeypatch, tmp_path: Path) -> None:
 # --- select_plugins with persistence ---
 
 
-def test_select_plugins_apps_only_ignores_persistence(monkeypatch) -> None:
-    monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {"applications": False})
-    result = select_plugins(apps_only=True, explicit=None)
-    assert list(result.keys()) == ["applications"]
-
-
 def test_select_plugins_explicit_respects_disabled(monkeypatch) -> None:
     monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {"homebrew": False})
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {
         "homebrew": _fake_plugin("homebrew", True),
         "npm": _fake_plugin("npm", True),
     })
-    result = select_plugins(apps_only=False, explicit=["homebrew"])
+    result = select_plugins(explicit=["homebrew"])
     assert list(result.keys()) == []  # homebrew is disabled
 
 
@@ -186,7 +180,7 @@ def test_select_plugins_persisted_disable_removes_default_enabled(monkeypatch) -
         "homebrew": _fake_plugin("homebrew", True),
         "npm": _fake_plugin("npm", True),
     })
-    result = select_plugins(apps_only=False, explicit=None)
+    result = select_plugins(explicit=None)
     assert list(result.keys()) == ["applications"]
 
 
@@ -196,7 +190,7 @@ def test_select_plugins_persisted_enable_adds_default_disabled(monkeypatch) -> N
         "applications": _fake_plugin("applications", True),
         "custom": _fake_plugin("custom", False),
     })
-    result = select_plugins(apps_only=False, explicit=None)
+    result = select_plugins(explicit=None)
     assert "custom" in result
 
 
@@ -206,7 +200,7 @@ def test_select_plugins_uses_default_when_not_persisted(monkeypatch) -> None:
         "a": _fake_plugin("a", True),
         "b": _fake_plugin("b", False),
     })
-    result = select_plugins(apps_only=False, explicit=None)
+    result = select_plugins(explicit=None)
     assert list(result.keys()) == ["a"]
 
 
@@ -312,7 +306,7 @@ def test_select_plugins_drops_unknown_names(monkeypatch) -> None:
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {
         "applications": _fake_plugin("applications", True),
     })
-    result = select_plugins(apps_only=False, explicit=["applications", "nonexistent"])
+    result = select_plugins(explicit=["applications", "nonexistent"])
     assert list(result.keys()) == ["applications"]
 
 

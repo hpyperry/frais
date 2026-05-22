@@ -52,7 +52,7 @@ def scan(
 
     system = detect_system()
     _explicit = _split_plugins(plugins)
-    active = _coord_select(apps_only=False, explicit=_explicit)
+    active = _coord_select(explicit=_explicit)
     if _explicit:
         unknown = set(_explicit) - set(active)
         if unknown:

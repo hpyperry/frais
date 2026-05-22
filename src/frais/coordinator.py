@@ -11,16 +11,12 @@ from .plugins.base import ScannerPlugin
 logger = logging.getLogger(__name__)
 
 
-def select_plugins(apps_only: bool = False,
-                   explicit: list[str] | None = None) -> dict[str, ScannerPlugin]:
+def select_plugins(explicit: list[str] | None = None) -> dict[str, ScannerPlugin]:
     """Return enabled plugins filtered by CLI flags and persisted config."""
     from .plugins.config import load_plugins_config
     from .plugins.registry import all_plugins
 
     available = all_plugins()
-    if apps_only:
-        app_plugin = available.get("applications")
-        return {"applications": app_plugin} if app_plugin else {}
     if explicit:
         persisted = load_plugins_config()
         result: dict[str, ScannerPlugin] = {}
