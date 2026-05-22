@@ -719,6 +719,15 @@ def scan(
             pr.items = [it for it in pr.items if it.id not in ignored]
             pr.candidates = [c for c in pr.candidates if c.item.id not in ignored]
 
+    # Save scan cache for update/summarize commands
+    try:
+        _DEFAULT_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        tmp_path = _ADVICE_CACHE.with_suffix(".tmp")
+        tmp_path.write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+        tmp_path.replace(_ADVICE_CACHE)
+    except OSError as exc:
+        logger.warning("failed to save scan cache: %s", exc)
+
     if json_output:
         console.print_json(json.dumps(result.to_dict(), ensure_ascii=False))
     else:
@@ -790,6 +799,24 @@ def summarize(
         raise typer.Exit(1)
 
     summary = plugin.summarize(llm, candidate)
+
+    # Write summary back to cache
+    try:
+        for pname, pr in data.get("plugin_results", {}).items():
+            for raw in pr.get("candidates", []):
+                if raw.get("item", {}).get("id") == item_id:
+                    raw["ai_summary"] = summary
+                    _DEFAULT_LOG_DIR.mkdir(parents=True, exist_ok=True)
+                    tmp_path = _ADVICE_CACHE.with_suffix(".tmp")
+                    tmp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+                    tmp_path.replace(_ADVICE_CACHE)
+                    break
+            else:
+                continue
+            break
+    except OSError as exc:
+        logger.warning("failed to update scan cache: %s", exc)
+
     if json_output:
         console.print_json(json.dumps({"item_id": item_id, "ai_summary": summary}, ensure_ascii=False))
     else:

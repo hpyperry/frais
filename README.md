@@ -126,39 +126,107 @@ Manages an ignore list stored at `~/.frais/config/ignore.txt` (one app ID per li
 
 ## Writing plugins
 
-Any Python package can register a plugin via entry points. Subclass `ScannerPlugin` and declare an entry point in `frais.plugins`:
+Any Python package can register a plugin via entry points. Subclass `ScannerPlugin` and declare an entry point in `frais.plugins`.
+
+### Minimal plugin (one-step scan)
+
+If your package manager tells you which packages are outdated directly (like Homebrew/npm do), you only need one scan step:
 
 ```python
 from frais.plugins import ScannerPlugin
-from frais.models import PluginScanResult, SystemProfile, SoftwareItem, UpdateCandidate
+from frais.models import PluginScanResult, SoftwareItem, SystemProfile, UpdateCandidate
 
 class MyPlugin(ScannerPlugin):
     name = "my-manager"
     enabled_by_default = True
+    scan_steps = ["checking outdated packages"]
 
     def is_available(self) -> bool:
-        return True  # check if the package manager is installed
+        return True  # check if the tool is installed
 
-    def scan(self, system: SystemProfile) -> PluginScanResult:
-        items = [...]  # discover SoftwareItem objects
-        return PluginScanResult(items=items, candidates=[], skipped=[])
-
-    def scan_all(self, system: SystemProfile) -> PluginScanResult:
-        """Return ALL installed items. Used when --all is passed."""
-        return self.scan(system)
-
-    def research(self, llm, item: SoftwareItem) -> UpdateCandidate | None:
-        """Optional: research latest version via LLM. Return None if not needed."""
-        return None
+    def scan(self, system, on_progress=None, max_workers=10) -> PluginScanResult:
+        items = [...]          # discover SoftwareItem objects
+        candidates = [...]     # build UpdateCandidate for outdated ones
+        if on_progress:
+            on_progress(0, len(items), len(items))
+        return PluginScanResult(items=items, candidates=candidates, skipped=[])
 
     def update(self, candidate: UpdateCandidate) -> bool:
-        """Optional: execute the update. Default runs candidate.command."""
+        """Default: subprocess.run(candidate.command). Override for custom logic."""
         return super().update(candidate)
 
-    def summarize(self, llm, candidate: UpdateCandidate) -> str | None:
-        """Optional: custom summary logic. Default uses LLM."""
-        return llm.summarize_candidate(candidate)
+    # summarize() uses the default (LLM-generated Chinese summary).
+    # Override it for custom summary formatting.
 ```
+
+### Multi-step plugin (with internal research)
+
+If discovering versions requires extra work (like ApplicationsPlugin does with LLM), declare multiple steps and report progress for each:
+
+```python
+class MyPlugin(ScannerPlugin):
+    scan_steps = ["discovering items", "researching latest versions"]
+
+    def scan(self, system, on_progress=None, max_workers=10) -> PluginScanResult:
+        # Step 1: discover
+        items = [...]
+        if on_progress:
+            on_progress(0, len(items), len(items))
+
+        # Step 2: research — plugin owns its concurrency
+        candidates = []
+        if on_progress:
+            on_progress(1, 0, len(items))  # show step 2 immediately
+        for i, item in enumerate(items):
+            cand = self._research_one(item)
+            if cand:
+                candidates.append(cand)
+            if on_progress:
+                on_progress(1, i + 1, len(items))
+
+        return PluginScanResult(items=items, candidates=candidates)
+```
+
+CLI progress bars automatically render `scan_steps` names and advance with `on_progress(step, done, total)`.
+
+### Data model reference
+
+| Model | Key fields | Purpose |
+|-------|-----------|---------|
+| `SoftwareItem` | `id, name, kind, source, current_version, path, metadata` | One installed piece of software |
+| `UpdateCandidate` | `item, latest_version, can_auto_update, command, risk_level, ai_summary, evidence` | A software that has an available update |
+| `PluginScanResult` | `items, candidates, skipped` | The output of one plugin's scan |
+| `SourceKind` (enum) | `APPLICATION, APP_STORE, LOCAL_BUILD, NETWORK_DOWNLOAD, HOMEBREW_FORMULA, HOMEBREW_CASK, NPM_GLOBAL, UNKNOWN` | How the software was installed |
+
+### Cache format
+
+Both `frais advise` and `frais scan` write to `~/.frais/log/last_advice.json`. The cache is a `ScanResult` serialized to JSON — used by `frais update` and `frais summarize`:
+
+```json
+{
+  "system": {"os_name": "macOS", "os_version": "26.5", "arch": "arm64",
+             "applications_paths": ["/Applications", "~/Applications"]},
+  "plugin_results": {
+    "<plugin_name>": {
+      "items": [
+        {"id": "...", "name": "...", "kind": "...", "source": "...",
+         "current_version": "...", "path": "...", "metadata": {...}}
+      ],
+      "candidates": [
+        {"item": {...}, "latest_version": "...", "ai_summary": "...",
+         "recommended_action": "Update", "can_auto_update": true,
+         "command": ["brew", "upgrade", "..."], "risk_level": "low",
+         "evidence": ["https://..."]}
+      ],
+      "skipped": ["reason"]
+    }
+  }
+}
+```
+
+`frais scan --json` and `frais advise --json` output the same format for agent LLM consumption.
+
+### Registration
 
 In your `pyproject.toml`:
 
