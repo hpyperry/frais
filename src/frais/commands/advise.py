@@ -129,6 +129,10 @@ def advise(
         system = detect_system()
         _explicit_plugins = _split_plugins(plugins)
         active_plugins = _coord_select(apps_only, _explicit_plugins)
+        if _explicit_plugins:
+            unknown = set(_explicit_plugins) - set(active_plugins)
+            if unknown:
+                console.print(f"[yellow]Unknown plugins: {', '.join(sorted(unknown))}[/yellow]")
 
         console.print()
         plugin_labels = ", ".join(active_plugins)

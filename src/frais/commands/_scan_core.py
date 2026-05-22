@@ -34,10 +34,10 @@ def run_scan_phase(active_plugins: dict[str, ScannerPlugin],
         ignored_count = 0
         if ignored_data:
             for pr in result.plugin_results.values():
-                before = len(pr.items) + len(pr.candidates)
                 pr.items = [it for it in pr.items if it.id not in ignored_data]
+                before = len(pr.candidates)
                 pr.candidates = [c for c in pr.candidates if c.item.id not in ignored_data]
-                ignored_count += before - (len(pr.items) + len(pr.candidates))
+                ignored_count += before - len(pr.candidates)
 
         if cache_path:
             _save_cache(result, cache_path)
@@ -83,10 +83,10 @@ def run_scan_phase(active_plugins: dict[str, ScannerPlugin],
         ignored_count = 0
         if ignored_data:
             for pr in result.plugin_results.values():
-                before = len(pr.items) + len(pr.candidates)
                 pr.items = [it for it in pr.items if it.id not in ignored_data]
+                before = len(pr.candidates)
                 pr.candidates = [c for c in pr.candidates if c.item.id not in ignored_data]
-                ignored_count += before - (len(pr.items) + len(pr.candidates))
+                ignored_count += before - len(pr.candidates)
 
         scan_elapsed: dict[str, float] = {}
         for name in active_plugins:

@@ -53,6 +53,10 @@ def scan(
     system = detect_system()
     _explicit = _split_plugins(plugins)
     active = _coord_select(apps_only=False, explicit=_explicit)
+    if _explicit:
+        unknown = set(_explicit) - set(active)
+        if unknown:
+            console.print(f"[yellow]Unknown plugins: {', '.join(sorted(unknown))}[/yellow]")
 
     if not json_output:
         console.print()

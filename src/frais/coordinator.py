@@ -21,7 +21,13 @@ def select_plugins(apps_only: bool = False,
     if apps_only:
         return {"applications": available["applications"]}
     if explicit:
-        return {name: available[name] for name in explicit if name in available}
+        result: dict[str, ScannerPlugin] = {}
+        for name in explicit:
+            if name in available:
+                result[name] = available[name]
+            else:
+                logger.warning("unknown plugin: %s", name)
+        return result
 
     persisted = load_plugins_config()
     result: dict[str, ScannerPlugin] = {}

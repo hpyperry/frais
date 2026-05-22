@@ -57,7 +57,9 @@ def test_run_scan_phase_json_mode_with_ignore(monkeypatch) -> None:
     system = SystemProfile(os_name="macOS", os_version="15.0", arch="arm64", applications_paths=["/Apps"])
     item_a = SoftwareItem(id="a", name="A", kind="app", source=SourceKind.APPLICATION, current_version="1.0")
     item_b = SoftwareItem(id="b", name="B", kind="app", source=SourceKind.APPLICATION, current_version="2.0")
-    pr = PluginScanResult(items=[item_a, item_b], candidates=[])
+    cand_a = UpdateCandidate(item=item_a, latest_version="2.0")
+    cand_b = UpdateCandidate(item=item_b, latest_version="3.0")
+    pr = PluginScanResult(items=[item_a, item_b], candidates=[cand_a, cand_b])
 
     def fake_run_scan(plugins, system, *, show_all=False, jobs=10, on_plugin_progress=None):
         return ScanResult(system=system, plugin_results={"test": pr})
@@ -69,8 +71,8 @@ def test_run_scan_phase_json_mode_with_ignore(monkeypatch) -> None:
         {"test": _fake_plugin()}, system, json_output=True,
     )
     assert ignored_count == 1
-    assert len(result.plugin_results["test"].items) == 1
-    assert result.plugin_results["test"].items[0].id == "b"
+    assert len(result.plugin_results["test"].candidates) == 1
+    assert result.plugin_results["test"].candidates[0].item.id == "b"
 
 
 def test_run_scan_phase_json_mode_saves_cache(monkeypatch, tmp_path: Path) -> None:
