@@ -5,15 +5,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from packaging.version import InvalidVersion, Version
 
-from .agent import AgentClient
-from .models import ResearchResult, SourceKind, SoftwareItem, UpdateCandidate
-from .tools import web_fetch_batch, web_search
-from .version_checker import check_app_store_version
+from ...llm import LLMClient
+from ...models import ResearchResult, SourceKind, SoftwareItem, UpdateCandidate
+from ...tools import web_fetch_batch, web_search
+from ._store import check_app_store_version
 
 logger = logging.getLogger(__name__)
 
 
-def research_application_update(agent: AgentClient, item: SoftwareItem) -> UpdateCandidate | None:
+def research_application_update(llm: LLMClient, item: SoftwareItem) -> UpdateCandidate | None:
     """Research latest version for an application using three-tier strategy."""
     # Tier 1: App Store apps via iTunes API (~1s)
     latest, track_id = check_app_store_version(item)
@@ -22,18 +22,18 @@ def research_application_update(agent: AgentClient, item: SoftwareItem) -> Updat
     if latest:
         return None  # Confirmed up to date via iTunes
 
-    # Tier 2: LLM-driven structured research (generate queries → search → pick URLs → extract)
-    result = _llm_structured_research(agent, item)
+    # Tier 2: LLM-driven structured research (generate queries -> search -> pick URLs -> extract)
+    result = _llm_structured_research(llm, item)
     if result and _is_newer(item.current_version, result.latest_version):
         return _make_candidate(item, result.latest_version, result=result)
     return None
 
 
-def _llm_structured_research(agent: AgentClient, item: SoftwareItem) -> ResearchResult | None:
+def _llm_structured_research(llm: LLMClient, item: SoftwareItem) -> ResearchResult | None:
     """3-step structured research: LLM generates queries, we search & fetch, LLM extracts version."""
     # Step 1: LLM generates search queries
     try:
-        queries = agent.generate_search_queries(item)
+        queries = llm.generate_search_queries(item)
     except Exception as exc:
         logger.warning("generate_search_queries failed for %s: %s", item.name, exc)
         return None
@@ -71,7 +71,7 @@ def _llm_structured_research(agent: AgentClient, item: SoftwareItem) -> Research
 
     # Step 2: LLM picks best URLs
     try:
-        urls = agent.pick_urls(item, unique_results)
+        urls = llm.pick_urls(item, unique_results)
     except Exception as exc:
         logger.warning("pick_urls failed for %s: %s", item.name, exc)
         return None
@@ -87,19 +87,10 @@ def _llm_structured_research(agent: AgentClient, item: SoftwareItem) -> Research
 
     # Step 3: LLM extracts version from fetched content
     try:
-        return agent.extract_version(item, fetched)
+        return llm.extract_version(item, fetched)
     except Exception as exc:
         logger.warning("extract_version failed for %s: %s", item.name, exc)
         return None
-
-
-def attach_ai_summaries(agent: AgentClient, candidates: list[UpdateCandidate]) -> list[UpdateCandidate]:
-    for candidate in candidates:
-        try:
-            candidate.ai_summary = agent.summarize_candidate(candidate)
-        except Exception as exc:
-            logger.warning("summary failed for %s: %s", candidate.item.name, exc)
-    return candidates
 
 
 def _make_candidate(item: SoftwareItem, latest_version: str, result: ResearchResult | None = None, source: str = "llm", app_store_id: int | None = None) -> UpdateCandidate:

@@ -28,31 +28,6 @@ class SystemProfile:
 
 
 @dataclass(slots=True)
-class LLMConfig:
-    provider: str
-    base_url: str | None
-    model: str | None
-    api_key_source: str | None
-    has_api_key: bool
-    api_key_suffix: str | None = None
-
-    @property
-    def is_ready(self) -> bool:
-        return bool(self.has_api_key and self.base_url and self.model)
-
-    def safe_dict(self) -> dict[str, Any]:
-        return {
-            "provider": self.provider,
-            "base_url": self.base_url,
-            "model": self.model,
-            "api_key_source": self.api_key_source,
-            "has_api_key": self.has_api_key,
-            "api_key": f"***{self.api_key_suffix}" if self.api_key_suffix else None,
-            "ready": self.is_ready,
-        }
-
-
-@dataclass(slots=True)
 class SoftwareItem:
     id: str
     name: str

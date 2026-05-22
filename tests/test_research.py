@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from frais import research
 from frais.models import ResearchResult, SoftwareItem, SourceKind, UpdateCandidate
-from frais.research import _digits_only, _is_newer, _normalize, attach_ai_summaries, research_application_update
+from frais.plugins.applications import _research as research
+from frais.plugins.applications._research import _digits_only, _is_newer, _normalize, research_application_update
 
 
 class FakeAgent:
@@ -74,33 +74,6 @@ def _make_test_candidate(name: str = "TestApp") -> UpdateCandidate:
         current_version="1.0",
     )
     return UpdateCandidate(item=item, latest_version="2.0")
-
-
-def test_attach_ai_summaries_sets_all() -> None:
-    candidates = [_make_test_candidate(f"App{i}") for i in range(3)]
-    agent = FakeAgent()
-
-    result = attach_ai_summaries(agent, candidates)
-
-    assert result is candidates
-    for c in candidates:
-        assert c.ai_summary == "发现上游新版本，建议重新构建。"
-
-
-def test_attach_ai_summaries_handles_exception(monkeypatch) -> None:
-    warnings = []
-    monkeypatch.setattr("frais.research.logger.warning", lambda msg, *args: warnings.append(msg))
-
-    class BrokenAgent:
-        def summarize_candidate(self, candidate):
-            raise RuntimeError("boom")
-
-    candidates = [_make_test_candidate()]
-    result = attach_ai_summaries(BrokenAgent(), candidates)
-
-    assert result[0].ai_summary is None
-    assert len(warnings) == 1
-    assert "summary failed" in warnings[0]
 
 
 # --- research_application_update iTunes fast path ---

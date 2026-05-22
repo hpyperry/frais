@@ -1,7 +1,7 @@
 [project]
 name = "frais"
 version = "0.1.0"
-description = "Agent CLI for checking macOS application and Homebrew updates."
+description = "macOS update checker CLI with LLM-powered version research."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"

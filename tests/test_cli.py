@@ -10,7 +10,9 @@ import typer
 
 import pytest
 
-from frais.cli import _ADVICE_CACHE, _configure_logging, _print_advise_result, _resolve_app_store_command, _select_plugins, _split_plugins, _summarize_concurrent, _summarize_one, update
+from frais.cli import _ADVICE_CACHE, _configure_logging, _print_advise_result, _select_plugins, _split_plugins, update
+from frais.summarize import generate_summaries, _summarize_one
+from frais.plugins.applications._store import resolve_app_store_command
 from frais.models import PluginScanResult, ScanResult, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
 
 
@@ -359,7 +361,7 @@ def test_summarize_one_sets_ai_summary() -> None:
 
 def test_summarize_one_handles_exception(monkeypatch) -> None:
     warnings = []
-    monkeypatch.setattr("frais.cli.logger.warning", lambda msg, *args: warnings.append(msg))
+    monkeypatch.setattr("frais.summarize.logger.warning", lambda msg, *args: warnings.append(msg))
 
     agent = _FailingSummarizeAgent()
     candidate = _make_candidate()
@@ -372,7 +374,7 @@ def test_summarize_one_handles_exception(monkeypatch) -> None:
 
 
 def test_summarize_concurrent_empty_candidates() -> None:
-    _summarize_concurrent(_FakeSummarizeAgent(), [], jobs=5)
+    generate_summaries(_FakeSummarizeAgent(), [], max_workers=5)
     # Should not raise
 
 
@@ -380,7 +382,7 @@ def test_summarize_concurrent_single_candidate() -> None:
     agent = _FakeSummarizeAgent()
     candidate = _make_candidate()
 
-    _summarize_concurrent(agent, [candidate], jobs=5)
+    generate_summaries(agent, [candidate], max_workers=5)
 
     assert candidate.ai_summary == "Summary for TestApp"
     assert agent.call_count == 1
@@ -390,7 +392,7 @@ def test_summarize_concurrent_processes_all() -> None:
     agent = _FakeSummarizeAgent()
     candidates = [_make_candidate(f"App{i}") for i in range(5)]
 
-    _summarize_concurrent(agent, candidates, jobs=5)
+    generate_summaries(agent, candidates, max_workers=5)
 
     assert agent.call_count == 5
     for i, c in enumerate(candidates):
@@ -403,7 +405,7 @@ def test_summarize_concurrent_runs_concurrently() -> None:
     candidates = [_make_candidate(f"App{i}") for i in range(5)]
 
     start = time.monotonic()
-    _summarize_concurrent(agent, candidates, jobs=5)
+    generate_summaries(agent, candidates, max_workers=5)
     elapsed = time.monotonic() - start
 
     # If concurrent: ~0.15s + overhead. If sequential: ~0.75s + overhead.
@@ -423,7 +425,7 @@ def test_summarize_concurrent_with_progress(monkeypatch) -> None:
     agent = _FakeSummarizeAgent()
     candidates = [_make_candidate(f"App{i}") for i in range(3)]
 
-    _summarize_concurrent(agent, candidates, jobs=3, progress=_MockProgress(), task_id=task_id)
+    generate_summaries(agent, candidates, max_workers=3, progress=_MockProgress(), task_id=task_id)
 
     assert len(advances) == 3
 
@@ -454,7 +456,7 @@ def test_resolve_app_store_returns_command(monkeypatch) -> None:
     fake_resp = type("Resp", (), {"raise_for_status": lambda self: None, "json": lambda self: {"resultCount": 1, "results": [{"trackId": 12345}]}})()
     monkeypatch.setattr(httpx, "get", lambda url, **kw: fake_resp)
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APP_STORE, current_version="1.0")
-    cmd, can_auto = _resolve_app_store_command(item)
+    cmd, can_auto = resolve_app_store_command(item)
     assert cmd == ["open", "macappstore://apps.apple.com/app/id12345"]
     assert can_auto is True
 
@@ -463,7 +465,7 @@ def test_resolve_app_store_no_results(monkeypatch) -> None:
     fake_resp = type("Resp", (), {"raise_for_status": lambda self: None, "json": lambda self: {"resultCount": 0}})()
     monkeypatch.setattr(httpx, "get", lambda url, **kw: fake_resp)
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APP_STORE, current_version="1.0")
-    cmd, can_auto = _resolve_app_store_command(item)
+    cmd, can_auto = resolve_app_store_command(item)
     assert cmd == []
     assert can_auto is False
 
@@ -473,7 +475,7 @@ def test_resolve_app_store_http_error(monkeypatch) -> None:
         raise Exception("network error")
     monkeypatch.setattr(httpx, "get", raise_error)
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APP_STORE, current_version="1.0")
-    cmd, can_auto = _resolve_app_store_command(item)
+    cmd, can_auto = resolve_app_store_command(item)
     assert cmd == []
     assert can_auto is False
 

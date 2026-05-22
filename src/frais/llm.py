@@ -45,12 +45,12 @@ _SUMMARIZE_PROMPT = (
 )
 
 
-class AgentClient:
-    """OpenAI-compatible BYOK client for structured version research."""
+class LLMClient:
+    """OpenAI-compatible LLM client for structured version research."""
 
     def __init__(self, config: ProviderConfig) -> None:
         if not config.is_ready:
-            raise ValueError("LLM config is incomplete. Run `frais config init`.")
+            raise ValueError("LLM config is incomplete. Run `frais config manage`.")
         self.config = config
 
     def generate_search_queries(self, item: SoftwareItem) -> list[str]:
@@ -120,7 +120,7 @@ class AgentClient:
 
     def _post(self, url: str, messages: list[dict[str, Any]], max_tokens: int | None = None,
               disable_thinking: bool = False) -> dict[str, Any]:
-        logger.debug("agent request url=%s model=%s messages=%d", url, self.config.model, len(messages))
+        logger.debug("llm request url=%s model=%s messages=%d", url, self.config.model, len(messages))
         payload: dict[str, Any] = {
             "model": self.config.model,
             "messages": messages,

@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from frais.models import SoftwareItem, SourceKind
-from frais.version_checker import check_app_store_version
+from frais.plugins.applications._store import check_app_store_version
 
 
 def test_returns_none_for_non_app_store() -> None:

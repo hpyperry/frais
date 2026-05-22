@@ -190,7 +190,6 @@ def _first(value: Any) -> Any:
 
 
 def _installed_version(pkg: dict[str, Any]) -> str | None:
-    """Extract installed version from brew info output."""
     linked = pkg.get("linked_keg")
     if linked:
         return linked
@@ -201,7 +200,6 @@ def _installed_version(pkg: dict[str, Any]) -> str | None:
 
 
 def _cask_current_version(cask: dict[str, Any]) -> str | None:
-    """Extract installed version from cask brew info output."""
     linked = cask.get("linked_keg")
     if linked:
         return linked

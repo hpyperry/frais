@@ -65,7 +65,7 @@ def require_config(path: Path = CONFIG_PATH) -> ProviderConfig:
     config = load_config(path)
     if config is None or not config.api_key or not config.model:
         raise ValueError(
-            "No LLM provider configured. Run `frais config init` "
+            "No LLM provider configured. Run `frais config manage` "
             "to set up your provider and API key."
         )
     return config

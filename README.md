@@ -3,35 +3,49 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Coverage](https://img.shields.io/badge/coverage-72%25-green)](https://github.com/hpyperry/frais)
 
-Frais is a macOS CLI that scans installed Applications, Homebrew, and npm packages for available updates. It uses a curated set of LLM providers (DeepSeek, OpenAI, Kimi, Grok, Mistral, Qwen, Zhipu) with a structured research pipeline to find latest versions and generate update advice.
+macOS update checker CLI with LLM-powered version research. Three-layer architecture: **scan** (plugin-based) → **research** (structured LLM pipeline, optional) → **update** (plugin-provided).
 
-All scanning is plugin-based — the built-in `applications`, `homebrew`, and `npm` scanners are all `ScannerPlugin` implementations.
+Supports 7 curated LLM providers (DeepSeek, OpenAI, Kimi, Grok, Mistral, Qwen, Zhipu) with automatic thinking-mode control.
 
 ## Quick start
 
 ```bash
 uv sync --extra dev
 uv run frais doctor
-uv run frais config init
+uv run frais config manage
 ```
 
-LLM features require user-owned configuration stored in
-`~/.frais/config/config.toml`. The project never ships or creates a
-server-side API key. Run `frais config init` for interactive setup —
-no manual file editing needed.
+LLM features require user-owned configuration in `~/.frais/config/config.toml`. The project never ships or creates a server-side API key. Run `frais config manage` for interactive setup — no manual file editing needed.
 
-> **Note**: Thinking-mode control is handled automatically. Providers that
-> default to thinking (DeepSeek, Kimi K2, Grok, Qwen) have it disabled
-> automatically for structured JSON calls. Free-text calls use model defaults.
+## Architecture
+
+```
+User  ──▶  CLI (cli.py)  ──▶  Scan (plugins/)  ──▶  Research (plugin-private)  ──▶  Update (plugins/)
+         Pure dispatcher        │                              │
+                                │  applications/               │  applications/_store.py (iTunes)
+                                │  homebrew/                   │  applications/_research.py (LLM)
+                                │  npm/                        │  homebrew/npm skip research
+                                │                              │
+                           PluginScanResult              UpdateCandidate
+```
+
+**Scan layer** — each plugin discovers installed software via its own `scan()` / `scan_all()` methods. Homebrew and NPM plugins can directly identify outdated packages from their package managers.
+
+**Research layer** (plugin-private) — only `ApplicationsPlugin` overrides `research()`. It uses a structured 3-step LLM pipeline: generate search queries → pick best URLs → extract version. App Store apps use the iTunes API directly (~1s). Both the iTunes fast path (`applications/_store.py`) and the LLM pipeline (`applications/_research.py`) are private to the applications plugin — they are not general infrastructure.
+
+**Update layer** — each plugin provides its own `update()` method. Homebrew runs `brew upgrade`, NPM runs `npm install -g`, and Applications resolve App Store deep links or prompt to open the `.app` bundle.
 
 ## Commands
+
+### `doctor`
 
 ```bash
 frais doctor
 ```
 
-Prints detected macOS version, architecture, Applications paths, plugin
-availability, and redacted LLM provider status.
+Prints macOS version, architecture, Applications paths, plugin availability, and redacted LLM provider status. Read-only, safe to run before any configuration.
+
+### `advise`
 
 ```bash
 frais advise
@@ -41,31 +55,26 @@ frais advise -j 5
 frais advise --json
 ```
 
-Scans Applications, Homebrew, and npm global packages, then researches latest
-versions using a structured 3-step pipeline per app:
+Scans enabled plugins, researches latest versions, and generates Chinese-language AI summaries. Progress is shown with a live progress bar — one row per plugin.
 
-1. LLM generates search queries (smarter than hardcoded queries)
-2. We search and LLM picks the best 3 URLs
-3. We fetch those URLs and LLM extracts the version number
+| Flag | Effect |
+|------|--------|
+| `--all` | Show all installed software including up-to-date items |
+| `--apps-only` | Skip package manager plugins (Homebrew, NPM) |
+| `--json` | Machine-readable output |
+| `-j N` | Concurrency limit (default 10, max 20) |
 
-App Store apps use the iTunes API directly (fast, no LLM needed).
-
-Use `--all` to show all installed software including up-to-date items.
-Use `--apps-only` to skip package manager plugins.
-Use `-j` to control concurrency (default 10, max 20). Progress is shown
-with a live progress bar — one row per plugin.
+### `config`
 
 ```bash
-frais config
-frais config init
-frais config show
-frais config path
-frais config test
+frais config              # show current config (redacted)
+frais config manage       # interactive provider setup
+frais config show         # same as bare `frais config`
+frais config path         # print config file path
+frais config test         # send a minimal LLM request to validate
 ```
 
-Creates or displays LLM provider configuration. `show` never prints the full API key.
-`test` sends a minimal chat-completions request and prints the effective URL
-without revealing the key.
+`show` never prints the full API key — only a 4-character suffix. `test` prints the effective chat-completions URL without revealing the key.
 
 Example config (`~/.frais/config/config.toml`):
 
@@ -76,18 +85,20 @@ model = "deepseek-v4-flash"
 api_key = "sk-..."
 ```
 
-Supported providers: `deepseek`, `openai`, `kimi`, `grok`, `mistral`, `qwen`, `zhipu`.
-Each provider offers a curated set of models. Run `frais config init` to browse them interactively.
+Supported providers: `deepseek`, `openai`, `kimi`, `grok`, `mistral`, `qwen`, `zhipu`. Each provider offers a curated set of models — run `frais config manage` to browse them interactively.
 
-`save_config` and `load_config` are exported from `frais.config` for programmatic use.
+API key resolution order: `FRAIS_LLM_API_KEY` env var → `OPENAI_API_KEY` env var → config file.
+
+### `update`
 
 ```bash
 frais update
-frais update --only node
+frais update npm
 ```
 
-Shows each auto-updatable candidate and asks for confirmation before running a
-command. v1 only auto-executes Homebrew formula/cask updates.
+Loads results from the last `frais advise` run, shows each candidate with AI advice, and asks for confirmation. Delegates to each plugin's `update()` method for execution.
+
+### `plugins`
 
 ```bash
 frais plugins
@@ -96,14 +107,22 @@ frais plugins enable homebrew
 frais plugins disable homebrew
 ```
 
-Lists and manages plugins. `enable` / `disable` persist the choice to
-`~/.frais/config/plugins.toml`. When a plugin is disabled, it is
-skipped during `advise` runs.
+Lists and manages plugins. State is persisted to `~/.frais/config/plugins.toml`. Disabled plugins are skipped during `advise`.
 
-### Writing plugins
+### `ignore`
 
-Any Python package can register a plugin via entry points. Subclass
-`ScannerPlugin` and declare an entry point in `frais.plugins`:
+```bash
+frais ignore
+frais ignore list
+frais ignore add com.example.app
+frais ignore remove com.example.app
+```
+
+Manages an ignore list stored at `~/.frais/config/ignore.txt` (one app ID per line). Ignored apps are excluded from `advise` runs.
+
+## Writing plugins
+
+Any Python package can register a plugin via entry points. Subclass `ScannerPlugin` and declare an entry point in `frais.plugins`:
 
 ```python
 from frais.plugins import ScannerPlugin
@@ -122,15 +141,19 @@ class MyPlugin(ScannerPlugin):
 
     def scan_all(self, system: SystemProfile) -> PluginScanResult:
         """Return ALL installed items. Used when --all is passed."""
-        return self.scan(system)  # or return all items
+        return self.scan(system)
 
-    def research(self, agent, item: SoftwareItem) -> UpdateCandidate | None:
-        """Optional: research latest version. Return None if not needed."""
+    def research(self, llm, item: SoftwareItem) -> UpdateCandidate | None:
+        """Optional: research latest version via LLM. Return None if not needed."""
         return None
 
-    def summarize(self, agent, candidate: UpdateCandidate) -> str | None:
-        """Optional: custom summary logic."""
-        return agent.summarize_candidate(candidate)
+    def update(self, candidate: UpdateCandidate) -> bool:
+        """Optional: execute the update. Default runs candidate.command."""
+        return super().update(candidate)
+
+    def summarize(self, llm, candidate: UpdateCandidate) -> str | None:
+        """Optional: custom summary logic. Default uses LLM."""
+        return llm.summarize_candidate(candidate)
 ```
 
 In your `pyproject.toml`:
@@ -142,47 +165,26 @@ my_plugin = "my_package.plugin:MyPlugin"
 
 After installing your package, `frais plugins list` will show it.
 
-```bash
-frais ignore
-frais ignore list
-frais ignore add com.example.app
-frais ignore remove com.example.app
-```
-
-Manages an ignore list. Ignored apps are excluded from `advise` runs. The list
-is stored at `~/.frais/config/ignore.txt` (one app ID per line).
-
 ## Logs
 
-Logs are written to both stderr and `~/.frais/log/frais.log` by default.
-
 ```bash
-frais --verbose advise
-frais --debug advise
+frais --verbose advise       # INFO to stderr
+frais --debug advise         # DEBUG to stderr (includes LLM traces)
 frais --log-file ./my.log advise
-frais --no-log advise
+frais --no-log advise        # disable file logging
 ```
 
-`--verbose` shows high-level progress; `--debug` includes LLM call details and
-subprocess traces. Log files auto-truncate at 5MB.
+Logs are written to both stderr and `~/.frais/log/frais.log` by default. Log files auto-truncate at 5 MB.
 
 ## Testing
 
 ```bash
-# Run all tests
 uv run pytest
-
-# Run with coverage report
 uv run pytest --cov=src/frais --cov-report=term-missing tests/
-
-# Generate HTML coverage report (opens in browser)
-uv run pytest --cov=src/frais --cov-report=html tests/
-open htmlcov/index.html
+uv run pytest --cov=src/frais --cov-report=html tests/ && open htmlcov/index.html
 ```
 
-Coverage is tracked per-file in CI. Core logic (agent, research, tools, models, config)
-maintains >90% line coverage. Tests use `monkeypatch` for all external dependencies —
-no real HTTP calls or subprocess execution.
+Tests use `monkeypatch` for all external dependencies — no real HTTP calls or subprocess execution.
 
 ## Build a macOS binary
 
@@ -191,6 +193,4 @@ uv run --extra build python scripts/build_binary.py
 ./dist/frais doctor
 ```
 
-The binary is built with PyInstaller and writes no secrets into the artifact.
-LLM access uses the provider config in `~/.frais/config/config.toml`
-(set up via `frais config init`).
+Built with PyInstaller. The binary contains no API keys or secrets. LLM access uses the provider config in `~/.frais/config/config.toml`.

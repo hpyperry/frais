@@ -101,5 +101,3 @@ class NpmPlugin(ScannerPlugin):
             command=["npm", "install", "-g", name],
             evidence=[f"https://www.npmjs.com/package/{name}"],
         )
-
-

@@ -22,6 +22,7 @@ from rich.table import Table
 from .config import CONFIG_PATH, load_config, require_config, save_config
 from .ignore import add_ignored, load_ignored, remove_ignored
 from .models import PluginScanResult, SoftwareItem, SourceKind, ScanResult, UpdateCandidate
+from .summarize import generate_summaries
 
 _DEFAULT_LOG_DIR = Path.home() / ".frais" / "log"
 _DEFAULT_LOG_FILE = _DEFAULT_LOG_DIR / "frais.log"
@@ -37,12 +38,12 @@ Default scope:
 
 Safety model:
   - `doctor`, `config`, `plugins`, and `ignore` are read-only.
-  - `advise` requires LLM provider configuration via `frais config init`.
+  - `advise` requires LLM provider configuration via `frais config manage`.
   - `update` auto-executes packages after interactive confirmation.
 
 Common examples:
   frais doctor
-  frais config init
+  frais config manage
   frais advise
   frais advise --apps-only
   frais advise -j 5
@@ -52,7 +53,7 @@ Common examples:
 
 CONFIG_HELP = """Manage LLM provider configuration.
 
-Frais supports a curated set of OpenAI-compatible providers. Run `frais config init`
+Frais supports a curated set of OpenAI-compatible providers. Run `frais config manage`
 for interactive setup — no manual file editing needed.
 
 Config file:
@@ -64,7 +65,7 @@ Environment variable:
 Examples:
   frais config
   frais config show
-  frais config init
+  frais config manage
   frais config path
   frais config test
 """
@@ -216,7 +217,7 @@ def doctor() -> None:
         table.add_row("LLM model", llm.model)
         table.add_row("LLM key", masked_key)
     else:
-        table.add_row("LLM", "not configured (run `frais config init`)")
+        table.add_row("LLM", "not configured (run `frais config manage`)")
     console.print(table)
 
 
@@ -227,21 +228,21 @@ def config_default(ctx: typer.Context) -> None:
         config_show()
 
 
-@config_app.command("init")
-def config_init() -> None:
+@config_app.command("manage")
+def config_manage() -> None:
     """Interactively configure an LLM provider.
 
     Walk through provider selection, model choice, and API key entry.
     Writes the result to ~/.frais/config/config.toml.
 
     Example:
-      frais config init
+      frais config manage
     """
     from getpass import getpass
 
     from rich.prompt import IntPrompt
 
-    from .agent import AgentClient
+    from .llm import LLMClient
     from .config import ProviderConfig
     from .providers import PROVIDERS
 
@@ -295,7 +296,7 @@ def config_init() -> None:
             model=model.id,
             api_key=api_key,
         )
-        test_text = AgentClient(test_config).test_connection()
+        test_text = LLMClient(test_config).test_connection()
         console.print(f"  [green]Connection OK:[/green] {test_text.strip()}")
     except Exception as exc:
         console.print(f"  [yellow]Warning:[/yellow] test request failed: {exc}")
@@ -320,7 +321,7 @@ def config_show() -> None:
     """
     llm = load_config()
     if not llm:
-        console.print("[dim]Not configured. Run `frais config init` to set up.[/dim]")
+        console.print("[dim]Not configured. Run `frais config manage` to set up.[/dim]")
         return
 
     table = Table("Key", "Value")
@@ -356,14 +357,14 @@ def config_test() -> None:
     Example:
       frais config test
     """
-    from .agent import AgentClient, LLMRequestError
+    from .llm import LLMClient, LLMRequestError
 
     try:
         config = require_config()
         console.print(f"Provider: {config.provider.name}")
         console.print(f"Model: {config.model}")
         console.print(f"Chat completions URL: {config.provider.chat_url}")
-        text = AgentClient(config).test_connection()
+        text = LLMClient(config).test_connection()
     except (ValueError, LLMRequestError) as exc:
         raise click.ClickException(str(exc)) from exc
     console.print(f"LLM test response: {text.strip()}")
@@ -524,7 +525,7 @@ def advise(
 ) -> None:
     """Scan and generate LLM-powered update advice.
 
-    Requires a configured LLM provider (run `frais config init` first).
+    Requires a configured LLM provider (run `frais config manage` first).
     The LLM is used for release research and summaries; missing or
     unreliable evidence is reported as unknown instead of being invented.
 
@@ -535,7 +536,7 @@ def advise(
       frais advise --json
       frais advise -j 5
     """
-    from .agent import AgentClient
+    from .llm import LLMClient
     from .plugins.registry import all_plugins
     from .system import detect_system
 
@@ -544,7 +545,7 @@ def advise(
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     logger.info("advise using provider=%s model=%s jobs=%d", config.provider.name, config.model, jobs)
-    agent = AgentClient(config)
+    llm = LLMClient(config)
 
     def _on_interrupt(signum, frame):
         signal.signal(signal.SIGINT, signal.SIG_DFL)
@@ -625,7 +626,7 @@ def advise(
                                     progress.update(task_id, total=len(items_to_research), completed=0,
                                                     description=f"{name}    researching")
                                     for it in items_to_research:
-                                        r_fut = research_pool.submit(plugin.research, agent, it)
+                                        r_fut = research_pool.submit(plugin.research, llm, it)
                                         research_futures[r_fut] = (name, it)
                                         pending.add(r_fut)
                                 else:
@@ -670,7 +671,7 @@ def advise(
             all_candidates = result.all_candidates
             if all_candidates:
                 summarize_task = progress.add_task("Summaries", total=len(all_candidates))
-                _summarize_concurrent(agent, all_candidates, jobs, progress, summarize_task)
+                generate_summaries(llm, all_candidates, max_workers=jobs, progress=progress, task_id=summarize_task)
 
         if json_output:
             console.print_json(json.dumps(result.to_dict(), ensure_ascii=False))
@@ -712,27 +713,6 @@ def _select_plugins(apps_only: bool, explicit: list[str] | None) -> list[str]:
     return result
 
 
-def _summarize_one(agent: AgentClient, candidate: UpdateCandidate) -> None:
-    try:
-        candidate.ai_summary = agent.summarize_candidate(candidate)
-    except Exception as exc:
-        logger.warning("summary failed for %s: %s", candidate.item.name, exc)
-
-
-def _summarize_concurrent(
-    agent: AgentClient, candidates: list[UpdateCandidate], jobs: int,
-    progress: Progress | None = None, task_id: object | None = None,
-) -> None:
-    if not candidates:
-        return
-    with ThreadPoolExecutor(max_workers=jobs) as pool:
-        futures = [pool.submit(_summarize_one, agent, c) for c in candidates]
-        for future in as_completed(futures):
-            future.result()
-            if progress is not None and task_id is not None:
-                progress.advance(task_id)
-
-
 @app.command()
 def update(
     only: Annotated[
@@ -765,6 +745,16 @@ def update(
         console.print(f"Failed to read advice cache: {exc}")
         raise typer.Exit(1)
 
+    from .plugins.registry import all_plugins
+
+    # Build candidate → plugin mapping from cache
+    plugin_map: dict[str, str] = {}  # candidate item id → plugin name
+    if "plugin_results" in data:
+        for plugin_name, pr in data["plugin_results"].items():
+            for raw_cand in pr.get("candidates", []):
+                item_data = raw_cand.get("item", {})
+                plugin_map[item_data.get("id", "")] = plugin_name
+
     # Parse candidates from cached data (v2 format: plugin_results)
     raw_candidates: list[dict] = []
     if "plugin_results" in data:
@@ -785,11 +775,9 @@ def update(
         console.print("No update candidates found.")
         return
 
-    for candidate in candidates:
-        # Ensure App Store apps have an open command
-        if candidate.item.source == SourceKind.APP_STORE and not candidate.command:
-            candidate.command, candidate.can_auto_update = _resolve_app_store_command(candidate.item)
+    plugins = all_plugins()
 
+    for candidate in candidates:
         console.print()
         console.print(f"  {candidate.item.id}")
         console.print(f"    {candidate.item.name} | {candidate.item.source.value}")
@@ -808,32 +796,17 @@ def update(
             logger.info("update skipped name=%s", candidate.item.name)
             continue
 
-        if candidate.can_auto_update:
-            logger.info("update executing command=%s", " ".join(candidate.command))
-            subprocess.run(candidate.command, check=False)
-        else:
-            if candidate.item.path and typer.confirm("    Open app for update?", default=False):
+        plugin_name = plugin_map.get(candidate.item.id)
+        plugin = plugins.get(plugin_name) if plugin_name else None
+        if plugin and plugin.update(candidate):
+            logger.info("update executed plugin=%s name=%s", plugin_name, candidate.item.name)
+        elif not candidate.can_auto_update and candidate.item.path:
+            if typer.confirm("    Open app for update?", default=False):
                 subprocess.run(["open", candidate.item.path], check=False)
             else:
                 console.print("    Skipped.")
-def _resolve_app_store_command(item: SoftwareItem) -> tuple[list[str], bool]:
-    """Try to get App Store trackId and return (command, can_auto_update)."""
-    try:
-        import httpx
-        response = httpx.get(
-            "https://itunes.apple.com/lookup",
-            params={"bundleId": item.id, "country": "cn"},
-            timeout=httpx.Timeout(5.0, read=10.0),
-        )
-        response.raise_for_status()
-        data = response.json()
-        if data.get("resultCount", 0) > 0:
-            track_id = data["results"][0].get("trackId")
-            if track_id:
-                return ["open", f"macappstore://apps.apple.com/app/id{track_id}"], True
-    except Exception as exc:
-        logger.debug("itunes lookup failed for %s: %s", item.name, exc)
-    return [], False
+        else:
+            console.print("    [dim]Update not available.[/dim]")
 
 
 

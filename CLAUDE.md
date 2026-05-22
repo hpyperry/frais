@@ -49,30 +49,36 @@ uv run --extra build python scripts/build_binary.py
 
 ```
 src/frais/
-  cli.py              Typer app: doctor, advise, update, config, plugins, ignore
-  models.py           Dataclasses: SystemProfile, SoftwareItem, UpdateCandidate,
-                      PluginScanResult, ScanResult, ResearchResult, etc.
-  config.py           Provider config: reads ~/.frais/config/config.toml, env var overrides
-  providers.py        Curated provider registry: 7 providers with models, URLs, thinking params
-  ignore.py           Ignore list: load/save/add/remove ignored app IDs (~/.frais/config/ignore.txt)
-  agent.py            AgentClient — structured 3-step research pipeline (generate queries, pick URLs, extract version)
-  tools.py            Web tools: web_search (DDGS), web_fetch, web_fetch_batch (internal, not LLM-exposed)
-  research.py         Orchestrates version research with iTunes fast path + LLM structured pipeline
-  version_checker.py  Fast version checks: iTunes API
-  system.py           macOS detection
-  scanners/
-    applications.py    Internal helpers: scan_applications, read_application, classify_source
+  __init__.py           # __version__ = "0.1.0"
+  models.py             # Dataclasses: SystemProfile, SoftwareItem, UpdateCandidate,
+                        #   PluginScanResult, ScanResult, ResearchResult, etc.
+  providers.py          # Curated provider registry: 7 providers with models, URLs, thinking params
+  config.py             # ProviderConfig: reads ~/.frais/config/config.toml, env var overrides
+  llm.py                # LLMClient — structured 3-step research calls (generate queries, pick URLs,
+                        #   extract version) + JSON helpers + LLMRequestError
+  tools.py              # Web tools: web_search (DDGS), web_fetch, web_fetch_batch
+  summarize.py          # Batch LLM summary generation (generate_summaries)
+  system.py             # macOS detection
+  ignore.py             # Ignore list: load/save/add/remove (~/.frais/config/ignore.txt)
+  cli.py                # Typer app: doctor, advise, update, config, plugins, ignore
+                        #   CLI is a pure dispatcher — all business logic lives in plugins
   plugins/
-    __init__.py        Re-exports ScannerPlugin as public API
-    _utils.py          Shared helper: run_json() with env isolation for subprocess calls
-    base.py            ScannerPlugin ABC with scan, scan_all, research, summarize interface
-    registry.py        Plugin registry; discovers built-in + third-party plugins via entry points
-    config.py          Plugin persistence: reads/writes ~/.frais/config/plugins.toml;
-                       auto-creates file with defaults on first access
-    applications/      ApplicationsPlugin — scans /Applications and ~/Applications .app bundles
-    homebrew/          HomebrewPlugin — brew outdated --json=v2, brew info --json=v2 --installed
-    npm/               NpmPlugin — npm outdated -g --json, npm ls -g --depth=0 --json
+    __init__.py          # Re-exports ScannerPlugin as public API
+    base.py              # ScannerPlugin ABC: scan, scan_all, research, update, summarize
+    _utils.py            # Shared helper: run_json() with env isolation for subprocess calls
+    registry.py          # Plugin registry; discovers built-in + third-party plugins via entry points
+    config.py            # Plugin persistence: reads/writes ~/.frais/config/plugins.toml
+    applications/
+      __init__.py        # ApplicationsPlugin + scan_applications, read_application, classify_source
+      _store.py          # iTunes API (check_app_store_version, resolve_app_store_command)
+      _research.py       # LLM 3-step pipeline + version helpers (_is_newer, _normalize, etc.)
+    homebrew/
+      __init__.py        # HomebrewPlugin + brew info/uses helpers
+    npm/
+      __init__.py        # NpmPlugin
 ```
+
+Design principle: all functionality is plugin-based. The CLI only provides `plugins`, `config`, `ignore`, and `doctor` commands. The `advise` command is a pure dispatcher that delegates everything (scan, research, update) to plugins via the `ScannerPlugin` ABC. Each plugin lives in its own subdirectory under `plugins/`. `applications/_store.py` and `applications/_research.py` are private to the applications plugin — the iTunes fast path and LLM research pipeline are internal implementation details of `ApplicationsPlugin`, not general capabilities.
 
 ## Plugin interface
 
@@ -93,7 +99,7 @@ class ScannerPlugin(ABC):
         """Return ALL installed items. Used when --all is passed. Default: =scan()."""
         return self.scan(system)
 
-    def research(self, agent, item) -> UpdateCandidate | None:
+    def research(self, llm, item) -> UpdateCandidate | None:
         """Research latest version for a single item. Override to enable.
         Returns None if up-to-date or not possible. Default no-op."""
 
@@ -101,8 +107,16 @@ class ScannerPlugin(ABC):
     def needs_research(self) -> bool:
         """True if subclass overrides research(). Auto-detected."""
 
-    def summarize(self, agent, candidate) -> str | None:
-        """Generate human-readable summary. Default: uses agent LLM."""
+    def update(self, candidate) -> bool:
+        """Execute the update. Default: subprocess.run(candidate.command).
+        Override for plugin-specific behavior (e.g. App Store deep link)."""
+
+    @property
+    def needs_update(self) -> bool:
+        """True if subclass overrides update(). Auto-detected."""
+
+    def summarize(self, llm, candidate) -> str | None:
+        """Generate human-readable summary. Default: uses LLMClient."""
 ```
 
 All plugins are registered via entry points in `pyproject.toml`:
@@ -144,7 +158,9 @@ Three layers of concurrency:
 2. **Research layer**: research tasks are submitted as soon as each plugin's scan completes. Research completions are interleaved with pending scan completions via `wait(FIRST_COMPLETED)`, so progress updates immediately rather than waiting for all scans to finish. Concurrency controlled by `-j` (default 10).
 3. **Summary layer**: AI summaries for all candidates across all plugins are generated concurrently.
 
-## Research flow
+## Research flow (ApplicationsPlugin-private)
+
+The LLM 3-step research pipeline lives in `plugins/applications/_research.py` — it is an internal implementation detail of `ApplicationsPlugin`, not a general capability.
 
 Each non-App Store app goes through a structured 3-step pipeline:
 
@@ -170,11 +186,11 @@ Plugins that don't need research (Homebrew, npm) skip the LLM pipeline entirely 
 - **Testing**: Uses `monkeypatch` (pytest fixture) for all external dependencies — subprocess, filesystem, env vars. No mock library.
 - **Version comparison**: Uses `packaging.version.Version`; strips leading `v`/`V` before comparing.
 - **Source classification**: Applications are classified as APP_STORE, LOCAL_BUILD, NETWORK_DOWNLOAD, APPLICATION, or UNKNOWN based on codesign authority, team ID, and quarantine xattr presence.
-- **Structured LLM pipeline**: Agent does NOT use tool calling. Instead, 3 discrete LLM calls per app: generate queries, pick URLs, extract version. Each call returns JSON.
+- **Structured LLM pipeline**: Uses 3 discrete LLM calls per app (not tool-calling / agentic). Each call returns structured JSON. This is intentional — earlier attempts with LLM tool-calling produced unreliable results.
 - **Logging**: `--verbose` sets INFO, `--debug` sets DEBUG. Logs go to stderr and `~/.frais/log/frais.log` by default. `--log-file` overrides path, `--no-log` disables file logging. Auto-truncates at 5MB.
 - **Progress bar**: Each plugin gets its own `Progress` task row. Scanning fills the row with item/candidate counts. Research (if `needs_research`) updates the same row with progress. Summaries gets a dedicated row. For `show_all`, `scan_all()` is called instead of `scan()`.
 - **Ignore list**: `~/.frais/config/ignore.txt` stores app IDs to skip during `advise`. Auto-created on first access via `init_ignored()`. Managed via `frais ignore add/remove/list`. Filtered after scan, before research.
 - **Plugin discovery**: `registry.py` uses `importlib.metadata.entry_points(group="frais.plugins")` to discover all plugins at runtime. Built-in plugins (applications, homebrew, npm) are always present. Failed loads are logged, not fatal.
 - **Plugin persistence**: `plugins/config.py` manages `~/.frais/config/plugins.toml`. First run auto-creates the file with all discovered plugins set to their defaults. `plugins enable/disable` persist state. `_select_plugins()` uses 3-tier precedence: CLI flags (`--apps-only`, `--plugins`) override persisted config, which overrides `enabled_by_default`.
 - **Ctrl+C handling**: `advise` registers a SIGINT handler before entering the Progress/ThreadPoolExecutor block. The handler uses `os.write(1, b"\033[?25h\n")` to directly write the cursor-show ANSI escape to the stdout fd — bypassing Rich's internal segment buffer, which can swallow escapes when a nested `with self.console:` context is held (e.g. by Progress's auto-refresh thread). Then `os._exit(130)`. Original handler is restored via `try/finally`. Signal handler (not KeyboardInterrupt) is needed because ThreadPoolExecutor.__exit__ blocks on worker threads. The handler must only call async-signal-safe functions (`os.write`, `os._exit`) — no logging, no Rich API calls, no string formatting.
-- **Subprocess env isolation**: `run_json()` in `plugins/_utils.py` and `_brew_uses()` in `plugins/homebrew/__init__.py` clear `DYLD_LIBRARY_PATH` from the subprocess environment to prevent PyInstaller-bundled dylibs from interfering with system commands.
+- **Subprocess env isolation**: `run_json()` in `plugins/_utils.py` and `_brew_uses()` in `plugins/homebrew.py` clear `DYLD_LIBRARY_PATH` from the subprocess environment to prevent PyInstaller-bundled dylibs from interfering with system commands.
