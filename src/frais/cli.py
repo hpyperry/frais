@@ -9,12 +9,12 @@ import subprocess
 from pathlib import Path
 from typing import Annotated
 
-import click
 import typer
 from rich.console import Console
 from rich.table import Table
 
-from .config import CONFIG_PATH, load_config, require_config, save_config
+from .commands.config import config_manage, config_path, config_show, config_test
+from .config import CONFIG_PATH, load_config
 from .ignore import add_ignored, load_ignored, remove_ignored
 from .models import SourceKind, ScanResult
 
@@ -218,141 +218,10 @@ def config_default(ctx: typer.Context) -> None:
         config_show()
 
 
-@config_app.command("manage")
-def config_manage() -> None:
-    """Interactively configure an LLM provider.
-
-    Walk through provider selection, model choice, and API key entry.
-    Writes the result to ~/.frais/config/config.toml.
-
-    Example:
-      frais config manage
-    """
-    from getpass import getpass
-
-    from rich.prompt import IntPrompt
-
-    from .llm import LLMClient
-    from .config import ProviderConfig
-    from .providers import PROVIDERS
-
-    console.print()
-    console.print("[bold]Select an LLM provider:[/bold]")
-    console.print()
-    for i, p in enumerate(PROVIDERS, 1):
-        console.print(f"  {i}. {p.name}  [dim]({len(p.models)} models)[/dim]")
-    console.print()
-
-    idx = IntPrompt.ask(
-        "Enter provider number",
-        choices=[str(i) for i in range(1, len(PROVIDERS) + 1)],
-        show_choices=False,
-    )
-    provider = PROVIDERS[idx - 1]
-    console.print(f"  [green]{provider.name}[/green] selected.")
-    console.print()
-
-    console.print(f"[bold]Select a model for {provider.name}:[/bold]")
-    console.print()
-    for i, m in enumerate(provider.models, 1):
-        default_mark = " [dim](thinking by default)[/dim]" if m.thinking_default else ""
-        console.print(f"  {i}. {m.name}{default_mark}")
-    console.print()
-
-    model_idx = IntPrompt.ask(
-        "Enter model number",
-        choices=[str(i) for i in range(1, len(provider.models) + 1)],
-        show_choices=False,
-    )
-    model = provider.models[model_idx - 1]
-    console.print(f"  [green]{model.name}[/green] selected.")
-    console.print()
-
-    api_key = getpass(f"Enter API key for {provider.name} (input hidden): ").strip()
-    if not api_key:
-        console.print("[red]API key cannot be empty.[/red]")
-        raise typer.Exit(1)
-    console.print("  [green]API key received.[/green]")
-    console.print()
-
-    console.print(f"[bold]Testing connection to {provider.name}...[/bold]")
-    try:
-        test_config = ProviderConfig(
-            provider=provider,
-            model=model.id,
-            api_key=api_key,
-        )
-        test_text = LLMClient(test_config).test_connection()
-        console.print(f"  [green]Connection OK:[/green] {test_text.strip()}")
-    except Exception as exc:
-        console.print(f"  [yellow]Warning:[/yellow] test request failed: {exc}")
-        if not typer.confirm("Save config anyway?", default=False):
-            raise typer.Exit(1)
-
-    save_config(provider.id, model.id, api_key)
-    console.print()
-    console.print(f"[green]Config saved to {CONFIG_PATH}[/green]")
-
-
-@config_app.command("show")
-def config_show() -> None:
-    """Show current LLM provider config with secrets redacted.
-
-    The API key is never printed; only presence and a final 4-character suffix
-    are shown when available.
-
-    Example:
-      frais config show
-    """
-    llm = load_config()
-    if not llm:
-        console.print("[dim]Not configured. Run `frais config manage` to set up.[/dim]")
-        return
-
-    table = Table("Key", "Value")
-    table.add_row("Provider", llm.provider.name)
-    table.add_row("Model", llm.model)
-    if llm.api_key:
-        masked = "***" + llm.api_key[-4:] if len(llm.api_key) >= 4 else "***"
-        table.add_row("API key", masked)
-    else:
-        table.add_row("API key", "missing")
-    if llm.api_key_source:
-        table.add_row("Key source", llm.api_key_source)
-    console.print(table)
-
-
-@config_app.command("path")
-def config_path() -> None:
-    """Print the default BYOK config file path.
-
-    Example:
-      frais config path
-    """
-    console.print(str(CONFIG_PATH))
-
-
-@config_app.command("test")
-def config_test() -> None:
-    """Send a minimal LLM request to validate provider settings.
-
-    This never prints the API key. It reports the provider, model,
-    chat completions URL, and a short success or error message.
-
-    Example:
-      frais config test
-    """
-    from .llm import LLMClient, LLMRequestError
-
-    try:
-        config = require_config()
-        console.print(f"Provider: {config.provider.name}")
-        console.print(f"Model: {config.model}")
-        console.print(f"Chat completions URL: {config.provider.chat_url}")
-        text = LLMClient(config).test_connection()
-    except (ValueError, LLMRequestError) as exc:
-        raise click.ClickException(str(exc)) from exc
-    console.print(f"LLM test response: {text.strip()}")
+config_app.command("manage")(config_manage)
+config_app.command("show")(config_show)
+config_app.command("path")(config_path)
+config_app.command("test")(config_test)
 
 
 @plugins_app.callback(invoke_without_command=True)

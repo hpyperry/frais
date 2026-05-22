@@ -92,13 +92,13 @@ Generates an AI summary for a single candidate from the last scan cache. Writes 
 
 ```bash
 frais config              # show current config (redacted)
-frais config manage       # interactive provider setup
+frais config manage       # interactive setup or modify existing config
 frais config show         # same as bare `frais config`
 frais config path         # print config file path
 frais config test         # send a minimal LLM request to validate
 ```
 
-`show` never prints the full API key — only a 4-character suffix. `test` prints the effective chat-completions URL without revealing the key.
+`manage` detects an existing config and lets you choose what to modify — provider & model, API key, or full reconfiguration. Press Ctrl+C at any step to cancel without saving. `show` never prints the full API key — only a 4-character suffix. `test` prints the effective chat-completions URL without revealing the key.
 
 Example config (`~/.frais/config/config.toml`):
 

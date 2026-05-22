@@ -60,12 +60,13 @@ src/frais/
   tools.py              # Web tools: web_search (DDGS), web_fetch, web_fetch_batch
   system.py             # macOS detection
   ignore.py             # Ignore list: load/save/add/remove (~/.frais/config/ignore.txt)
-  cli.py                # Typer app: doctor, config, plugins, ignore
-                        #   Action commands delegated to commands/ modules
+  cli.py                # Typer app: doctor, plugins, ignore (thin dispatcher)
+                        #   Commands delegated to commands/ modules
   commands/
     __init__.py          # _split_plugins helper
     _scan_core.py        # run_scan_phase — shared Rich progress + cache logic
     advise.py            # advise command (scan + summaries + total time)
+    config.py            # config commands: manage (interactive), show, path, test
     scan.py              # scan command (agent-facing, --json output)
     summarize.py         # summarize <id> command (single-candidate summary)
     update.py            # update command (interactive confirmation → plugin.update)
