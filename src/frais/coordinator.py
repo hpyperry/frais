@@ -19,7 +19,8 @@ def select_plugins(apps_only: bool = False,
 
     available = all_plugins()
     if apps_only:
-        return {"applications": available["applications"]}
+        app_plugin = available.get("applications")
+        return {"applications": app_plugin} if app_plugin else {}
     if explicit:
         persisted = load_plugins_config()
         result: dict[str, ScannerPlugin] = {}
