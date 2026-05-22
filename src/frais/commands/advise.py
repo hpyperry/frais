@@ -55,7 +55,7 @@ def _print_advise_result(result: ScanResult, ignored_count: int = 0,
             console.print(f"    {candidate.item.name} | {candidate.item.source.value}")
             console.print(
                 f"    {candidate.item.current_version or 'unknown'} → "
-                f"[green]{candidate.latest_version or 'unknown'}[/green]  [{candidate.recommended_action}]"
+                f"[green]{candidate.latest_version or 'unknown'}[/green]"
             )
             console.print()
 
