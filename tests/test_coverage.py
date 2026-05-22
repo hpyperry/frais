@@ -581,6 +581,253 @@ def test_brew_info_empty_result(monkeypatch) -> None:
     assert result == {}
 
 
+# --- summarize: plugin not found ---
+
+
+def test_summarize_plugin_not_found(monkeypatch, tmp_path: Path) -> None:
+    from frais.commands.summarize import summarize
+
+    cache = tmp_path / "cache.json"
+    cache.write_text(json.dumps({
+        "system": {"os_name": "macOS", "os_version": "15.0", "arch": "arm64", "applications_paths": []},
+        "plugin_results": {"ghost": {"items": [], "candidates": [{
+            "item": {"id": "a", "name": "A", "kind": "app", "source": "application", "current_version": "1.0"},
+            "latest_version": "2.0", "release_notes": None, "dependency_impact": {},
+            "risk_level": "low", "ai_summary": None, "recommended_action": "Update",
+            "can_auto_update": False, "command": [], "evidence": [],
+        }], "skipped": []}},
+    }))
+    monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
+    with pytest.raises(typer.Exit):
+        summarize(item_id="a")
+
+
+# --- summarize: corrupt cache ---
+
+
+def test_summarize_corrupt_cache(monkeypatch, tmp_path: Path) -> None:
+    from frais.commands.summarize import summarize
+
+    cache = tmp_path / "cache.json"
+    cache.write_text("not json")
+    monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
+    with pytest.raises(typer.Exit):
+        summarize(item_id="a")
+
+
+# --- applications: LLM unavailable ---
+
+
+def test_applications_scan_llm_unavailable(monkeypatch) -> None:
+    from frais.plugins.applications import ApplicationsPlugin
+
+    plugin = ApplicationsPlugin()
+    monkeypatch.setattr("frais.config.require_config",
+        lambda: exec('raise ValueError("no config")'))
+    monkeypatch.setattr("frais.plugins.applications.scan_applications",
+        lambda paths: [])
+
+    system = SystemProfile(os_name="macOS", os_version="15.0", arch="arm64", applications_paths=[])
+    result = plugin.scan(system)
+    assert "no config" in result.skipped[0]
+
+
+# --- homebrew scan runtime error ---
+
+
+def test_homebrew_scan_runtime_error(monkeypatch) -> None:
+    from frais.plugins.homebrew import HomebrewPlugin
+    from frais.system import detect_system
+
+    plugin = HomebrewPlugin()
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/brew" if name == "brew" else None)
+    monkeypatch.setattr("frais.plugins.homebrew.run_json",
+        lambda cmd, ok_codes=(0,): exec('raise RuntimeError("brew crash")'))
+
+    result = plugin.scan(detect_system())
+    assert "brew crash" in result.skipped[0]
+
+
+def test_homebrew_scan_all_runtime_error(monkeypatch) -> None:
+    from frais.plugins.homebrew import HomebrewPlugin
+    from frais.system import detect_system
+
+    plugin = HomebrewPlugin()
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/brew" if name == "brew" else None)
+    monkeypatch.setattr("frais.plugins.homebrew.run_json",
+        lambda cmd, ok_codes=(0,): exec('raise RuntimeError("brew crash")'))
+
+    result = plugin.scan_all(detect_system())
+    assert len(result.skipped) == 1
+
+
+# --- _utils run_json non-zero exit ---
+
+
+def test_run_json_non_zero(monkeypatch) -> None:
+    from frais.plugins._utils import run_json
+
+    result_mock = type("R", (), {"returncode": 1, "stdout": "bad", "stderr": "error"})()
+    monkeypatch.setattr("subprocess.run", lambda cmd, **kw: result_mock)
+    with pytest.raises(RuntimeError):
+        run_json(["bad", "command"])
+
+
+# --- select_plugins explicit with enabled ---
+
+
+def test_select_plugins_explicit_with_enabled(monkeypatch) -> None:
+    from frais.coordinator import select_plugins
+
+    monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {"homebrew": True})
+    available = {"homebrew": _make_plugin("homebrew", True)}
+    monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: available)
+
+    result = select_plugins(apps_only=False, explicit=["homebrew"])
+    assert "homebrew" in result
+
+
+def test_select_plugins_default_enabled_no_persist(monkeypatch) -> None:
+    from frais.coordinator import select_plugins
+
+    monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {})
+    available = {"homebrew": _make_plugin("homebrew", True)}
+    monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: available)
+
+    result = select_plugins(apps_only=False, explicit=["homebrew"])
+    assert "homebrew" in result
+
+
+# --- coordinator: select_plugins edge cases ---
+
+
+def test_select_plugins_apps_only(monkeypatch) -> None:
+    from frais.coordinator import select_plugins
+
+    available = {"applications": _make_plugin("applications", True)}
+    monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: available)
+    result = select_plugins(apps_only=True, explicit=None)
+    assert list(result.keys()) == ["applications"]
+
+
+def test_select_plugins_default_persisted_disabled(monkeypatch) -> None:
+    from frais.coordinator import select_plugins
+
+    monkeypatch.setattr("frais.plugins.config.load_plugins_config",
+        lambda: {"homebrew": False})
+    available = {"homebrew": _make_plugin("homebrew", True)}
+    monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: available)
+    result = select_plugins(apps_only=False, explicit=None)
+    assert "homebrew" not in result
+
+
+# --- _research: _is_newer InvalidVersion edge ---
+
+
+def test_is_newer_invalid_version() -> None:
+    from frais.plugins.applications._research import _is_newer
+    # Same digits-only fallback results in no difference
+    assert _is_newer("build-2024.1", "build-2024.1") is False
+
+
+# --- _research: _digits_only empty ---
+
+
+def test_digits_only_empty() -> None:
+    from frais.plugins.applications._research import _digits_only
+    assert _digits_only("abc") == ""
+
+
+# --- tools: web_search and web_fetch error ---
+
+
+def test_web_fetch_github_error(monkeypatch) -> None:
+    from frais.tools import web_fetch
+    monkeypatch.setattr("httpx.get",
+        lambda url, **kw: exec('raise RuntimeError("fetch down")'))
+    result = web_fetch("https://github.com/test/repo/releases")
+    assert "Failed to fetch" in result
+
+
+# --- llm: LLMClient init error ---
+
+
+def test_llm_client_init_error() -> None:
+    from frais.llm import LLMClient
+    from frais.config import ProviderConfig
+
+    fake_provider = type("P", (), {"chat_url": "https://test"})()
+
+    # Config not ready
+    config = ProviderConfig(provider=fake_provider, model="", api_key="")
+    with pytest.raises(ValueError, match="incomplete"):
+        LLMClient(config)
+
+
+# --- llm: LLMRequestError ---
+
+
+def test_llm_request_error_str() -> None:
+    from frais.llm import LLMRequestError
+    err = LLMRequestError("test", status_code=400, response_text="bad")
+    assert "test" in str(err)
+    assert err.status_code == 400
+
+
+# --- _utils: run_json with empty stdout ---
+
+
+def test_run_json_empty_stdout(monkeypatch) -> None:
+    from frais.plugins._utils import run_json
+
+    result_mock = type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+    monkeypatch.setattr("subprocess.run", lambda cmd, **kw: result_mock)
+    result = run_json(["echo"], ok_codes=(0,))
+    assert result == {}
+
+
+# --- _utils: run_json with ok_codes match ---
+
+
+def test_run_json_ok_codes_match(monkeypatch) -> None:
+    from frais.plugins._utils import run_json
+
+    result_mock = type("R", (), {"returncode": 1, "stdout": '{"key":"val"}', "stderr": ""})()
+    monkeypatch.setattr("subprocess.run", lambda cmd, **kw: result_mock)
+    result = run_json(["cmd"], ok_codes=(0, 1))
+    assert result == {"key": "val"}
+
+
+def test_run_json_ok_codes_no_match(monkeypatch) -> None:
+    from frais.plugins._utils import run_json
+
+    result_mock = type("R", (), {"returncode": 2, "stdout": "bad", "stderr": "err"})()
+    monkeypatch.setattr("subprocess.run", lambda cmd, **kw: result_mock)
+    with pytest.raises(RuntimeError):
+        run_json(["cmd"])
+
+
+# --- config: load_config with provider not found ---
+
+
+def test_load_config_unknown_provider(monkeypatch) -> None:
+    from frais.config import load_config, CONFIG_PATH
+
+    monkeypatch.setattr("frais.config._read_config_file",
+        lambda path: {"llm": {"provider": "nonexistent", "model": "m", "api_key": "k"}})
+    result = load_config()
+    assert result is None
+
+
+# --- config: load_config no api_key ---
+
+
+def test_load_config_no_file() -> None:
+    from frais.config import load_config
+    result = load_config(Path("/nonexistent/config.toml"))
+    assert result is None
+
+
 # --- logger.debug path for npm install check ---
 
 
