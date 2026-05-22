@@ -146,10 +146,8 @@ class ScanResult:
     system: SystemProfile
     plugin_results: dict[str, PluginScanResult]  # plugin_name → result
 
-    # Computed properties:
+    # Computed property:
     all_candidates: list[UpdateCandidate]
-    all_items: list[SoftwareItem]
-    all_skipped: list[str]
 ```
 
 ## Concurrency model
@@ -207,7 +205,7 @@ Plugins that don't need research (Homebrew, npm) skip the LLM pipeline entirely 
 - **Source classification**: Applications are classified as APP_STORE, LOCAL_BUILD, NETWORK_DOWNLOAD, APPLICATION, or UNKNOWN based on codesign authority, team ID, and quarantine xattr presence.
 - **Structured LLM pipeline**: Uses 3 discrete LLM calls per app (not tool-calling / agentic). Each call returns structured JSON. This is intentional — earlier attempts with LLM tool-calling produced unreliable results.
 - **Logging**: `--verbose` sets INFO, `--debug` sets DEBUG. Logs go to stderr and `~/.frais/log/frais.log` by default. `--log-file` overrides path, `--no-log` disables file logging. Auto-truncates at 5MB.
-- **Progress bar**: Each plugin gets its own `Progress` task row. Scanning fills the row with item/candidate counts. Research (if `needs_research`) updates the same row with progress. Summaries gets a dedicated row. For `show_all`, `scan_all()` is called instead of `scan()`.
+- **Progress bar**: `_scan_core.run_scan_phase()` renders a Rich `Progress` bar with one task row per plugin. Each row shows the plugin's current `scan_steps` label with live `TimeElapsedColumn`. Progress is driven by `on_progress(step, done, total)`. After scans, a dedicated task row shows Summaries progress. Total time = max(scan times) + summarize time.
 - **Ignore list**: `~/.frais/config/ignore.txt` stores app IDs to skip during `advise`. Auto-created on first access via `init_ignored()`. Managed via `frais ignore add/remove/list`. Filtered after scan, before research.
 - **Plugin discovery**: `registry.py` uses `importlib.metadata.entry_points(group="frais.plugins")` to discover all plugins at runtime. Built-in plugins (applications, homebrew, npm) are always present. Failed loads are logged, not fatal.
 - **Plugin persistence**: `plugins/config.py` manages `~/.frais/config/plugins.toml`. First run auto-creates the file with all discovered plugins set to their defaults. `plugins enable/disable` persist state. `_select_plugins()` uses 3-tier precedence: CLI flags (`--apps-only`, `--plugins`) override persisted config, which overrides `enabled_by_default`.
