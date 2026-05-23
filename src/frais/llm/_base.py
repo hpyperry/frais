@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 
 import httpx
 
-from ..config import ProviderConfig
+from ..store.config_store import ProviderConfig
 
 logger = logging.getLogger(__name__)
 

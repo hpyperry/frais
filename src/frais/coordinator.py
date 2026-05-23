@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 def select_plugins(explicit: list[str] | None = None) -> dict[str, ScannerPlugin]:
     """Return enabled plugins filtered by CLI flags and persisted config."""
-    from .plugins.config import load_plugins_config
+    from .store.plugin_store import load_plugins_config
     from .plugins.registry import all_plugins
 
     available = all_plugins()

@@ -9,7 +9,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from ..config import CONFIG_PATH, load_config, require_config, save_config
+from ..store.config_store import CONFIG_PATH, load_config, require_config, save_config
 from ._output import exit_with_error, print_json_success
 
 logger = logging.getLogger(__name__)
@@ -231,7 +231,7 @@ def _test_and_save(provider, model, api_key, thinking: bool) -> None:
     import httpx
 
     from ..llm import LLMRequestError, get_client
-    from ..config import ProviderConfig
+    from ..store.config_store import ProviderConfig
 
     console.print()
     console.print(f"[bold]Testing connection to {provider.name}...[/bold]")

@@ -9,7 +9,7 @@ import typer
 from rich.console import Console
 
 from ..cli import _ADVICE_CACHE
-from ..ignore import load_ignored
+from ..store.ignore_store import load_ignored
 from . import _split_plugins
 from ._output import exit_with_error, print_json_success
 from ._scan_core import run_scan_phase

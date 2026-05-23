@@ -162,7 +162,7 @@ def test_update_no_cache_exits(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_select_plugins_explicit_respects_disabled(monkeypatch) -> None:
-    monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {"homebrew": False})
+    monkeypatch.setattr("frais.store.plugin_store.load_plugins_config", lambda: {"homebrew": False})
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {
         "homebrew": _fake_plugin("homebrew", True),
         "npm": _fake_plugin("npm", True),
@@ -172,7 +172,7 @@ def test_select_plugins_explicit_respects_disabled(monkeypatch) -> None:
 
 
 def test_select_plugins_persisted_disable_removes_default_enabled(monkeypatch) -> None:
-    monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {"homebrew": False, "npm": False})
+    monkeypatch.setattr("frais.store.plugin_store.load_plugins_config", lambda: {"homebrew": False, "npm": False})
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {
         "applications": _fake_plugin("applications", True),
         "homebrew": _fake_plugin("homebrew", True),
@@ -183,7 +183,7 @@ def test_select_plugins_persisted_disable_removes_default_enabled(monkeypatch) -
 
 
 def test_select_plugins_persisted_enable_adds_default_disabled(monkeypatch) -> None:
-    monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {"custom": True})
+    monkeypatch.setattr("frais.store.plugin_store.load_plugins_config", lambda: {"custom": True})
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {
         "applications": _fake_plugin("applications", True),
         "custom": _fake_plugin("custom", False),
@@ -193,7 +193,7 @@ def test_select_plugins_persisted_enable_adds_default_disabled(monkeypatch) -> N
 
 
 def test_select_plugins_uses_default_when_not_persisted(monkeypatch) -> None:
-    monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {})
+    monkeypatch.setattr("frais.store.plugin_store.load_plugins_config", lambda: {})
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {
         "a": _fake_plugin("a", True),
         "b": _fake_plugin("b", False),
@@ -212,8 +212,8 @@ def test_plugins_enable_persists(monkeypatch, capsys) -> None:
     def fake_save(name, enabled):
         calls["name"] = name
         calls["enabled"] = enabled
-    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
-    monkeypatch.setattr("frais.plugins.config.save_plugin_state", fake_save)
+    monkeypatch.setattr("frais.store.plugin_store.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.store.plugin_store.save_plugin_state", fake_save)
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {"homebrew": _fake_plugin("homebrew", True)})
 
     plugins_enable("homebrew")
@@ -225,8 +225,8 @@ def test_plugins_enable_persists(monkeypatch, capsys) -> None:
 def test_plugins_enable_unknown_plugin(monkeypatch) -> None:
     from frais.cli import plugins_enable
 
-    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
-    monkeypatch.setattr("frais.plugins.config.save_plugin_state", lambda name, enabled: None)
+    monkeypatch.setattr("frais.store.plugin_store.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.store.plugin_store.save_plugin_state", lambda name, enabled: None)
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {})
 
     with pytest.raises(typer.Exit):
@@ -240,8 +240,8 @@ def test_plugins_disable_persists(monkeypatch, capsys) -> None:
     def fake_save(name, enabled):
         calls["name"] = name
         calls["enabled"] = enabled
-    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
-    monkeypatch.setattr("frais.plugins.config.save_plugin_state", fake_save)
+    monkeypatch.setattr("frais.store.plugin_store.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.store.plugin_store.save_plugin_state", fake_save)
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {"homebrew": _fake_plugin("homebrew", True)})
 
     plugins_disable("homebrew")
@@ -253,8 +253,8 @@ def test_plugins_disable_persists(monkeypatch, capsys) -> None:
 def test_plugins_disable_unknown_plugin(monkeypatch) -> None:
     from frais.cli import plugins_disable
 
-    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
-    monkeypatch.setattr("frais.plugins.config.save_plugin_state", lambda name, enabled: None)
+    monkeypatch.setattr("frais.store.plugin_store.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.store.plugin_store.save_plugin_state", lambda name, enabled: None)
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {})
 
     with pytest.raises(typer.Exit):
@@ -267,8 +267,8 @@ def test_plugins_disable_unknown_plugin(monkeypatch) -> None:
 def test_plugins_list_shows_persisted_state(monkeypatch, capsys) -> None:
     from frais.cli import plugins_list
 
-    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
-    monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {"homebrew": False})
+    monkeypatch.setattr("frais.store.plugin_store.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.store.plugin_store.load_plugins_config", lambda: {"homebrew": False})
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {
         "applications": _fake_plugin("applications", True),
         "homebrew": _fake_plugin("homebrew", True),
@@ -286,8 +286,8 @@ def test_plugins_list_shows_persisted_state(monkeypatch, capsys) -> None:
 def test_plugins_list_uses_default_when_not_persisted(monkeypatch, capsys) -> None:
     from frais.cli import plugins_list
 
-    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
-    monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {})
+    monkeypatch.setattr("frais.store.plugin_store.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.store.plugin_store.load_plugins_config", lambda: {})
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {
         "applications": _fake_plugin("applications", True),
     })
@@ -509,8 +509,8 @@ def test_doctor_json_output_with_llm(monkeypatch, capsys) -> None:
 def test_plugins_list_json_output(monkeypatch, capsys) -> None:
     from frais.cli import plugins_list
 
-    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
-    monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {"homebrew": False})
+    monkeypatch.setattr("frais.store.plugin_store.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.store.plugin_store.load_plugins_config", lambda: {"homebrew": False})
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {
         "applications": _fake_plugin("applications", True),
         "homebrew": _fake_plugin("homebrew", True),
@@ -531,8 +531,8 @@ def test_plugins_list_json_output(monkeypatch, capsys) -> None:
 def test_ignore_list_json_output(monkeypatch, capsys) -> None:
     from frais.cli import ignore_list
 
-    monkeypatch.setattr("frais.ignore.init_ignored", lambda: None)
-    monkeypatch.setattr("frais.cli.load_ignored", lambda: {"com.app1", "com.app2"})
+    monkeypatch.setattr("frais.commands.ignore.init_ignored", lambda: None)
+    monkeypatch.setattr("frais.commands.ignore.load_ignored", lambda: {"com.app1", "com.app2"})
 
     ignore_list(json_output=True)
     captured = capsys.readouterr()
@@ -545,8 +545,8 @@ def test_ignore_list_json_output(monkeypatch, capsys) -> None:
 def test_ignore_list_json_empty(monkeypatch, capsys) -> None:
     from frais.cli import ignore_list
 
-    monkeypatch.setattr("frais.ignore.init_ignored", lambda: None)
-    monkeypatch.setattr("frais.cli.load_ignored", lambda: set())
+    monkeypatch.setattr("frais.commands.ignore.init_ignored", lambda: None)
+    monkeypatch.setattr("frais.commands.ignore.load_ignored", lambda: set())
 
     ignore_list(json_output=True)
     captured = capsys.readouterr()
@@ -559,8 +559,8 @@ def test_ignore_list_json_empty(monkeypatch, capsys) -> None:
 def test_ignore_add_json_new(monkeypatch, capsys) -> None:
     from frais.cli import ignore_add
 
-    monkeypatch.setattr("frais.ignore.init_ignored", lambda: None)
-    monkeypatch.setattr("frais.cli.add_ignored", lambda app_id: True)
+    monkeypatch.setattr("frais.commands.ignore.init_ignored", lambda: None)
+    monkeypatch.setattr("frais.commands.ignore.add_ignored", lambda app_id: True)
 
     ignore_add("com.newapp", json_output=True)
     captured = capsys.readouterr()
@@ -573,8 +573,8 @@ def test_ignore_add_json_new(monkeypatch, capsys) -> None:
 def test_ignore_add_json_already_exists(monkeypatch, capsys) -> None:
     from frais.cli import ignore_add
 
-    monkeypatch.setattr("frais.ignore.init_ignored", lambda: None)
-    monkeypatch.setattr("frais.cli.add_ignored", lambda app_id: False)
+    monkeypatch.setattr("frais.commands.ignore.init_ignored", lambda: None)
+    monkeypatch.setattr("frais.commands.ignore.add_ignored", lambda app_id: False)
 
     ignore_add("com.existing", json_output=True)
     captured = capsys.readouterr()
@@ -587,8 +587,8 @@ def test_ignore_add_json_already_exists(monkeypatch, capsys) -> None:
 def test_ignore_remove_json_removes(monkeypatch, capsys) -> None:
     from frais.cli import ignore_remove
 
-    monkeypatch.setattr("frais.ignore.init_ignored", lambda: None)
-    monkeypatch.setattr("frais.cli.remove_ignored", lambda app_id: True)
+    monkeypatch.setattr("frais.commands.ignore.init_ignored", lambda: None)
+    monkeypatch.setattr("frais.commands.ignore.remove_ignored", lambda app_id: True)
 
     ignore_remove("com.remove_me", json_output=True)
     captured = capsys.readouterr()
@@ -601,8 +601,8 @@ def test_ignore_remove_json_removes(monkeypatch, capsys) -> None:
 def test_ignore_remove_json_not_in_list(monkeypatch, capsys) -> None:
     from frais.cli import ignore_remove
 
-    monkeypatch.setattr("frais.ignore.init_ignored", lambda: None)
-    monkeypatch.setattr("frais.cli.remove_ignored", lambda app_id: False)
+    monkeypatch.setattr("frais.commands.ignore.init_ignored", lambda: None)
+    monkeypatch.setattr("frais.commands.ignore.remove_ignored", lambda app_id: False)
 
     ignore_remove("com.not_there", json_output=True)
     captured = capsys.readouterr()
@@ -615,8 +615,8 @@ def test_ignore_remove_json_not_in_list(monkeypatch, capsys) -> None:
 def test_plugins_enable_json(monkeypatch, capsys) -> None:
     from frais.cli import plugins_enable
 
-    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
-    monkeypatch.setattr("frais.plugins.config.save_plugin_state", lambda name, enabled: None)
+    monkeypatch.setattr("frais.store.plugin_store.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.store.plugin_store.save_plugin_state", lambda name, enabled: None)
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {"homebrew": _fake_plugin("homebrew", True)})
 
     plugins_enable("homebrew", json_output=True)
@@ -630,7 +630,7 @@ def test_plugins_enable_json(monkeypatch, capsys) -> None:
 def test_plugins_enable_json_unknown(monkeypatch, capsys) -> None:
     from frais.cli import plugins_enable
 
-    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.store.plugin_store.init_plugins_config", lambda: None)
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {})
 
     with pytest.raises(typer.Exit) as exc_info:
@@ -645,8 +645,8 @@ def test_plugins_enable_json_unknown(monkeypatch, capsys) -> None:
 def test_plugins_disable_json(monkeypatch, capsys) -> None:
     from frais.cli import plugins_disable
 
-    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
-    monkeypatch.setattr("frais.plugins.config.save_plugin_state", lambda name, enabled: None)
+    monkeypatch.setattr("frais.store.plugin_store.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.store.plugin_store.save_plugin_state", lambda name, enabled: None)
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {"homebrew": _fake_plugin("homebrew", True)})
 
     plugins_disable("homebrew", json_output=True)
@@ -660,7 +660,7 @@ def test_plugins_disable_json(monkeypatch, capsys) -> None:
 def test_plugins_disable_json_unknown(monkeypatch, capsys) -> None:
     from frais.cli import plugins_disable
 
-    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.store.plugin_store.init_plugins_config", lambda: None)
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {})
 
     with pytest.raises(typer.Exit) as exc_info:

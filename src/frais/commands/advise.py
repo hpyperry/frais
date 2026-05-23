@@ -12,8 +12,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, MofNCo
 from rich.rule import Rule
 
 from ..cli import _ADVICE_CACHE
-from ..config import require_config
-from ..ignore import load_ignored
+from ..store.config_store import require_config
+from ..store.ignore_store import load_ignored
 from ..llm import get_client
 from ..models import SourceKind, ScanResult
 from . import _split_plugins

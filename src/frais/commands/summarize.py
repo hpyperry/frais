@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 from rich.console import Console
 
-from ..config import require_config
+from ..store.config_store import require_config
 from ..models import UpdateCandidate
 from ._output import exit_with_error, print_json_success
 

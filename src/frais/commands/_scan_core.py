@@ -7,7 +7,7 @@ import time
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
-from ..ignore import load_ignored
+from ..store.ignore_store import load_ignored
 from ..plugins.base import ScannerPlugin
 from . import _split_plugins
 

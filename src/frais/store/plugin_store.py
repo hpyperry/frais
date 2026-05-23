@@ -20,7 +20,7 @@ def init_plugins_config(path: Path = PLUGINS_CONFIG_PATH) -> None:
     """Create plugins.toml with all discovered plugins set to their defaults."""
     if path.exists():
         return
-    from .registry import all_plugins
+    from ..plugins.registry import all_plugins
     config = {name: plugin.enabled_by_default for name, plugin in all_plugins().items()}
     _write_plugins_config(config, path)
 

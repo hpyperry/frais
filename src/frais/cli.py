@@ -15,8 +15,9 @@ from rich.table import Table
 
 from .commands._output import exit_with_error, print_json_success
 from .commands.config import config_manage, config_path, config_show, config_test
-from .config import CONFIG_PATH, load_config
-from .ignore import add_ignored, load_ignored, remove_ignored
+from .commands.ignore import ignore_list, ignore_add, ignore_remove
+from .store.config_store import CONFIG_PATH, load_config
+from .store.ignore_store import add_ignored, load_ignored, remove_ignored
 from .models import SourceKind, ScanResult
 
 _DEFAULT_LOG_DIR = Path.home() / ".frais" / "log"
@@ -287,7 +288,7 @@ def plugins_list(
     Example:
       frais plugins list
     """
-    from .plugins.config import init_plugins_config, load_plugins_config
+    from .store.plugin_store import init_plugins_config, load_plugins_config
     from .plugins.registry import all_plugins
 
     init_plugins_config()
@@ -327,7 +328,7 @@ def plugins_enable(
     Example:
       frais plugins enable homebrew
     """
-    from .plugins.config import init_plugins_config, save_plugin_state
+    from .store.plugin_store import init_plugins_config, save_plugin_state
     from .plugins.registry import all_plugins
 
     init_plugins_config()
@@ -358,7 +359,7 @@ def plugins_disable(
     Example:
       frais plugins disable homebrew
     """
-    from .plugins.config import init_plugins_config, save_plugin_state
+    from .store.plugin_store import init_plugins_config, save_plugin_state
     from .plugins.registry import all_plugins
 
     init_plugins_config()
@@ -376,6 +377,7 @@ def plugins_disable(
     console.print(f"Plugin [bold]{name}[/bold] disabled (persisted).")
 
 
+
 @ignore_app.callback(invoke_without_command=True)
 def ignore_default(
     ctx: typer.Context,
@@ -388,69 +390,10 @@ def ignore_default(
     if ctx.invoked_subcommand is None:
         ignore_list(json_output=json_output)
 
+ignore_app.command("list")(ignore_list)
+ignore_app.command("add")(ignore_add)
+ignore_app.command("remove")(ignore_remove)
 
-@ignore_app.command("list")
-def ignore_list(
-    json_output: Annotated[
-        bool,
-        typer.Option("--json", help="Output structured JSON (for agent consumption)."),
-    ] = False,
-) -> None:
-    """List all ignored app IDs."""
-    from .ignore import init_ignored
-    init_ignored()
-    ids = load_ignored()
-    if json_output:
-        print_json_success(ignored=sorted(ids), count=len(ids))
-        return
-    if not ids:
-        console.print("No ignored apps.")
-        return
-    console.print(f"Ignored apps ({len(ids)}):")
-    for app_id in sorted(ids):
-        console.print(f"  {app_id}")
-
-
-@ignore_app.command("add")
-def ignore_add(
-    app_id: Annotated[str, typer.Argument(help="App ID (bundle id) to ignore.")],
-    json_output: Annotated[
-        bool,
-        typer.Option("--json", help="Output structured JSON (for agent consumption)."),
-    ] = False,
-) -> None:
-    """Add an app to the ignore list."""
-    from .ignore import init_ignored
-    init_ignored()
-    was_added = add_ignored(app_id)
-    if json_output:
-        print_json_success(app_id=app_id, action="added" if was_added else "already_ignored")
-        return
-    if was_added:
-        console.print(f"Added: {app_id}")
-    else:
-        console.print(f"Already ignored: {app_id}")
-
-
-@ignore_app.command("remove")
-def ignore_remove(
-    app_id: Annotated[str, typer.Argument(help="App ID (bundle id) to remove from ignore list.")],
-    json_output: Annotated[
-        bool,
-        typer.Option("--json", help="Output structured JSON (for agent consumption)."),
-    ] = False,
-) -> None:
-    """Remove an app from the ignore list."""
-    from .ignore import init_ignored
-    init_ignored()
-    was_removed = remove_ignored(app_id)
-    if json_output:
-        print_json_success(app_id=app_id, action="removed" if was_removed else "not_in_list")
-        return
-    if was_removed:
-        console.print(f"Removed: {app_id}")
-    else:
-        console.print(f"Not in ignore list: {app_id}")
 
 
 # -- Action commands (delegated to commands/ modules) --

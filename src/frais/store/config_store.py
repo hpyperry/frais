@@ -5,7 +5,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from .providers import Provider, get_provider
+from ..providers import Provider, get_provider
 
 CONFIG_PATH = Path.home() / ".frais" / "config" / "config.toml"
 

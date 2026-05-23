@@ -18,7 +18,7 @@ def _raise(exc):
 
 def _dummy_llm(chat_return: str = '["q"]'):
     """Create an LLM client with the test provider."""
-    from frais.config import ProviderConfig
+    from frais.store.config_store import ProviderConfig
     from frais.providers import ModelInfo, Provider
 
     p = Provider(id="test", name="Test", base_url="https://api.test.com",

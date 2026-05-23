@@ -41,8 +41,8 @@ def test_config_path(monkeypatch) -> None:
 
 def test_plugins_list(monkeypatch) -> None:
     from frais.cli import plugins_list
-    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
-    monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {})
+    monkeypatch.setattr("frais.store.plugin_store.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.store.plugin_store.load_plugins_config", lambda: {})
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {
         "applications": _make_plugin("applications", True),
     })
@@ -51,15 +51,15 @@ def test_plugins_list(monkeypatch) -> None:
 
 def test_plugins_enable(monkeypatch) -> None:
     from frais.cli import plugins_enable
-    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.store.plugin_store.init_plugins_config", lambda: None)
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {"homebrew": _make_plugin("homebrew", True)})
-    monkeypatch.setattr("frais.plugins.config.save_plugin_state", lambda name, state: None)
+    monkeypatch.setattr("frais.store.plugin_store.save_plugin_state", lambda name, state: None)
     plugins_enable(name="homebrew")
 
 
 def test_plugins_enable_unknown(monkeypatch) -> None:
     from frais.cli import plugins_enable
-    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.store.plugin_store.init_plugins_config", lambda: None)
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {})
     with pytest.raises(typer.Exit):
         plugins_enable(name="nonexistent")
@@ -67,44 +67,44 @@ def test_plugins_enable_unknown(monkeypatch) -> None:
 
 def test_plugins_disable(monkeypatch) -> None:
     from frais.cli import plugins_disable
-    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.store.plugin_store.init_plugins_config", lambda: None)
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {"homebrew": _make_plugin("homebrew", True)})
-    monkeypatch.setattr("frais.plugins.config.save_plugin_state", lambda name, state: None)
+    monkeypatch.setattr("frais.store.plugin_store.save_plugin_state", lambda name, state: None)
     plugins_disable(name="homebrew")
 
 
 def test_ignore_list_empty(monkeypatch) -> None:
     from frais.cli import ignore_list
-    monkeypatch.setattr("frais.ignore.init_ignored", lambda path=None: None)
-    monkeypatch.setattr("frais.cli.load_ignored", lambda: set())
+    monkeypatch.setattr("frais.commands.ignore.init_ignored", lambda path=None: None)
+    monkeypatch.setattr("frais.commands.ignore.load_ignored", lambda: set())
     ignore_list()
 
 
 def test_ignore_add(monkeypatch) -> None:
     from frais.cli import ignore_add
-    monkeypatch.setattr("frais.ignore.init_ignored", lambda path=None: None)
-    monkeypatch.setattr("frais.cli.add_ignored", lambda app_id, path=None: True)
+    monkeypatch.setattr("frais.commands.ignore.init_ignored", lambda path=None: None)
+    monkeypatch.setattr("frais.commands.ignore.add_ignored", lambda app_id, path=None: True)
     ignore_add(app_id="com.example.app")
 
 
 def test_ignore_add_duplicate(monkeypatch) -> None:
     from frais.cli import ignore_add
-    monkeypatch.setattr("frais.ignore.init_ignored", lambda path=None: None)
-    monkeypatch.setattr("frais.cli.add_ignored", lambda app_id, path=None: False)
+    monkeypatch.setattr("frais.commands.ignore.init_ignored", lambda path=None: None)
+    monkeypatch.setattr("frais.commands.ignore.add_ignored", lambda app_id, path=None: False)
     ignore_add(app_id="com.example.app")
 
 
 def test_ignore_remove(monkeypatch) -> None:
     from frais.cli import ignore_remove
-    monkeypatch.setattr("frais.ignore.init_ignored", lambda path=None: None)
-    monkeypatch.setattr("frais.cli.remove_ignored", lambda app_id, path=None: True)
+    monkeypatch.setattr("frais.commands.ignore.init_ignored", lambda path=None: None)
+    monkeypatch.setattr("frais.commands.ignore.remove_ignored", lambda app_id, path=None: True)
     ignore_remove(app_id="com.example.app")
 
 
 def test_ignore_remove_not_found(monkeypatch) -> None:
     from frais.cli import ignore_remove
-    monkeypatch.setattr("frais.ignore.init_ignored", lambda path=None: None)
-    monkeypatch.setattr("frais.cli.remove_ignored", lambda app_id, path=None: False)
+    monkeypatch.setattr("frais.commands.ignore.init_ignored", lambda path=None: None)
+    monkeypatch.setattr("frais.commands.ignore.remove_ignored", lambda app_id, path=None: False)
     ignore_remove(app_id="com.example.app")
 
 
@@ -336,7 +336,7 @@ def test_read_application_no_plist(tmp_path: Path) -> None:
 
 def test_config_show_configured(monkeypatch) -> None:
     from frais.cli import config_show
-    from frais.config import ProviderConfig
+    from frais.store.config_store import ProviderConfig
 
     fake_models = [type("M", (), {"id": "test", "name": "Test", "supports_thinking": False})()]
     fake_provider = type("P", (), {"id": "test", "name": "Test", "chat_url": "https://test", "models": fake_models})()
@@ -623,7 +623,7 @@ def test_applications_scan_llm_unavailable(monkeypatch) -> None:
     from frais.plugins.applications import ApplicationsPlugin
 
     plugin = ApplicationsPlugin()
-    monkeypatch.setattr("frais.config.require_config",
+    monkeypatch.setattr("frais.store.config_store.require_config",
         lambda: exec('raise ValueError("no config")'))
     monkeypatch.setattr("frais.plugins.applications.scan_applications",
         lambda paths: [])
@@ -680,7 +680,7 @@ def test_run_json_non_zero(monkeypatch) -> None:
 def test_select_plugins_explicit_with_enabled(monkeypatch) -> None:
     from frais.coordinator import select_plugins
 
-    monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {"homebrew": True})
+    monkeypatch.setattr("frais.store.plugin_store.load_plugins_config", lambda: {"homebrew": True})
     available = {"homebrew": _make_plugin("homebrew", True)}
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: available)
 
@@ -691,7 +691,7 @@ def test_select_plugins_explicit_with_enabled(monkeypatch) -> None:
 def test_select_plugins_default_enabled_no_persist(monkeypatch) -> None:
     from frais.coordinator import select_plugins
 
-    monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {})
+    monkeypatch.setattr("frais.store.plugin_store.load_plugins_config", lambda: {})
     available = {"homebrew": _make_plugin("homebrew", True)}
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: available)
 
@@ -705,7 +705,7 @@ def test_select_plugins_default_enabled_no_persist(monkeypatch) -> None:
 def test_select_plugins_default_persisted_disabled(monkeypatch) -> None:
     from frais.coordinator import select_plugins
 
-    monkeypatch.setattr("frais.plugins.config.load_plugins_config",
+    monkeypatch.setattr("frais.store.plugin_store.load_plugins_config",
         lambda: {"homebrew": False})
     available = {"homebrew": _make_plugin("homebrew", True)}
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: available)
@@ -746,7 +746,7 @@ def test_web_fetch_github_error(monkeypatch) -> None:
 
 def test_llm_client_init_error() -> None:
     from frais.llm import OpenAICompatibleClient
-    from frais.config import ProviderConfig
+    from frais.store.config_store import ProviderConfig
     from frais.providers import ModelInfo
 
     fake_models = [ModelInfo(id="test", name="Test")]
@@ -805,9 +805,9 @@ def test_run_json_ok_codes_no_match(monkeypatch) -> None:
 
 
 def test_load_config_unknown_provider(monkeypatch) -> None:
-    from frais.config import load_config, CONFIG_PATH
+    from frais.store.config_store import load_config, CONFIG_PATH
 
-    monkeypatch.setattr("frais.config._read_config_file",
+    monkeypatch.setattr("frais.store.config_store._read_config_file",
         lambda path: {"llm": {"provider": "nonexistent", "model": "m", "api_key": "k"}})
     result = load_config()
     assert result is None
@@ -817,7 +817,7 @@ def test_load_config_unknown_provider(monkeypatch) -> None:
 
 
 def test_load_config_no_file() -> None:
-    from frais.config import load_config
+    from frais.store.config_store import load_config
     result = load_config(Path("/nonexistent/config.toml"))
     assert result is None
 

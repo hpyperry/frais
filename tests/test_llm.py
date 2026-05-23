@@ -8,7 +8,7 @@ from frais.llm import (
     AnthropicClient, DeepSeekAnthropicClient, DeepSeekOpenAIClient,
     LLMClient, LLMRequestError, OpenAICompatibleClient, get_client,
 )
-from frais.config import ProviderConfig
+from frais.store.config_store import ProviderConfig
 from frais.models import SoftwareItem, SourceKind, UpdateCandidate
 from frais.providers import PROVIDERS, ModelInfo, Provider, get_provider
 

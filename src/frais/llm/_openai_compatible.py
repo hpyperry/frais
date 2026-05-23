@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from ..config import ProviderConfig
+from ..store.config_store import ProviderConfig
 from ._base import LLMClient, LLMRequestError
 
 logger = logging.getLogger(__name__)

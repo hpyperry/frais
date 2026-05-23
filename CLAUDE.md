@@ -65,7 +65,10 @@ src/frais/
   models.py             # Dataclasses: SystemProfile, SoftwareItem, UpdateCandidate,
                         #   PluginScanResult, ScanResult, ResearchResult, etc.
   providers.py          # Provider/ModelInfo dataclasses; DeepSeek provider definition
-  config.py             # ProviderConfig: reads ~/.frais/config/config.toml, env var overrides, thinking toggle
+  store/                # Persistent storage layer
+    config_store.py      #   ProviderConfig + config.toml CRUD, env var overrides, thinking toggle
+    plugin_store.py      #   Plugin state: reads/writes plugins.toml
+    ignore_store.py      #   Ignore list: ignore.txt CRUD
   llm/                  # LLM client layer (multi-protocol, per-provider)
     __init__.py          #   _CLIENT_MAP registry + get_client() factory
     _base.py             #   LLMClient ABC + LLMRequestError
@@ -76,7 +79,6 @@ src/frais/
                         #   Shared by advise, scan, summarize commands
   tools.py              # Web tools: web_search (DDGS), web_fetch, web_fetch_batch
   system.py             # macOS detection
-  ignore.py             # Ignore list: load/save/add/remove (~/.frais/config/ignore.txt)
   cli.py                # Typer app: doctor, plugins, ignore (thin dispatcher)
                         #   Commands delegated to commands/ modules
   commands/
@@ -85,6 +87,7 @@ src/frais/
     _scan_core.py        # run_scan_phase — shared Rich progress + cache logic
     advise.py            # advise command (scan + summaries + total time)
     config.py            # config commands: manage (interactive), show, path, test
+    ignore.py            # ignore commands: list, add, remove
     scan.py              # scan command (agent-facing, --json output)
     summarize.py         # summarize <id> command (single-candidate summary)
     update.py            # update command (interactive confirmation → plugin.update)
@@ -93,7 +96,6 @@ src/frais/
     base.py              # ScannerPlugin ABC: scan, scan_all, update, summarize
     _utils.py            # Shared helper: run_json() with env isolation for subprocess calls
     registry.py          # Plugin registry; discovers built-in + third-party plugins via entry points
-    config.py            # Plugin persistence: reads/writes ~/.frais/config/plugins.toml
     applications/
       __init__.py        # ApplicationsPlugin + scan_applications, read_application, classify_source
       _store.py          # iTunes API (check_app_store_version, resolve_app_store_command)
@@ -548,7 +550,7 @@ Workflow:
 - **Progress bar**: `_scan_core.run_scan_phase()` renders a Rich `Progress` bar with one task row per plugin. Each row shows the plugin's current `scan_steps` label with live `TimeElapsedColumn`. Progress is driven by `on_progress(step, done, total)`. After scans, a dedicated task row shows Summaries progress. Total time = max(scan times) + summarize time.
 - **Ignore list**: `~/.frais/config/ignore.txt` stores app IDs to skip during `advise`. Auto-created on first access via `init_ignored()`. Managed via `frais ignore add/remove/list`. Filtered after scan, before research.
 - **Plugin discovery**: `registry.py` uses `importlib.metadata.entry_points(group="frais.plugins")` to discover all plugins at runtime. Built-in plugins (applications, homebrew, npm) are always present. Failed loads are logged, not fatal.
-- **Plugin persistence**: `plugins/config.py` manages `~/.frais/config/plugins.toml`. First run auto-creates the file with all discovered plugins set to their defaults. `plugins enable/disable` persist state. `select_plugins()` precedence: `--plugins` (explicit) overrides persisted config; default path uses `enabled_by_default` when not persisted.
+- **Plugin persistence**: `store/plugin_store.py` manages `~/.frais/config/plugins.toml`. First run auto-creates the file with all discovered plugins set to their defaults. `plugins enable/disable` persist state. `select_plugins()` precedence: `--plugins` (explicit) overrides persisted config; default path uses `enabled_by_default` when not persisted.
 - **Ctrl+C handling**: `advise` and `scan` register a SIGINT handler before entering the Progress/ThreadPoolExecutor block. The handler uses `os.write(1, b"\033[?25h\n")` (wrapped in `try/except OSError`) to directly write the cursor-show ANSI escape to the stdout fd — bypassing Rich's internal segment buffer, which can swallow escapes when a nested `with self.console:` context is held (e.g. by Progress's auto-refresh thread). Then `os._exit(130)`. Original handler is restored via `try/finally`. Signal handler (not KeyboardInterrupt) is needed because ThreadPoolExecutor.__exit__ blocks on worker threads. The handler must only call async-signal-safe functions (`os.write`, `os._exit`) — no logging, no Rich API calls, no string formatting.
 - **Atomic writes**: Config and state files (`config.toml`, `ignore.txt`, `plugins.toml`, `last_advice.json`) are written to a `.tmp` sibling then atomically renamed via `Path.replace()` to prevent truncated/corrupt reads on concurrent access or crash.
 - **Subprocess env isolation**: All subprocess calls (`run_json()` in `plugins/_utils.py`, `_brew_uses()` in `plugins/homebrew.py`, `_signing_summary()` and `_quarantine_summary()` in `plugins/applications/__init__.py`) clear `DYLD_LIBRARY_PATH` from the subprocess environment to prevent PyInstaller-bundled dylibs from interfering with system commands.

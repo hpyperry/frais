@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..config import ProviderConfig
+from ..store.config_store import ProviderConfig
 from ._base import LLMClient, LLMRequestError
 from ._openai_compatible import OpenAICompatibleClient
 from ._deepseek import DeepSeekAnthropicClient, DeepSeekOpenAIClient

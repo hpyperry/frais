@@ -36,7 +36,7 @@ class ApplicationsPlugin(ScannerPlugin):
             on_progress(0, len(items), len(items))
 
         # Step 2: research latest versions for non-App-Store apps
-        from ...config import require_config
+        from ...store.config_store import require_config
         from ...llm import get_client
 
         try:

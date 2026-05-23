@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import httpx
 
-from ..config import ProviderConfig
+from ..store.config_store import ProviderConfig
 from ._base import LLMClient
 
 

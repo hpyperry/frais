@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from frais.config import load_config, require_config, save_config
+from frais.store.config_store import load_config, require_config, save_config
 from frais.providers import PROVIDERS, get_provider
 
 
