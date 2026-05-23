@@ -37,7 +37,7 @@ def test_web_search_returns_empty_on_failure(monkeypatch) -> None:
 
 def test_web_fetch_returns_extracted_text(monkeypatch) -> None:
     resp = httpx.Response(200, text="<html><body><p>Hello World</p></body></html>", request=httpx.Request("GET", "https://example.com"))
-    monkeypatch.setattr(httpx, "get", lambda url, **kw: resp)
+    monkeypatch.setattr(httpx.Client, "get", lambda self, url, **kw: resp)
     result = web_fetch("https://example.com")
     assert "Hello World" in result
 
@@ -45,7 +45,7 @@ def test_web_fetch_returns_extracted_text(monkeypatch) -> None:
 def test_web_fetch_github_url_conversion(monkeypatch) -> None:
     data = {"tag_name": "v1.0.0", "body": "Release notes", "published_at": "2024-01-01", "name": "v1.0.0"}
     resp = httpx.Response(200, json=data, request=httpx.Request("GET", "https://api.github.com/repos/user/repo/releases/latest"))
-    monkeypatch.setattr(httpx, "get", lambda url, **kw: resp)
+    monkeypatch.setattr(httpx.Client, "get", lambda self, url, **kw: resp)
     result = web_fetch("https://github.com/user/repo")
     assert "Tag: v1.0.0" in result
 
@@ -53,15 +53,15 @@ def test_web_fetch_github_url_conversion(monkeypatch) -> None:
 def test_web_fetch_truncates_long_content(monkeypatch) -> None:
     long_html = "<html><body>" + ("x" * 6000) + "</body></html>"
     resp = httpx.Response(200, text=long_html, request=httpx.Request("GET", "https://example.com"))
-    monkeypatch.setattr(httpx, "get", lambda url, **kw: resp)
+    monkeypatch.setattr(httpx.Client, "get", lambda self, url, **kw: resp)
     result = web_fetch("https://example.com")
     assert result.endswith("...<truncated>")
 
 
 def test_web_fetch_returns_error_message_on_failure(monkeypatch) -> None:
-    def raise_error(url, **kw):
+    def raise_error(self, url, **kw):
         raise RuntimeError("timeout")
-    monkeypatch.setattr(httpx, "get", raise_error)
+    monkeypatch.setattr(httpx.Client, "get", raise_error)
     result = web_fetch("https://example.com")
     assert result.startswith("Failed to fetch:")
 

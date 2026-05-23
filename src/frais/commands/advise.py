@@ -133,6 +133,12 @@ def advise(
             os.write(1, b"\033[?25h\n")
         except OSError:
             pass
+        # Terminate all subprocess children (brew, npm, etc.) so they
+        # don't become orphans and hold locks after we exit.
+        try:
+            os.killpg(os.getpgrp(), signal.SIGTERM)
+        except OSError:
+            pass
         os._exit(130)
 
     orig_handler = signal.signal(signal.SIGINT, _on_interrupt)

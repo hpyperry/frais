@@ -53,8 +53,8 @@ def test_load_config_env_var_overrides_key(tmp_path: Path, monkeypatch) -> None:
     config.write_text(
         """
 [llm]
-provider = "openai"
-model = "gpt-4o"
+provider = "deepseek"
+model = "deepseek-v4-flash"
 api_key = "file-key-1234"
 """,
         encoding="utf-8",
@@ -67,13 +67,13 @@ api_key = "file-key-1234"
     assert loaded.api_key_source == "FRAIS_LLM_API_KEY"
 
 
-def test_load_config_openai_env_var_falls_back(tmp_path: Path, monkeypatch) -> None:
+def test_load_config_generic_env_var_falls_back(tmp_path: Path, monkeypatch) -> None:
     config = tmp_path / "config.toml"
     config.write_text(
         """
 [llm]
-provider = "openai"
-model = "gpt-4o"
+provider = "deepseek"
+model = "deepseek-v4-flash"
 api_key = ""
 """,
         encoding="utf-8",
@@ -107,16 +107,16 @@ def test_require_config_succeeds_with_valid_config(tmp_path: Path) -> None:
     config.write_text(
         """
 [llm]
-provider = "mistral"
-model = "mistral-large-latest"
+provider = "deepseek"
+model = "deepseek-v4-pro"
 api_key = "sk-key"
 """,
         encoding="utf-8",
     )
 
     result = require_config(config)
-    assert result.provider.id == "mistral"
-    assert result.model == "mistral-large-latest"
+    assert result.provider.id == "deepseek"
+    assert result.model == "deepseek-v4-pro"
 
 
 def test_all_registered_providers_loadable() -> None:

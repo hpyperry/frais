@@ -17,7 +17,7 @@ When the user signals a new implementation task (e.g. "新任务", "给你一个
 
 ## Project overview
 
-Frais is a macOS CLI that scans installed Applications, Homebrew packages, and npm global packages for available updates. It uses a curated set of 7 LLM providers (user-supplied key per provider) with a structured 3-step research pipeline for finding latest versions and generating update advice. Thinking-mode control is handled automatically per provider/model.
+Frais is a macOS CLI that scans installed Applications, Homebrew packages, and npm global packages for available updates. It uses the DeepSeek LLM API (user-supplied key) with a structured 3-step research pipeline for finding latest versions and generating update advice. Thinking-mode control is handled automatically per provider/model.
 
 All scanning is plugin-based — the built-in `applications`, `homebrew`, and `npm` scanners are all `ScannerPlugin` implementations.
 
@@ -51,7 +51,7 @@ src/frais/
   __init__.py           # __version__ = "0.1.0"
   models.py             # Dataclasses: SystemProfile, SoftwareItem, UpdateCandidate,
                         #   PluginScanResult, ScanResult, ResearchResult, etc.
-  providers.py          # Curated provider registry: 7 providers with models, URLs, thinking params
+  providers.py          # DeepSeek provider definition: models, URLs, thinking params
   config.py             # ProviderConfig: reads ~/.frais/config/config.toml, env var overrides
   llm.py                # LLMClient — chat, summarize_candidate, test_connection,
                         #   JSON helpers + LLMRequestError (generic LLM infrastructure)
@@ -519,7 +519,7 @@ Workflow:
 
 ## Key patterns
 
-- **Provider registry**: 7 curated LLM providers in `providers.py` as `Provider` dataclasses with `ModelInfo` lists and `thinking_param` definitions. `get_model_thinking_param()` returns the correct disable parameter only for models where `thinking_default=True`. Configuration stored as `[llm]` TOML with `provider`, `model`, `api_key`. `FRAIS_LLM_API_KEY` env var overrides the file-stored key; `OPENAI_API_KEY` serves as fallback for the openai provider. API keys are never logged or printed in full.
+- **Provider registry**: DeepSeek provider defined in `providers.py` as a `Provider` dataclass with `ModelInfo` entries and `thinking_param`. `get_model_thinking_param()` returns the disable parameter only for models where `thinking_default=True`. Configuration stored as `[llm]` TOML with `provider`, `model`, `api_key`. `FRAIS_LLM_API_KEY` env var overrides the file-stored key. API keys are never logged or printed in full.
 - **JSON/CLI output**: `commands/_output.py` provides `print_json_success(**kwargs)` and `exit_with_error(message, json_mode, exit_code=1)`. Every command uses these two helpers — errors are a single function call with no branching in the command body; success output is one `if json_output:` / `else:` at the end. The `ok` key in `print_json_success` is reserved (caller-provided `ok` is discarded). `exit_with_error` uses Rich stderr Console for CLI mode to match `click.ClickException` behavior.
 - **Testing**: Uses `monkeypatch` (pytest fixture) for all external dependencies — subprocess, filesystem, env vars. No mock library.
 - **Version comparison**: Uses `packaging.version.Version`; strips leading `v`/`V` before comparing.

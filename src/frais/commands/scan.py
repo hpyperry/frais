@@ -74,6 +74,10 @@ def scan(
             os.write(1, b"\033[?25h\n")
         except OSError:
             pass
+        try:
+            os.killpg(os.getpgrp(), signal.SIGTERM)
+        except OSError:
+            pass
         os._exit(130)
 
     orig_handler = signal.signal(signal.SIGINT, _on_interrupt)

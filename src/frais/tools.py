@@ -15,6 +15,20 @@ _FETCH_MAX_CHARS = 5000
 
 _GITHUB_REPO_RE = re.compile(r"github\.com/([^/]+/[^/]+?)(?:\.git)?(?:/|$)")
 
+_fetch_client: httpx.Client | None = None
+
+
+def _get_fetch_client() -> httpx.Client:
+    """Return a shared httpx.Client for web_fetch with connection pooling."""
+    global _fetch_client
+    if _fetch_client is None:
+        _fetch_client = httpx.Client(
+            headers={"User-Agent": "frais/0.1.0"},
+            timeout=httpx.Timeout(8.0, read=15.0),
+            follow_redirects=True,
+        )
+    return _fetch_client
+
 
 def web_search(query: str) -> list[dict[str, str]]:
     """Search the web and return a list of {title, url, snippet}."""
@@ -41,15 +55,10 @@ def web_fetch(url: str) -> str:
     if github_api:
         url = github_api
     try:
-        response = httpx.get(
-            url,
-            headers={
-                "User-Agent": "frais/0.1.0",
-                "Accept": "application/vnd.github+json" if "api.github.com" in url else "text/html",
-            },
-            timeout=httpx.Timeout(8.0, read=15.0),
-            follow_redirects=True,
-        )
+        headers = {}
+        if "api.github.com" in url:
+            headers["Accept"] = "application/vnd.github+json"
+        response = _get_fetch_client().get(url, headers=headers or None)
         response.raise_for_status()
         if "api.github.com" in url:
             return _format_github_api(response.json(), url)

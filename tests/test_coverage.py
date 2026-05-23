@@ -734,8 +734,8 @@ def test_digits_only_empty() -> None:
 
 def test_web_fetch_github_error(monkeypatch) -> None:
     from frais.tools import web_fetch
-    monkeypatch.setattr("httpx.get",
-        lambda url, **kw: exec('raise RuntimeError("fetch down")'))
+    monkeypatch.setattr("httpx.Client.get",
+        lambda self, url, **kw: exec('raise RuntimeError("fetch down")'))
     result = web_fetch("https://github.com/test/repo/releases")
     assert "Failed to fetch" in result
 

@@ -41,16 +41,13 @@ def test_provider_chat_url_appends_v1_chat_completions() -> None:
 
 
 def test_provider_chat_url_accepts_existing_v1_path() -> None:
-    provider = get_provider("openai")
-    assert provider is not None
-    assert provider.chat_url == "https://api.openai.com/v1/chat/completions"
+    p = _test_provider(id="test", base_url="https://api.example.com/v1")
+    assert p.chat_url == "https://api.example.com/v1/chat/completions"
 
 
 def test_provider_chat_url_handles_trailing_slash() -> None:
-    # Mistral base_url is "https://api.mistral.ai/v1" so it should end with /v1/chat/completions
-    provider = get_provider("mistral")
-    assert provider is not None
-    assert provider.chat_url.startswith("https://api.mistral.ai/v1/chat/completions")
+    p = _test_provider(id="test", base_url="https://api.example.com/v1/")
+    assert p.chat_url == "https://api.example.com/v1/chat/completions"
 
 
 def test_get_model_thinking_param_returns_disabled_for_thinking_model() -> None:
@@ -61,17 +58,15 @@ def test_get_model_thinking_param_returns_disabled_for_thinking_model() -> None:
 
 
 def test_get_model_thinking_param_returns_none_for_non_thinking_model() -> None:
-    provider = get_provider("openai")
-    assert provider is not None
-    param = get_model_thinking_param(provider, "gpt-4o")
+    p = _test_provider(id="test", models=[ModelInfo(id="m", name="M", thinking_default=False)])
+    param = get_model_thinking_param(p, "m")
     assert param is None
 
 
 def test_get_model_thinking_param_returns_none_when_provider_has_no_param() -> None:
-    provider = get_provider("mistral")
-    assert provider is not None
-    # mistral-large-latest has thinking_default=False, and provider has no thinking_param
-    param = get_model_thinking_param(provider, "mistral-large-latest")
+    p = _test_provider(id="test", models=[ModelInfo(id="m", name="M", thinking_default=True)],
+                       thinking_param=None)
+    param = get_model_thinking_param(p, "m")
     assert param is None
 
 
@@ -142,22 +137,21 @@ class TestChat:
 class TestPost:
     def test_builds_payload_correctly(self, monkeypatch) -> None:
         captured = {}
-        def fake_post(url, **kw):
+        def fake_post(self, url, **kw):
             captured.update(kw)
             return _fake_response({"choices": [{"message": {"content": "ok"}}]})
-        monkeypatch.setattr(httpx, "post", fake_post)
+        monkeypatch.setattr(httpx.Client, "post", fake_post)
         client = LLMClient(_test_config())
         client._post("https://api.test.com/v1/chat/completions", [{"role": "user", "content": "hi"}])
         assert captured["json"]["model"] == "test-model"
         assert captured["json"]["messages"] == [{"role": "user", "content": "hi"}]
         assert captured["json"]["temperature"] == 0.2
-        assert "Authorization" in captured["headers"]
 
     def test_raises_llm_request_error_on_http_failure(self, monkeypatch) -> None:
         bad_response = httpx.Response(500, json={"error": "server error"}, request=httpx.Request("POST", "https://api.test.com"))
-        def return_bad_response(url, **kw):
+        def return_bad_response(self, url, **kw):
             return bad_response
-        monkeypatch.setattr(httpx, "post", return_bad_response)
+        monkeypatch.setattr(httpx.Client, "post", return_bad_response)
         client = LLMClient(_test_config())
         with pytest.raises(LLMRequestError) as exc_info:
             client._post("https://api.test.com/v1/chat/completions", [{"role": "user", "content": "hi"}])

@@ -33,6 +33,14 @@ class LLMClient:
         if not config.is_ready:
             raise ValueError("LLM config is incomplete. Run `frais config manage`.")
         self.config = config
+        self._client = httpx.Client(
+            headers={"Authorization": f"Bearer {config.api_key}"},
+            timeout=httpx.Timeout(15.0, read=300.0),
+        )
+
+    def close(self) -> None:
+        """Close the underlying HTTP client and its connection pool."""
+        self._client.close()
 
     def summarize_candidate(self, candidate: UpdateCandidate) -> str:
         """Generate Chinese-language update summary."""
@@ -84,12 +92,7 @@ class LLMClient:
             thinking_param = get_model_thinking_param(self.config.provider, self.config.model)
             if thinking_param:
                 payload.update(thinking_param)
-        response = httpx.post(
-            url,
-            headers={"Authorization": f"Bearer {self.config.api_key}"},
-            json=payload,
-            timeout=httpx.Timeout(15.0, read=300.0),
-        )
+        response = self._client.post(url, json=payload)
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:

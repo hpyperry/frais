@@ -5,7 +5,7 @@
 
 macOS update checker CLI with LLM-powered version research. Pipeline: **scan** (plugin-based discovery; ApplicationsPlugin does internal LLM research) → **summarize** (AI-generated update advice) → **update** (plugin-provided execution). `advise` is the user-facing convenience command = scan + summaries + Rich display.
 
-Supports 7 curated LLM providers (DeepSeek, OpenAI, Kimi, Grok, Mistral, Qwen, Zhipu) with automatic thinking-mode control.
+Supports DeepSeek with automatic thinking-mode control.
 
 ## Quick start
 
@@ -223,7 +223,7 @@ model = "deepseek-v4-flash"
 api_key = "sk-..."
 ```
 
-Supported providers: `deepseek`, `openai`, `kimi`, `grok`, `mistral`, `qwen`, `zhipu`. Each provider offers a curated set of models — run `frais config manage` to browse them interactively.
+Supported provider: `deepseek`. Run `frais config manage` to configure your API key interactively.
 
 API key resolution order: `FRAIS_LLM_API_KEY` env var → `OPENAI_API_KEY` env var (openai only) → config file.
 
