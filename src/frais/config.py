@@ -16,6 +16,7 @@ class ProviderConfig:
     model: str
     api_key: str
     api_key_source: str | None = None
+    thinking: bool = True
 
     @property
     def is_ready(self) -> bool:
@@ -44,6 +45,7 @@ def load_config(path: Path = CONFIG_PATH) -> ProviderConfig | None:
     env_key = os.getenv("FRAIS_LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
     file_key = file_data.get("api_key")
     api_key = env_key or file_key or ""
+    thinking = file_data.get("thinking", True)
 
     api_key_source = None
     if os.getenv("FRAIS_LLM_API_KEY"):
@@ -58,6 +60,7 @@ def load_config(path: Path = CONFIG_PATH) -> ProviderConfig | None:
         model=model,
         api_key=api_key,
         api_key_source=api_key_source,
+        thinking=thinking,
     )
 
 
@@ -76,13 +79,16 @@ def _toml_escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def save_config(provider_id: str, model: str, api_key: str, path: Path = CONFIG_PATH) -> None:
+def save_config(provider_id: str, model: str, api_key: str, thinking: bool = True,
+                path: Path = CONFIG_PATH) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    thinking_str = "true" if thinking else "false"
     content = (
         "[llm]\n"
         f'provider = "{_toml_escape(provider_id)}"\n'
         f'model = "{_toml_escape(model)}"\n'
         f'api_key = "{_toml_escape(api_key)}"\n'
+        f'thinking = {thinking_str}\n'
     )
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(content, encoding="utf-8")

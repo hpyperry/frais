@@ -88,13 +88,71 @@ api_key = ""
 
 def test_save_config_creates_file(tmp_path: Path) -> None:
     config = tmp_path / "subdir" / "config.toml"
-    save_config("deepseek", "deepseek-v4-pro", "sk-abcdef", config)
+    save_config("deepseek", "deepseek-v4-pro", "sk-abcdef", path=config)
 
     assert config.exists()
     text = config.read_text(encoding="utf-8")
     assert 'provider = "deepseek"' in text
     assert 'model = "deepseek-v4-pro"' in text
     assert 'api_key = "sk-abcdef"' in text
+    assert 'thinking = true' in text
+
+
+def test_save_config_writes_thinking_false(tmp_path: Path) -> None:
+    config = tmp_path / "config.toml"
+    save_config("deepseek", "deepseek-v4-flash", "sk-key", thinking=False, path=config)
+    text = config.read_text(encoding="utf-8")
+    assert 'thinking = false' in text
+
+
+def test_load_config_reads_thinking_true(tmp_path: Path) -> None:
+    config = tmp_path / "config.toml"
+    config.write_text(
+        """
+[llm]
+provider = "deepseek"
+model = "deepseek-v4-flash"
+api_key = "sk-test"
+thinking = true
+""",
+        encoding="utf-8",
+    )
+    loaded = load_config(config)
+    assert loaded is not None
+    assert loaded.thinking is True
+
+
+def test_load_config_reads_thinking_false(tmp_path: Path) -> None:
+    config = tmp_path / "config.toml"
+    config.write_text(
+        """
+[llm]
+provider = "deepseek"
+model = "deepseek-v4-flash"
+api_key = "sk-test"
+thinking = false
+""",
+        encoding="utf-8",
+    )
+    loaded = load_config(config)
+    assert loaded is not None
+    assert loaded.thinking is False
+
+
+def test_load_config_defaults_thinking_true(tmp_path: Path) -> None:
+    config = tmp_path / "config.toml"
+    config.write_text(
+        """
+[llm]
+provider = "deepseek"
+model = "deepseek-v4-flash"
+api_key = "sk-test"
+""",
+        encoding="utf-8",
+    )
+    loaded = load_config(config)
+    assert loaded is not None
+    assert loaded.thinking is True
 
 
 def test_require_config_raises_when_missing() -> None:

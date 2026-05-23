@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from frais.llm import LLMClient
+from frais.llm import OpenAICompatibleClient
 from frais.models import ResearchResult, SoftwareItem, SourceKind, UpdateCandidate
 from frais.plugins.applications import _research as research
 from frais.plugins.applications._research import (
@@ -16,16 +16,15 @@ def _raise(exc):
     raise exc
 
 
-def _dummy_llm(chat_return: str = '["q"]') -> LLMClient:
-    """Create an LLMClient with a patched chat method."""
+def _dummy_llm(chat_return: str = '["q"]'):
+    """Create an LLM client with the test provider."""
     from frais.config import ProviderConfig
     from frais.providers import ModelInfo, Provider
 
     p = Provider(id="test", name="Test", base_url="https://api.test.com",
                  models=[ModelInfo(id="test-model", name="Test Model")])
     config = ProviderConfig(provider=p, model="test-model", api_key="sk-test")
-    client = LLMClient(config)
-    return client
+    return OpenAICompatibleClient(config)
 
 
 # --- standalone research function tests ---

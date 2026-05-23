@@ -236,7 +236,13 @@ class _fake_plugin:
 
 class _fake_llm_config:
     is_ready = True
-    provider = type("P", (), {"name": "test", "chat_url": "https://test"})()
-    model = "test-model"
+    provider = type("P", (), {
+        "id": "deepseek",
+        "name": "deepseek",
+        "chat_url": "https://api.deepseek.com/v1/chat/completions",
+        "models": [type("M", (), {"id": "deepseek-v4-flash", "supports_thinking": True})()],
+    })()
+    model = "deepseek-v4-flash"
     api_key = "sk-test"
     api_key_source = None
+    thinking = True

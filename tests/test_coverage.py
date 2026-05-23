@@ -177,7 +177,7 @@ def test_scanner_plugin_summarize(monkeypatch) -> None:
             return PluginScanResult()
 
     class FakeLLM:
-        def summarize_candidate(self, c):
+        def chat(self, system, user, max_tokens=None, *, disable_thinking=False):
             return "建议更新"
 
     p = P()
@@ -338,7 +338,8 @@ def test_config_show_configured(monkeypatch) -> None:
     from frais.cli import config_show
     from frais.config import ProviderConfig
 
-    fake_provider = type("P", (), {"name": "Test", "chat_url": "https://test"})()
+    fake_models = [type("M", (), {"id": "test", "name": "Test", "supports_thinking": False})()]
+    fake_provider = type("P", (), {"id": "test", "name": "Test", "chat_url": "https://test", "models": fake_models})()
     fake_config = ProviderConfig(provider=fake_provider, model="test", api_key="sk-1234",
                                  api_key_source="env")
     monkeypatch.setattr("frais.cli.load_config", lambda: fake_config)
@@ -744,15 +745,17 @@ def test_web_fetch_github_error(monkeypatch) -> None:
 
 
 def test_llm_client_init_error() -> None:
-    from frais.llm import LLMClient
+    from frais.llm import OpenAICompatibleClient
     from frais.config import ProviderConfig
+    from frais.providers import ModelInfo
 
-    fake_provider = type("P", (), {"chat_url": "https://test"})()
+    fake_models = [ModelInfo(id="test", name="Test")]
+    fake_provider = type("P", (), {"id": "test", "chat_url": "https://test", "models": fake_models})()
 
     # Config not ready
     config = ProviderConfig(provider=fake_provider, model="", api_key="")
     with pytest.raises(ValueError, match="incomplete"):
-        LLMClient(config)
+        OpenAICompatibleClient(config)
 
 
 # --- llm: LLMRequestError ---

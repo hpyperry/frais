@@ -59,9 +59,15 @@ def _config_manage_flow() -> None:
 
     if choice in ("provider", "everything"):
         provider, model = _pick_provider_and_model(current)
-    else:
+        thinking = _ask_thinking(provider, model)
+    elif choice == "thinking":
         provider = current.provider
-        model = next((m for m in provider.models if m.id == current.model), provider.models[0])
+        model = _find_model(provider, current.model) or provider.models[0]
+        thinking = _ask_thinking(provider, model, current.thinking)
+    else:  # "key"
+        provider = current.provider
+        model = _find_model(provider, current.model) or provider.models[0]
+        thinking = current.thinking
 
     if choice in ("key", "everything"):
         api_key = _ask_api_key(provider, current)
@@ -69,7 +75,7 @@ def _config_manage_flow() -> None:
         api_key = current.api_key
 
     console.print()
-    _test_and_save(provider, model, api_key)
+    _test_and_save(provider, model, api_key, thinking)
 
 
 def _safe_ask_number(prompt: str, choices: list[str]) -> int:
@@ -82,12 +88,26 @@ def _safe_ask_number(prompt: str, choices: list[str]) -> int:
         raise _ConfigCancelled()
 
 
+def _find_model(provider, model_id: str):
+    """Find a ModelInfo by id, or return None."""
+    for m in provider.models:
+        if m.id == model_id:
+            return m
+    return None
+
+
 def _show_current_config(current) -> None:
     """Display the current LLM configuration."""
     console.print()
     console.print("[bold]Current configuration:[/bold]")
     console.print(f"  Provider: [cyan]{current.provider.name}[/cyan]")
     console.print(f"  Model:    [cyan]{current.model}[/cyan]")
+    model = _find_model(current.provider, current.model)
+    if model and model.supports_thinking:
+        thinking_label = "[green]enabled[/green]" if current.thinking else "[dim]disabled[/dim]"
+    else:
+        thinking_label = "[dim]unsupported[/dim]"
+    console.print(f"  Thinking: {thinking_label}")
     masked = "***" + current.api_key[-4:] if len(current.api_key) >= 4 else "***"
     console.print(f"  API key:  [dim]{masked}[/dim]")
     console.print()
@@ -99,12 +119,13 @@ def _ask_what_to_modify() -> str:
     console.print("[bold]What would you like to modify?[/bold]")
     console.print("  1. Provider & Model")
     console.print("  2. API Key")
-    console.print("  3. Everything (full reconfiguration)")
-    console.print("  4. Cancel (Esc / Ctrl+C)")
+    console.print("  3. Thinking (extended thinking toggle)")
+    console.print("  4. Everything (full reconfiguration)")
+    console.print("  5. Cancel (Esc / Ctrl+C)")
     console.print()
 
-    idx = _safe_ask_number("Enter choice", ["1", "2", "3", "4"])
-    return {1: "provider", 2: "key", 3: "everything", 4: "cancel"}[idx]
+    idx = _safe_ask_number("Enter choice", ["1", "2", "3", "4", "5"])
+    return {1: "provider", 2: "key", 3: "thinking", 4: "everything", 5: "cancel"}[idx]
 
 
 def _pick_provider_and_model(current):
@@ -139,7 +160,7 @@ def _pick_provider_and_model(current):
         console.print(f"  [dim]Current: {current_model_name}[/dim]")
     console.print()
     for i, m in enumerate(provider.models, 1):
-        default_mark = " [dim](thinking by default)[/dim]" if m.thinking_default else ""
+        default_mark = " [dim](extended thinking)[/dim]" if m.supports_thinking else ""
         cur = " [dim](current)[/dim]" if m.id == current_model_id else ""
         console.print(f"  {i}. {m.name}{default_mark}{cur}")
     console.print()
@@ -182,9 +203,34 @@ def _ask_api_key(provider, current) -> str:
     return api_key
 
 
-def _test_and_save(provider, model, api_key) -> None:
+def _ask_thinking(provider, model, current_thinking: bool | None = None) -> bool:
+    """Ask whether to enable extended thinking for the selected model.
+
+    If the model does not support thinking, prints a notice and returns False.
+    """
+    if not model.supports_thinking:
+        console.print("  [dim]Selected model does not support extended thinking.[/dim]")
+        return False
+
+    default = current_thinking if current_thinking is not None else True
+    try:
+        enabled = typer.confirm(
+            "Enable extended thinking?",
+            default=default,
+        )
+    except (KeyboardInterrupt, EOFError):
+        raise _ConfigCancelled()
+
+    label = "[green]enabled[/green]" if enabled else "[dim]disabled[/dim]"
+    console.print(f"  Extended thinking: {label}")
+    return enabled
+
+
+def _test_and_save(provider, model, api_key, thinking: bool) -> None:
     """Test the connection and save the config."""
-    from ..llm import LLMClient
+    import httpx
+
+    from ..llm import LLMRequestError, get_client
     from ..config import ProviderConfig
 
     console.print()
@@ -194,14 +240,15 @@ def _test_and_save(provider, model, api_key) -> None:
             provider=provider,
             model=model.id,
             api_key=api_key,
+            thinking=thinking,
         )
-        test_text = LLMClient(test_config).test_connection()
+        test_text = get_client(test_config).test_connection()
         console.print(f"  [green]Connection OK:[/green] {test_text.strip()}")
     except EOFError:
         raise _ConfigCancelled()
     except KeyboardInterrupt:
         raise _ConfigCancelled()
-    except Exception as exc:
+    except (LLMRequestError, ValueError, NotImplementedError, httpx.RequestError) as exc:
         console.print(f"  [yellow]Warning:[/yellow] test request failed: {exc}")
         try:
             confirmed = typer.confirm("Save config anyway?", default=False)
@@ -210,7 +257,7 @@ def _test_and_save(provider, model, api_key) -> None:
         if not confirmed:
             raise _ConfigCancelled()
 
-    save_config(provider.id, model.id, api_key)
+    save_config(provider.id, model.id, api_key, thinking)
     console.print()
     console.print(f"[green]Config saved to {CONFIG_PATH}[/green]")
 
@@ -241,16 +288,23 @@ def config_show(
         key_suffix = "***" + llm.api_key[-4:] if len(llm.api_key) >= 4 else "***"
         print_json_success(
             configured=True,
-            provider=llm.provider.name,
+            provider=llm.provider.id,
             model=llm.model,
             key_suffix=key_suffix if llm.api_key else None,
             key_source=llm.api_key_source,
+            thinking=llm.thinking,
         )
         return
 
     table = Table("Key", "Value")
     table.add_row("Provider", llm.provider.name)
     table.add_row("Model", llm.model)
+    model = _find_model(llm.provider, llm.model)
+    if model and model.supports_thinking:
+        thinking_label = "enabled" if llm.thinking else "disabled"
+    else:
+        thinking_label = "unsupported"
+    table.add_row("Thinking", thinking_label)
     if llm.api_key:
         masked = "***" + llm.api_key[-4:] if len(llm.api_key) >= 4 else "***"
         table.add_row("API key", masked)
@@ -292,11 +346,11 @@ def config_test(
     Example:
       frais config test
     """
-    from ..llm import LLMClient, LLMRequestError
+    from ..llm import get_client, LLMRequestError
 
     try:
         config = require_config()
-        text = LLMClient(config).test_connection()
+        text = get_client(config).test_connection()
     except ValueError as exc:
         exit_with_error(str(exc), json_output, exit_code=2,
                         reason="config_missing",

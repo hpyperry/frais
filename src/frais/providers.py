@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
 
 @dataclass(slots=True)
 class ModelInfo:
     id: str
     name: str
-    thinking_default: bool = False  # True if model enables thinking by default
+    supports_thinking: bool = False  # True if model supports extended thinking control
 
 
 @dataclass(slots=True)
@@ -18,7 +17,6 @@ class Provider:
     name: str
     base_url: str
     models: list[ModelInfo]
-    thinking_param: dict[str, Any] | None = None  # Non-thinking disable parameter
 
     @property
     def chat_url(self) -> str:
@@ -34,11 +32,10 @@ PROVIDERS: list[Provider] = [
         name="DeepSeek",
         base_url="https://api.deepseek.com",
         models=[
-            ModelInfo(id="deepseek-v4-flash", name="DeepSeek V4 Flash", thinking_default=True),
-            ModelInfo(id="deepseek-v4-pro", name="DeepSeek V4 Pro", thinking_default=True),
-            ModelInfo(id="deepseek-chat", name="DeepSeek Chat (deprecated)", thinking_default=False),
+            ModelInfo(id="deepseek-v4-flash", name="DeepSeek V4 Flash", supports_thinking=True),
+            ModelInfo(id="deepseek-v4-pro", name="DeepSeek V4 Pro", supports_thinking=True),
+            ModelInfo(id="deepseek-chat", name="DeepSeek Chat (deprecated)", supports_thinking=False),
         ],
-        thinking_param={"thinking": {"type": "disabled"}},
     ),
 ]
 
@@ -50,11 +47,4 @@ def get_provider(provider_id: str) -> Provider | None:
     return None
 
 
-def get_model_thinking_param(provider: Provider, model_id: str) -> dict[str, Any] | None:
-    """Return the thinking-disable param for a model, or None if not needed."""
-    for m in provider.models:
-        if m.id == model_id:
-            if m.thinking_default and provider.thinking_param:
-                return provider.thinking_param
-            return None
-    return provider.thinking_param  # Fallback for unknown model
+

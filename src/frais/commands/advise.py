@@ -14,7 +14,7 @@ from rich.rule import Rule
 from ..cli import _ADVICE_CACHE
 from ..config import require_config
 from ..ignore import load_ignored
-from ..llm import LLMClient
+from ..llm import get_client
 from ..models import SourceKind, ScanResult
 from . import _split_plugins
 from ._output import exit_with_error, print_json_success
@@ -126,7 +126,7 @@ def advise(
                         reason="config_missing",
                         hint="Run `frais config manage` to set up your provider and API key.")
     logger.info("advise using provider=%s model=%s jobs=%d", config.provider.name, config.model, jobs)
-    llm = LLMClient(config)
+    llm = get_client(config)
 
     def _on_interrupt(signum, frame):
         try:

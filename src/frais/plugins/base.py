@@ -47,5 +47,6 @@ class ScannerPlugin(ABC):
 
     def summarize(self, agent, candidate: UpdateCandidate) -> str | None:
         """Generate a human-readable summary. Default: uses LLM."""
-        candidate.ai_summary = agent.summarize_candidate(candidate)
+        from ..commands.summarize import summarize_candidate
+        candidate.ai_summary = summarize_candidate(agent, candidate)
         return candidate.ai_summary

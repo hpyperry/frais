@@ -37,11 +37,11 @@ class ApplicationsPlugin(ScannerPlugin):
 
         # Step 2: research latest versions for non-App-Store apps
         from ...config import require_config
-        from ...llm import LLMClient
+        from ...llm import get_client
 
         try:
             config = require_config()
-            llm = LLMClient(config)
+            llm = get_client(config)
         except (ValueError, RuntimeError) as exc:
             logger.warning("LLM not available for applications research: %s", exc)
             return PluginScanResult(items=items, candidates=[], skipped=[str(exc)])
