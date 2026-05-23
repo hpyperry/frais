@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
 from .llm import LLMClient
-from .models import ScanResult, SystemProfile, UpdateCandidate
+from .models import PluginScanResult, ScanResult, SystemProfile, UpdateCandidate
 from .plugins.base import ScannerPlugin
 
 logger = logging.getLogger(__name__)
@@ -45,9 +45,14 @@ def run_scan(plugins: dict[str, ScannerPlugin],
              system: SystemProfile,
              show_all: bool = False,
              jobs: int = 10,
-             on_plugin_progress: Callable[[str, int, int, int], None] | None = None
+             on_plugin_progress: Callable[[str, int, int, int], None] | None = None,
+             on_plugin_done: Callable[[str, PluginScanResult], None] | None = None,
              ) -> ScanResult:
-    """Scan all plugins concurrently. Each plugin drives its own progress callback."""
+    """Scan all plugins concurrently. Each plugin drives its own progress callback.
+
+    *on_plugin_progress(pname, step, done, total)* fires during scan.
+    *on_plugin_done(pname, result)* fires as each plugin finishes.
+    """
     result = ScanResult(system=system)
 
     with ThreadPoolExecutor(max_workers=max(1, len(plugins))) as pool:
@@ -71,6 +76,8 @@ def run_scan(plugins: dict[str, ScannerPlugin],
                 from .models import PluginScanResult
                 pr = PluginScanResult(skipped=[str(exc)])
             result.plugin_results[name] = pr
+            if on_plugin_done:
+                on_plugin_done(name, pr)
 
     return result
 

@@ -76,8 +76,22 @@ def run_scan_phase(active_plugins: dict[str, ScannerPlugin],
                                 total=total, completed=0)
             progress.update(task_id, total=total, completed=done)
 
+        scan_elapsed: dict[str, float] = {}
+
+        from ..models import PluginScanResult
+
+        def _on_plugin_done(pname: str, pr: PluginScanResult) -> None:
+            task_id = plugin_tasks.get(pname)
+            if task_id is not None:
+                scan_elapsed[pname] = time.monotonic() - plugin_start_times.get(pname, 0)
+                desc = f"{pname}    {len(pr.items)} items"
+                if pr.candidates:
+                    desc += f", {len(pr.candidates)} updates"
+                progress.update(task_id, description=desc, total=1, completed=1)
+
         result = run_scan(active_plugins, system, show_all=show_all,
-                          jobs=jobs, on_plugin_progress=_on_progress)
+                          jobs=jobs, on_plugin_progress=_on_progress,
+                          on_plugin_done=_on_plugin_done)
 
         ignored_data = load_ignored()
         ignored_count = 0
@@ -87,18 +101,6 @@ def run_scan_phase(active_plugins: dict[str, ScannerPlugin],
                 before = len(pr.candidates)
                 pr.candidates = [c for c in pr.candidates if c.item.id not in ignored_data]
                 ignored_count += before - len(pr.candidates)
-
-        scan_elapsed: dict[str, float] = {}
-        for name in active_plugins:
-            pr = result.plugin_results.get(name)
-            if pr is None:
-                continue
-            elapsed = time.monotonic() - plugin_start_times.get(name, 0)
-            scan_elapsed[name] = elapsed
-            desc = f"{name}    {len(pr.items)} items"
-            if pr.candidates:
-                desc += f", {len(pr.candidates)} updates"
-            progress.update(plugin_tasks[name], description=desc)
 
     if cache_path:
         _save_cache(result, cache_path)

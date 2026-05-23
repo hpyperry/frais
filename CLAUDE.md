@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 首要开发规范
+
+**所有代码必须满足 `python_engineering_spec_strict.md` 的要求。** 该规范是本项目的第一优先级约束，任何代码变更前必须确认符合规范。关键红线：
+
+- 超长函数 / 超长类 —— 禁止
+- 无类型代码 —— 禁止
+- 裸 except / 吞异常 —— 禁止
+- print 调试 —— 禁止
+- 硬编码 —— 禁止
+- 全局状态污染 —— 禁止
+- 无测试提交 —— 禁止
+- import * / 动态 monkey patch —— 禁止
+
 ## Task workflow
 
 When the user signals a new implementation task (e.g. "新任务", "给你一个任务", "帮我实现", "加个功能"), follow these steps in order. For simple questions, bug reports, or quick checks, skip the workflow and respond directly.
