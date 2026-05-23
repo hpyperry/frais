@@ -132,6 +132,7 @@ def summarize(
                         plugin_name=plugin_name)
 
     summary = plugin.summarize(llm, candidate)
+    llm.close()
 
     try:
         for pname, pr in data.get("plugin_results", {}).items():

@@ -72,7 +72,7 @@ def run_scan(plugins: dict[str, ScannerPlugin],
             try:
                 pr = future.result()
             except Exception as exc:
-                logger.warning("scan failed for %s: %s", name, exc)
+                logger.warning("scan failed for %s: %s", name, exc, exc_info=True)
                 from .models import PluginScanResult
                 pr = PluginScanResult(skipped=[str(exc)])
             result.plugin_results[name] = pr
@@ -106,6 +106,6 @@ def run_summaries(llm: LLMClient,
             try:
                 future.result()
             except Exception as exc:
-                logger.warning("summary failed: %s", exc)
+                logger.warning("summary failed: %s", exc, exc_info=True)
             if on_progress:
                 on_progress()

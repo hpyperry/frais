@@ -60,7 +60,7 @@ class ApplicationsPlugin(ScannerPlugin):
                 try:
                     candidate = future.result()
                 except Exception as exc:
-                    logger.warning("research failed: %s", exc)
+                    logger.warning("research failed: %s", exc, exc_info=True)
                     if on_progress:
                         on_progress(1, researched, len(to_research))
                     continue
@@ -70,6 +70,7 @@ class ApplicationsPlugin(ScannerPlugin):
                     on_progress(1, researched, len(to_research))
 
         logger.info("applications research done candidates=%d", len(candidates))
+        llm.close()
         return PluginScanResult(items=items, candidates=candidates)
 
     def update(self, candidate: UpdateCandidate) -> bool:

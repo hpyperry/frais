@@ -198,6 +198,7 @@ def advise(
                 run_summaries(llm, all_candidates, candidate_plugin_map,
                               active_plugins, max_workers=jobs,
                               on_progress=lambda: summary_progress.advance(summarize_task) if not json_output else None)
+                llm.close()
                 summarize_elapsed = time.monotonic() - t0
             finally:
                 if not json_output:

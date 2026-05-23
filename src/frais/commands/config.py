@@ -242,7 +242,9 @@ def _test_and_save(provider, model, api_key, thinking: bool) -> None:
             api_key=api_key,
             thinking=thinking,
         )
-        test_text = get_client(test_config).test_connection()
+        test_client = get_client(test_config)
+        test_text = test_client.test_connection()
+        test_client.close()
         console.print(f"  [green]Connection OK:[/green] {test_text.strip()}")
     except EOFError:
         raise _ConfigCancelled()
@@ -350,7 +352,9 @@ def config_test(
 
     try:
         config = require_config()
-        text = get_client(config).test_connection()
+        client = get_client(config)
+        text = client.test_connection()
+        client.close()
     except ValueError as exc:
         exit_with_error(str(exc), json_output, exit_code=2,
                         reason="config_missing",
