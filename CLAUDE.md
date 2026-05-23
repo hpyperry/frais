@@ -64,6 +64,7 @@ src/frais/
                         #   Commands delegated to commands/ modules
   commands/
     __init__.py          # _split_plugins helper
+    _output.py           # print_json_success() + exit_with_error() — shared JSON/CLI output helpers
     _scan_core.py        # run_scan_phase — shared Rich progress + cache logic
     advise.py            # advise command (scan + summaries + total time)
     config.py            # config commands: manage (interactive), show, path, test
@@ -197,9 +198,200 @@ Plugins that don't need research (Homebrew, npm) skip the LLM pipeline entirely 
 1. Loads cache, parses candidates, filters by optional id/name.
 2. For each candidate: display info + AI Analysis → Proceed? → `plugin.update()`.
 
+## JSON output formats
+
+All commands that support `--json` use a uniform envelope: success `{"ok": true, ...fields}`, error `{"ok": false, "error": "..."}`. The `ok` key is always present and always a boolean. Commands without `--json` emit Rich-formatted text only (no JSON errors).
+
+**Shared helpers** (`commands/_output.py`):
+- `print_json_success(**kwargs)` — prints `{"ok": true, ...}` to stdout via Rich `print_json`. The `ok` key is reserved; callers cannot override it.
+- `exit_with_error(message, json_mode, exit_code=1)` — in JSON mode prints `{"ok": false, "error": message}` to stdout then `raise typer.Exit(code)`. In CLI mode prints red error text to stderr then exits. Single call replaces `console.print("[red]...")` + `raise typer.Exit(1)`.
+
+### doctor --json
+
+```json
+{
+  "ok": true,
+  "system": {
+    "os_name": "macOS",           // OS display name
+    "os_version": "26.5",         // OS version string
+    "arch": "arm64",              // CPU architecture (arm64 / x86_64)
+    "applications_paths": ["/Applications", "~/Applications"]
+  },
+  "plugins": {
+    "<name>": {
+      "available": "yes|no",      // Whether the underlying tool is installed
+      "default": "enabled|disabled"  // Plugin's enabled_by_default value
+    }
+  },
+  "llm": null | {
+    "configured": true|false,     // Whether config is ready to use
+    "provider": "deepseek",       // Provider id string
+    "model": "deepseek-v4-flash", // Model id string
+    "key_suffix": "***abcd"       // Last 4 chars of API key, masked
+  }
+}
+```
+
+### plugins list --json
+
+```json
+{
+  "ok": true,
+  "plugins": [
+    {
+      "name": "applications",     // Plugin name (entry point name)
+      "available": "yes|no",      // is_available() result
+      "default": "enabled|disabled",  // enabled_by_default value
+      "effective": "enabled|disabled" // Actual state after persisted overrides
+    }
+  ]
+}
+```
+
+### plugins enable/disable --json
+
+```json
+// Success:
+{"ok": true, "plugin": "homebrew", "action": "enabled|disabled"}
+
+// Error (unknown plugin):
+{"ok": false, "error": "Unknown plugin: <name>"}
+```
+
+### ignore list --json
+
+```json
+{
+  "ok": true,
+  "ignored": ["com.example.app", ...],  // Sorted list of ignored bundle IDs
+  "count": 2                            // Number of ignored apps
+}
+```
+
+### ignore add/remove --json
+
+```json
+// add:
+{"ok": true, "app_id": "com.example.app", "action": "added|already_ignored"}
+
+// remove:
+{"ok": true, "app_id": "com.example.app", "action": "removed|not_in_list"}
+```
+
+### config show --json
+
+```json
+// Not configured:
+{"ok": true, "configured": false}
+
+// Configured:
+{
+  "ok": true,
+  "configured": true,
+  "provider": "deepseek",        // Provider id
+  "model": "deepseek-v4-flash",  // Model id
+  "key_suffix": "***abcd",       // Masked key suffix (null if no key set)
+  "key_source": "env:FRAIS_LLM_API_KEY|env:OPENAI_API_KEY|config"  // Where the key came from
+}
+```
+
+### config test --json
+
+```json
+// Success:
+{
+  "ok": true,
+  "provider": "deepseek",
+  "model": "deepseek-v4-flash",
+  "url": "https://api.deepseek.com/v1/chat/completions",
+  "response": "LLM response text"
+}
+
+// Error:
+{"ok": false, "error": "<error message>"}
+```
+
+### scan --json / advise --json
+
+Both commands output a serialized `ScanResult` wrapped in the success envelope:
+
+```json
+{
+  "ok": true,
+  "system": {
+    "os_name": "macOS",
+    "os_version": "26.5",
+    "arch": "arm64",
+    "applications_paths": ["/Applications", "~/Applications"]
+  },
+  "plugin_results": {
+    "<plugin_name>": {
+      "items": [
+        {
+          "id": "com.google.Chrome",     // Unique identifier (bundle ID, brew:name, npm:name)
+          "name": "Google Chrome",       // Display name
+          "kind": "application",         // App kind (application, formula, cask, npm package, etc.)
+          "source": "network download",  // SourceKind enum value — how it was installed
+          "current_version": "131.0.6778.265",
+          "path": "/Applications/Google Chrome.app",
+          "metadata": {}                 // Plugin-specific extra data (e.g. bundle_identifier)
+        }
+      ],
+      "candidates": [
+        {
+          "item": { ... },               // SoftwareItem (same structure as above)
+          "latest_version": "132.0.6834.210",
+          "release_notes": null,
+          "dependency_impact": {
+            "used_by": [],               // Reverse deps (brew uses, npm dependents)
+            "depends_on": [],            // Forward deps
+            "impact_level": "unknown"    // unknown | low | medium | high
+          },
+          "risk_level": "low",           // low | medium | high | unknown
+          "ai_summary": "## What's New\n...",  // LLM-generated Markdown summary
+          "recommended_action": "Update",      // Update | No action | Manual | etc.
+          "can_auto_update": true,       // Whether plugin.update() can execute directly
+          "command": ["brew", "upgrade", "google-chrome"],  // Shell command for auto_update
+          "evidence": ["https://..."]    // URLs that sourced the version info
+        }
+      ],
+      "skipped": ["reason string"]       // Items/errors that were skipped
+    }
+  }
+}
+```
+
+**Key field notes for agent consumption:**
+- `item.id`: globally unique; prefix indicates source (`brew:`, `npm:`, or bare bundle ID)
+- `item.source`: one of `SourceKind` enum — `application`, `local build`, `network download`, `app store`, `brew`, `brew cask`, `npm`, `unknown`
+- `candidate.can_auto_update`: when `true`, the `command` list is safe to execute
+- `candidate.recommended_action`: human-readable guidance; `"No action"` means up-to-date
+- `candidate.evidence`: URLs that were fetched to determine the latest version
+- `candidate.ai_summary`: may be `null` if summaries haven't been run yet (scan without advise)
+
+### summarize --json <id>
+
+```json
+// Success:
+{"ok": true, "item_id": "com.google.Chrome", "ai_summary": "## What's New\n..."}
+
+// Error:
+{"ok": false, "error": "No scan cache found. Run `frais advise` or `frais scan` first."}
+{"ok": false, "error": "No candidate found for: <id>"}
+```
+
+### Error format (all commands)
+
+```json
+{"ok": false, "error": "<human-readable message>"}
+```
+
+Error exit codes: `1` for general errors, `2` for config/parameter errors (matches `typer.BadParameter` convention). The `error` string is stable enough for agent branching but not guaranteed across versions.
+
 ## Key patterns
 
 - **Provider registry**: 7 curated LLM providers in `providers.py` as `Provider` dataclasses with `ModelInfo` lists and `thinking_param` definitions. `get_model_thinking_param()` returns the correct disable parameter only for models where `thinking_default=True`. Configuration stored as `[llm]` TOML with `provider`, `model`, `api_key`. `FRAIS_LLM_API_KEY` env var overrides the file-stored key; `OPENAI_API_KEY` serves as fallback for the openai provider. API keys are never logged or printed in full.
+- **JSON/CLI output**: `commands/_output.py` provides `print_json_success(**kwargs)` and `exit_with_error(message, json_mode, exit_code=1)`. Every command uses these two helpers — errors are a single function call with no branching in the command body; success output is one `if json_output:` / `else:` at the end. The `ok` key in `print_json_success` is reserved (caller-provided `ok` is discarded). `exit_with_error` uses Rich stderr Console for CLI mode to match `click.ClickException` behavior.
 - **Testing**: Uses `monkeypatch` (pytest fixture) for all external dependencies — subprocess, filesystem, env vars. No mock library.
 - **Version comparison**: Uses `packaging.version.Version`; strips leading `v`/`V` before comparing.
 - **Source classification**: Applications are classified as APP_STORE, LOCAL_BUILD, NETWORK_DOWNLOAD, APPLICATION, or UNKNOWN based on codesign authority, team ID, and quarantine xattr presence.

@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Coverage](https://img.shields.io/badge/coverage-79%25-green)](https://github.com/hpyperry/frais)
 
-macOS update checker CLI with LLM-powered version research. Three-phase pipeline: **scan** (plugin-based discovery + optional LLM research) → **summarize** (AI-generated update advice) → **update** (plugin-provided execution).
+macOS update checker CLI with LLM-powered version research. Pipeline: **scan** (plugin-based discovery; ApplicationsPlugin does internal LLM research) → **summarize** (AI-generated update advice) → **update** (plugin-provided execution). `advise` is the user-facing convenience command = scan + summaries + Rich display.
 
 Supports 7 curated LLM providers (DeepSeek, OpenAI, Kimi, Grok, Mistral, Qwen, Zhipu) with automatic thinking-mode control.
 
@@ -20,15 +20,22 @@ LLM features require user-owned configuration in `~/.frais/config/config.toml`. 
 ## Architecture
 
 ```
-Agent LLM ──▶ frais scan --json           (structured output)
-              frais summarize <id> --json  (single summary)
+Agent LLM ──▶ frais doctor --json           (system readiness)
+              frais config show --json       (redacted config)
+              frais config test --json       (connection validation)
+              frais plugins list --json      (plugin inventory)
+              frais ignore list --json       (exclusion list)
+              frais scan --json              (structured scan output)
+              frais summarize <id> --json    (single AI summary)
 
-User     ──▶ frais advise                 (scan + summarize + Rich UI)
-              frais update                 (interactive execution)
+User     ──▶ frais advise                   (scan + summarize + Rich UI)
+              frais update                   (interactive execution)
+              frais config manage            (interactive setup)
+              frais plugins enable/disable   (plugin management)
 
 Internal:
   CLI  ──▶ coordinator.py  ──▶ plugins/
-           select_plugins        applications/  (discover → research)
+           select_plugins        applications/  (discover → LLM research)
            run_scan              homebrew/      (brew outdated)
            run_summaries         npm/           (npm outdated)
 ```
@@ -41,13 +48,42 @@ Internal:
 
 ## Commands
 
+All commands that accept `--json` use a uniform JSON envelope: success `{"ok": true, ...}`, error `{"ok": false, "error": "..."}`. The `ok` key is always the first field and always a boolean. Without `--json`, commands emit Rich-formatted terminal output.
+
 ### `doctor`
 
 ```bash
 frais doctor
+frais doctor --json
 ```
 
-Prints macOS version, architecture, Applications paths, plugin availability, and redacted LLM provider status. Read-only, safe to run before any configuration.
+Read-only system check. Prints macOS version, architecture, Applications paths, plugin availability, and redacted LLM provider status.
+
+`--json` output:
+
+```json
+{
+  "ok": true,
+  "system": {
+    "os_name": "macOS",            // OS display name
+    "os_version": "26.5",          // OS version string
+    "arch": "arm64",               // CPU architecture (arm64 / x86_64)
+    "applications_paths": ["/Applications", "~/Applications"]
+  },
+  "plugins": {
+    "<name>": {
+      "available": "yes",          // "yes" if underlying tool is installed, "no" otherwise
+      "default": "enabled"         // Plugin's enabled_by_default setting
+    }
+  },
+  "llm": null | {
+    "configured": true,            // true if provider + model + key are all set
+    "provider": "deepseek",        // Provider id string
+    "model": "deepseek-v4-flash",  // Model id string
+    "key_suffix": "***abcd"        // Last 4 characters of API key, masked
+  }
+}
+```
 
 ### `advise`
 
@@ -59,14 +95,16 @@ frais advise -j 5
 frais advise --json
 ```
 
-Scans enabled plugins, researches latest versions, generates AI summaries, and displays results. Progress is shown with a live Rich progress bar — one row per plugin, independent per-task timers. Displays AI Analysis alongside each update candidate.
+Scans enabled plugins, researches latest versions (via LLM for Applications, via package manager for Homebrew/npm), generates AI summaries, and displays results. Requires a configured LLM provider. Progress is shown with a live Rich progress bar — one row per plugin, independent per-task timers.
 
 | Flag | Effect |
 |------|--------|
 | `--all` | Show all installed software including up-to-date items |
 | `--plugins NAMES` | Comma-separated plugin names to advise on |
 | `--json` | Machine-readable JSON (for agent consumption) |
-| `-j N` | Concurrency limit (default 10, max 20) |
+| `-j N` | Concurrency limit for LLM requests (default 10, max 20) |
+
+`--json` output: same format as `scan --json` (see below). The only difference is that `ai_summary` fields are populated — `advise` runs summaries, `scan` does not.
 
 ### `scan`
 
@@ -77,7 +115,70 @@ frais scan --all
 frais scan --json
 ```
 
-Same scan logic as `advise` without summaries. JSON output is suitable for external agent LLM consumption. Saves cache for `summarize` and `update` to consume later.
+Same scan logic as `advise` but without AI summaries. Saves cache to `~/.frais/log/last_advice.json` for `summarize` and `update` to consume later.
+
+| Flag | Effect |
+|------|--------|
+| `--all` | Show all installed software including up-to-date items |
+| `--plugins NAMES` | Comma-separated plugin names to scan |
+| `--json` | Machine-readable JSON (for agent consumption) |
+
+`--json` output (same format for both `scan --json` and `advise --json`):
+
+```json
+{
+  "ok": true,
+  "system": {
+    "os_name": "macOS",
+    "os_version": "26.5",
+    "arch": "arm64",
+    "applications_paths": ["/Applications", "~/Applications"]
+  },
+  "plugin_results": {
+    "<plugin_name>": {
+      "items": [
+        {
+          "id": "com.google.Chrome",       // Unique ID; bare bundle ID, "brew:<name>", or "npm:<name>"
+          "name": "Google Chrome",         // Display name
+          "kind": "application",           // App kind (application, formula, cask, npm package, etc.)
+          "source": "network download",    // SourceKind enum: application | local build | network download | app store | brew | brew cask | npm | unknown
+          "current_version": "131.0.6778.265",
+          "path": "/Applications/Google Chrome.app",
+          "metadata": {}                   // Plugin-specific data (bundle_identifier, formula name, etc.)
+        }
+      ],
+      "candidates": [
+        {
+          "item": { ... },                 // SoftwareItem (same structure as above, minus metadata)
+          "latest_version": "132.0.6834.210",
+          "release_notes": null,           // Release notes text (may be null)
+          "dependency_impact": {
+            "used_by": [],                 // Reverse dependencies (brew uses / npm dependents)
+            "depends_on": [],              // Forward dependencies
+            "impact_level": "unknown"      // unknown | low | medium | high
+          },
+          "risk_level": "low",             // low | medium | high | unknown
+          "ai_summary": "## What's New\n...",  // LLM-generated Markdown summary (null before summarize)
+          "recommended_action": "Update",      // Human-readable action: Update | No action | Manual | etc.
+          "can_auto_update": true,              // true if plugin.update() with candidate.command will work
+          "command": ["brew", "upgrade", "google-chrome"],  // Shell command (empty if not auto-updatable)
+          "evidence": ["https://..."]       // URLs that sourced the version info
+        }
+      ],
+      "skipped": ["reason string"]         // Items or errors that were skipped during scan
+    }
+  }
+}
+```
+
+**Field notes for agent consumers:**
+- `item.id`: globally unique identifier. Bare bundle ID = Application. `brew:` prefix = Homebrew. `npm:` prefix = npm global package.
+- `item.source`: how the software was installed. Determines update strategy (App Store → deep link, brew → `brew upgrade`, npm → `npm install -g`).
+- `candidate.can_auto_update`: when `true`, the `command` list is safe to run as a subprocess.
+- `candidate.ai_summary`: `null` in `scan --json` output (summaries haven't run). Populated in `advise --json` or after running `frais summarize <id>`.
+- `candidate.recommended_action` values seen in practice: `"Update"`, `"No action"`, `"Manual update"`, `"Reinstall from source"`.
+- `candidate.risk_level`: LLM-assessed upgrade risk. `"low"` for patch releases, `"medium"` for minor updates, `"high"` for major versions with breaking changes.
+- `candidate.evidence`: the web URLs that were fetched and parsed to determine latest version. Useful for verification.
 
 ### `summarize`
 
@@ -86,19 +187,31 @@ frais summarize com.google.Chrome
 frais summarize brew:node --json
 ```
 
-Generates an AI summary for a single candidate from the last scan cache. Writes the result back to cache so `update` can display it. Useful for agent workflows: `scan` → pick a candidate → `summarize` → `update`.
+Generates an AI summary for a single candidate from the last scan cache. Writes the result back to cache so `update` can display it.
+
+`--json` output:
+
+```json
+// Success:
+{"ok": true, "item_id": "com.google.Chrome", "ai_summary": "## What's New\n..."}
+
+// Error (no cache, bad cache, candidate not found, plugin not found, no config):
+{"ok": false, "error": "No candidate found for: com.example.App"}
+```
 
 ### `config`
 
 ```bash
 frais config              # show current config (redacted)
-frais config manage       # interactive setup or modify existing config
 frais config show         # same as bare `frais config`
+frais config show --json
+frais config manage       # interactive setup or modify existing config
 frais config path         # print config file path
 frais config test         # send a minimal LLM request to validate
+frais config test --json
 ```
 
-`manage` detects an existing config and lets you choose what to modify — provider & model, API key, or full reconfiguration. Press Ctrl+C at any step to cancel without saving. `show` never prints the full API key — only a 4-character suffix. `test` prints the effective chat-completions URL without revealing the key.
+`manage` detects an existing config and lets you choose what to modify — provider & model, API key, or full reconfiguration. Press Ctrl+C at any step to cancel without saving. `show` never prints the full API key — only a 4-character suffix. `test` sends a single chat-completions request to verify credentials.
 
 Example config (`~/.frais/config/config.toml`):
 
@@ -111,7 +224,42 @@ api_key = "sk-..."
 
 Supported providers: `deepseek`, `openai`, `kimi`, `grok`, `mistral`, `qwen`, `zhipu`. Each provider offers a curated set of models — run `frais config manage` to browse them interactively.
 
-API key resolution order: `FRAIS_LLM_API_KEY` env var → `OPENAI_API_KEY` env var → config file.
+API key resolution order: `FRAIS_LLM_API_KEY` env var → `OPENAI_API_KEY` env var (openai only) → config file.
+
+**`config show --json`:**
+
+```json
+// Not configured:
+{"ok": true, "configured": false}
+
+// Configured:
+{
+  "ok": true,
+  "configured": true,
+  "provider": "deepseek",        // Provider id
+  "model": "deepseek-v4-flash",  // Model id
+  "key_suffix": "***abcd",       // Masked key suffix (null if no key)
+  "key_source": "config"         // Where the key comes from: config | env:FRAIS_LLM_API_KEY | env:OPENAI_API_KEY
+}
+```
+
+**`config test --json`:**
+
+```json
+// Success:
+{
+  "ok": true,
+  "provider": "deepseek",
+  "model": "deepseek-v4-flash",
+  "url": "https://api.deepseek.com/v1/chat/completions",
+  "response": "Hello! I'm DeepSeek, ready to help."
+}
+
+// Error (no config, connection failure, auth error):
+{"ok": false, "error": "connection failed: timeout"}
+```
+
+`config path` and `config manage` do not support `--json`.
 
 ### `update`
 
@@ -120,29 +268,89 @@ frais update
 frais update npm
 ```
 
-Loads results from the last `frais advise` run, shows each candidate with AI advice, and asks for confirmation. Delegates to each plugin's `update()` method for execution.
+Interactive only — no `--json` support. Loads results from the last `frais advise` run, shows each candidate with AI advice, and asks for confirmation. Delegates to each plugin's `update()` method for execution.
 
 ### `plugins`
 
 ```bash
-frais plugins
+frais plugins                 # list (same as `frais plugins list`)
+frais plugins --json
 frais plugins list
+frais plugins list --json
 frais plugins enable homebrew
+frais plugins enable --json homebrew
 frais plugins disable homebrew
+frais plugins disable --json homebrew
 ```
 
-Lists and manages plugins. State is persisted to `~/.frais/config/plugins.toml`. Disabled plugins are skipped during `advise`.
+Lists and manages plugins. State is persisted to `~/.frais/config/plugins.toml`.
+
+**`plugins list --json`:**
+
+```json
+{
+  "ok": true,
+  "plugins": [
+    {
+      "name": "applications",     // Plugin name (entry point name)
+      "available": "yes",         // "yes" if underlying tool is available, "no" otherwise
+      "default": "enabled",       // enabled_by_default value
+      "effective": "enabled"      // Actual state after persisted enable/disable overrides
+    }
+  ]
+}
+```
+
+- **available**: checks whether the underlying tool is installed (e.g. `brew` command exists)
+- **default**: the plugin's `enabled_by_default` property — what it would be if never touched
+- **effective**: takes persisted config into account. This is what `advise` uses when selecting plugins.
+
+**`plugins enable --json <name>` / `plugins disable --json <name>`:**
+
+```json
+// Success:
+{"ok": true, "plugin": "homebrew", "action": "enabled"}
+
+// Error:
+{"ok": false, "error": "Unknown plugin: nonexistent"}
+```
 
 ### `ignore`
 
 ```bash
-frais ignore
+frais ignore                      # list (same as `frais ignore list`)
+frais ignore --json
 frais ignore list
+frais ignore list --json
 frais ignore add com.example.app
+frais ignore add --json com.example.app
 frais ignore remove com.example.app
+frais ignore remove --json com.example.app
 ```
 
-Manages an ignore list stored at `~/.frais/config/ignore.txt` (one app ID per line). Ignored apps are excluded from `advise` runs.
+Manages an ignore list stored at `~/.frais/config/ignore.txt` (one app ID per line). Ignored apps are excluded from `advise` and `scan` results. All mutating commands use atomic writes (write to `.tmp`, rename).
+
+**`ignore list --json`:**
+
+```json
+{
+  "ok": true,
+  "ignored": ["com.example.app1", "com.example.app2"],  // Sorted list of ignored bundle IDs
+  "count": 2                                             // Number of ignored apps
+}
+```
+
+**`ignore add --json <app_id>` / `ignore remove --json <app_id>`:**
+
+```json
+// add:
+{"ok": true, "app_id": "com.example.app", "action": "added"}           // new addition
+{"ok": true, "app_id": "com.example.app", "action": "already_ignored"} // already in list
+
+// remove:
+{"ok": true, "app_id": "com.example.app", "action": "removed"}       // was in list, now removed
+{"ok": true, "app_id": "com.example.app", "action": "not_in_list"}   // wasn't in the list
+```
 
 ## Writing plugins
 
@@ -244,7 +452,7 @@ Both `frais advise` and `frais scan` write to `~/.frais/log/last_advice.json`. T
 }
 ```
 
-`frais scan --json` and `frais advise --json` output the same format for agent LLM consumption.
+`frais scan --json` and `frais advise --json` wrap the same `ScanResult` structure in a `{"ok": true, ...}` envelope. All other `--json` commands use the same envelope pattern — see each command's section above for field descriptions.
 
 ### Registration
 
