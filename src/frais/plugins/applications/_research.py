@@ -10,7 +10,7 @@ from packaging.version import InvalidVersion, Version
 
 from ...llm import LLMClient
 from ...models import ResearchResult, SourceKind, SoftwareItem, UpdateCandidate
-from ...tools import web_fetch_batch, web_search
+from ...web_tools import web_fetch_batch, web_search
 from ._store import check_app_store_version
 
 logger = logging.getLogger(__name__)

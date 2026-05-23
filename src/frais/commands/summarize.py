@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 from rich.console import Console
 
-from ..store.config_store import require_config
 from ..models import UpdateCandidate
+from ..paths import ADVICE_CACHE
+from ..store.config_store import require_config
 from ._output import exit_with_error, print_json_success
 
 if TYPE_CHECKING:
@@ -78,15 +79,13 @@ def summarize(
       frais summarize com.google.Chrome
       frais summarize brew:node --json
     """
-    from ..cli import _ADVICE_CACHE
-
-    if not _ADVICE_CACHE.exists():
+    if not ADVICE_CACHE.exists():
         exit_with_error("No scan cache found.", json_output,
                         reason="no_cache",
                         hint="Run `frais scan --json` or `frais advise --json` first to generate a scan cache.")
 
     try:
-        data = json.loads(_ADVICE_CACHE.read_text())
+        data = json.loads(ADVICE_CACHE.read_text())
     except (json.JSONDecodeError, OSError) as exc:
         exit_with_error(f"Failed to read scan cache: {exc}", json_output,
                         reason="cache_read_error",
@@ -139,10 +138,10 @@ def summarize(
             for raw in pr.get("candidates", []):
                 if raw.get("item", {}).get("id") == item_id:
                     raw["ai_summary"] = summary
-                    _ADVICE_CACHE.parent.mkdir(parents=True, exist_ok=True)
-                    tmp_path = _ADVICE_CACHE.with_suffix(".tmp")
+                    ADVICE_CACHE.parent.mkdir(parents=True, exist_ok=True)
+                    tmp_path = ADVICE_CACHE.with_suffix(".tmp")
                     tmp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
-                    tmp_path.replace(_ADVICE_CACHE)
+                    tmp_path.replace(ADVICE_CACHE)
                     break
             else:
                 continue

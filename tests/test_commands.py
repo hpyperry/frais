@@ -42,7 +42,7 @@ def test_run_scan_phase_json_mode(monkeypatch) -> None:
         return ScanResult(system=system, plugin_results={"test": pr})
 
     monkeypatch.setattr("frais.coordinator.run_scan", fake_run_scan)
-    monkeypatch.setattr("frais.commands._scan_core.load_ignored", lambda: set())
+    monkeypatch.setattr("frais.ignore_filter.load_ignored", lambda: set())
 
     result, ignored_count, scan_elapsed = run_scan_phase(
         {"test": _fake_plugin()}, system, json_output=True,
@@ -64,7 +64,7 @@ def test_run_scan_phase_json_mode_with_ignore(monkeypatch) -> None:
         return ScanResult(system=system, plugin_results={"test": pr})
 
     monkeypatch.setattr("frais.coordinator.run_scan", fake_run_scan)
-    monkeypatch.setattr("frais.commands._scan_core.load_ignored", lambda: {"a"})
+    monkeypatch.setattr("frais.ignore_filter.load_ignored", lambda: {"a"})
 
     result, ignored_count, _ = run_scan_phase(
         {"test": _fake_plugin()}, system, json_output=True,
@@ -83,7 +83,7 @@ def test_run_scan_phase_json_mode_saves_cache(monkeypatch, tmp_path: Path) -> No
         return ScanResult(system=system, plugin_results={"test": pr})
 
     monkeypatch.setattr("frais.coordinator.run_scan", fake_run_scan)
-    monkeypatch.setattr("frais.commands._scan_core.load_ignored", lambda: set())
+    monkeypatch.setattr("frais.ignore_filter.load_ignored", lambda: set())
 
     cache = tmp_path / "cache.json"
     run_scan_phase({"test": _fake_plugin()}, system, json_output=True, cache_path=cache)
@@ -95,7 +95,7 @@ def test_run_scan_phase_json_mode_saves_cache(monkeypatch, tmp_path: Path) -> No
 
 def test_summarize_no_cache_exits(monkeypatch, tmp_path: Path) -> None:
     cache = tmp_path / "nonexistent.json"
-    monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
+    monkeypatch.setattr("frais.commands.summarize.ADVICE_CACHE", cache)
     with pytest.raises(typer.Exit):
         summarize(item_id="com.example.app")
 
@@ -106,7 +106,7 @@ def test_summarize_candidate_not_found(monkeypatch, tmp_path: Path) -> None:
         "system": {"os_name": "macOS", "os_version": "15.0", "arch": "arm64", "applications_paths": []},
         "plugin_results": {"applications": {"items": [], "candidates": [], "skipped": []}},
     }))
-    monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
+    monkeypatch.setattr("frais.commands.summarize.ADVICE_CACHE", cache)
     with pytest.raises(typer.Exit):
         summarize(item_id="com.example.app")
 
@@ -124,7 +124,7 @@ def test_summarize_success(monkeypatch, tmp_path: Path) -> None:
         "system": {"os_name": "macOS", "os_version": "15.0", "arch": "arm64", "applications_paths": []},
         "plugin_results": {"applications": {"items": [], "candidates": [candidate_dict], "skipped": []}},
     }))
-    monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
+    monkeypatch.setattr("frais.commands.summarize.ADVICE_CACHE", cache)
     monkeypatch.setattr("frais.commands.summarize.require_config", lambda: _fake_llm_config())
 
     class FakePlugin:
@@ -146,7 +146,7 @@ def test_update_empty_cache(monkeypatch, tmp_path: Path) -> None:
         "system": {"os_name": "macOS", "os_version": "15.0", "arch": "arm64", "applications_paths": []},
         "plugin_results": {},
     }))
-    monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
+    monkeypatch.setattr("frais.commands.update.ADVICE_CACHE", cache)
     update(only=None)
 
 

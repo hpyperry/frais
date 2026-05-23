@@ -9,6 +9,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable
 
+import typer
+
 from ...models import PluginScanResult, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
 from ..base import ScannerPlugin
 from ._research import research_application_update
@@ -74,8 +76,6 @@ class ApplicationsPlugin(ScannerPlugin):
         return PluginScanResult(items=items, candidates=candidates)
 
     def update(self, candidate: UpdateCandidate) -> bool:
-        import typer
-
         if candidate.item.source == SourceKind.APP_STORE:
             cmd, can_auto = resolve_app_store_command(candidate.item)
             if can_auto and cmd:

@@ -1,26 +1,40 @@
 from __future__ import annotations
 
-import json
 import logging
 import time
+from dataclasses import dataclass
+from pathlib import Path
 
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
-from ..store.ignore_store import load_ignored
+from ..ignore_filter import apply_ignore_filter
+from ..models import ScanResult, SystemProfile
 from ..plugins.base import ScannerPlugin
-from . import _split_plugins
+from ..store.scan_cache import save_scan_cache
 
 logger = logging.getLogger(__name__)
 console = Console()
 
 
+@dataclass(slots=True)
+class ScanPhaseResult:
+    scan_result: ScanResult
+    ignored_count: int
+    scan_elapsed: dict[str, float]
+
+    def __iter__(self):
+        yield self.scan_result
+        yield self.ignored_count
+        yield self.scan_elapsed
+
+
 def run_scan_phase(active_plugins: dict[str, ScannerPlugin],
-                   system, *, show_all: bool = False, jobs: int = 10,
+                   system: SystemProfile, *, show_all: bool = False, jobs: int = 10,
                    json_output: bool = False,
-                   cache_path=None
-                   ) -> tuple:
-    """Run scan with Rich progress, return (result, ignored_count, scan_elapsed).
+                   cache_path: Path | None = None,
+                   ) -> ScanPhaseResult:
+    """Run scan with Rich progress.
 
     When *json_output* is True, the progress bar is skipped.
     When *cache_path* is given, the result is saved to that path.
@@ -29,19 +43,14 @@ def run_scan_phase(active_plugins: dict[str, ScannerPlugin],
 
     if json_output:
         result = run_scan(active_plugins, system, show_all=show_all, jobs=jobs)
-
-        ignored_data = load_ignored()
-        ignored_count = 0
-        if ignored_data:
-            for pr in result.plugin_results.values():
-                pr.items = [it for it in pr.items if it.id not in ignored_data]
-                before = len(pr.candidates)
-                pr.candidates = [c for c in pr.candidates if c.item.id not in ignored_data]
-                ignored_count += before - len(pr.candidates)
-
+        filter_result = apply_ignore_filter(result)
         if cache_path:
-            _save_cache(result, cache_path)
-        return result, ignored_count, {}
+            save_scan_cache(filter_result.scan_result, cache_path)
+        return ScanPhaseResult(
+            scan_result=filter_result.scan_result,
+            ignored_count=filter_result.ignored_count,
+            scan_elapsed={},
+        )
 
     # --- Rich progress bar ---
     plugin_tasks: dict[str, int] = {}
@@ -93,26 +102,16 @@ def run_scan_phase(active_plugins: dict[str, ScannerPlugin],
                           jobs=jobs, on_plugin_progress=_on_progress,
                           on_plugin_done=_on_plugin_done)
 
-        ignored_data = load_ignored()
-        ignored_count = 0
-        if ignored_data:
-            for pr in result.plugin_results.values():
-                pr.items = [it for it in pr.items if it.id not in ignored_data]
-                before = len(pr.candidates)
-                pr.candidates = [c for c in pr.candidates if c.item.id not in ignored_data]
-                ignored_count += before - len(pr.candidates)
+        filter_result = apply_ignore_filter(result)
 
     if cache_path:
-        _save_cache(result, cache_path)
+        save_scan_cache(filter_result.scan_result, cache_path)
 
-    return result, ignored_count, scan_elapsed
+    return ScanPhaseResult(
+        scan_result=filter_result.scan_result,
+        ignored_count=filter_result.ignored_count,
+        scan_elapsed=scan_elapsed,
+    )
 
 
-def _save_cache(result, path) -> None:
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = path.with_suffix(".tmp")
-        tmp_path.write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
-        tmp_path.replace(path)
-    except OSError as exc:
-        logger.warning("failed to save scan cache: %s", exc)
+_save_cache = save_scan_cache

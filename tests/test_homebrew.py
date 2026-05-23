@@ -53,7 +53,7 @@ def test_homebrew_formula_candidate(monkeypatch) -> None:
         raise AssertionError(command)
 
     monkeypatch.setattr("frais.plugins.homebrew.shutil.which", fake_which)
-    monkeypatch.setattr("frais.plugins._utils.subprocess.run", fake_run)
+    monkeypatch.setattr("frais.plugins.subprocess_json.subprocess.run", fake_run)
 
     result = HomebrewPlugin().scan(detect_system())
 

@@ -11,14 +11,14 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, MofNCompleteColumn, TimeElapsedColumn
 from rich.rule import Rule
 
-from ..cli import _ADVICE_CACHE
+from ..paths import ADVICE_CACHE
 from ..store.config_store import require_config
-from ..store.ignore_store import load_ignored
 from ..llm import get_client
 from ..models import SourceKind, ScanResult
+from ..store.scan_cache import save_scan_cache
 from . import _split_plugins
 from ._output import exit_with_error, print_json_success
-from ._scan_core import _save_cache, run_scan_phase
+from ._scan_core import run_scan_phase
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -166,10 +166,13 @@ def advise(
             )
             console.print()
 
-        result, ignored_count, scan_elapsed = run_scan_phase(
+        phase_result = run_scan_phase(
             active_plugins, system, show_all=show_all, jobs=jobs,
             json_output=json_output,
         )
+        result = phase_result.scan_result
+        ignored_count = phase_result.ignored_count
+        scan_elapsed = phase_result.scan_elapsed
 
         max_scan_time = max(scan_elapsed.values()) if scan_elapsed else 0.0
 
@@ -208,7 +211,7 @@ def advise(
                 total_time = max_scan_time + summarize_elapsed
                 console.print(f"  [dim]Total: {total_time:.1f}s[/dim]")
 
-        _save_cache(result, _ADVICE_CACHE)
+        save_scan_cache(result, ADVICE_CACHE)
 
         if json_output:
             print_json_success(**result.to_dict())
@@ -217,5 +220,4 @@ def advise(
 
     finally:
         signal.signal(signal.SIGINT, orig_handler)
-
 

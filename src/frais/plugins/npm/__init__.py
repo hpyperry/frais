@@ -5,7 +5,7 @@ import shutil
 from typing import Any, Callable
 
 from ...models import DependencyImpact, PluginScanResult, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
-from .._utils import run_json
+from ..subprocess_json import run_json
 from ..base import ScannerPlugin
 
 logger = logging.getLogger(__name__)

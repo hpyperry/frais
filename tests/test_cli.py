@@ -86,11 +86,11 @@ def _manual_candidate_dict(path: str | None = None) -> dict:
 
 def test_update_auto_runs_command(monkeypatch, tmp_path: Path) -> None:
     cache = _write_cache(tmp_path, [_brew_candidate_dict()])
-    monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
+    monkeypatch.setattr("frais.commands.update.ADVICE_CACHE", cache)
 
     ran = []
-    monkeypatch.setattr("frais.cli.subprocess.run", lambda cmd, **kw: ran.append(cmd))
-    monkeypatch.setattr("frais.cli.typer.confirm", lambda *a, **kw: True)
+    monkeypatch.setattr("frais.plugins.base.subprocess.run", lambda cmd, **kw: ran.append(cmd))
+    monkeypatch.setattr("frais.commands.update.typer.confirm", lambda *a, **kw: True)
 
     update(only=None)
 
@@ -100,11 +100,11 @@ def test_update_auto_runs_command(monkeypatch, tmp_path: Path) -> None:
 
 def test_update_auto_skipped_on_no(monkeypatch, tmp_path: Path) -> None:
     cache = _write_cache(tmp_path, [_brew_candidate_dict()])
-    monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
+    monkeypatch.setattr("frais.commands.update.ADVICE_CACHE", cache)
 
     ran = []
-    monkeypatch.setattr("frais.cli.subprocess.run", lambda cmd, **kw: ran.append(cmd))
-    monkeypatch.setattr("frais.cli.typer.confirm", lambda *a, **kw: False)
+    monkeypatch.setattr("frais.plugins.base.subprocess.run", lambda cmd, **kw: ran.append(cmd))
+    monkeypatch.setattr("frais.commands.update.typer.confirm", lambda *a, **kw: False)
 
     update(only=None)
     assert ran == []
@@ -113,11 +113,12 @@ def test_update_auto_skipped_on_no(monkeypatch, tmp_path: Path) -> None:
 def test_update_manual_opens_app_on_confirm(monkeypatch, tmp_path: Path) -> None:
     app_path = "/Applications/Example.app"
     cache = _write_cache(tmp_path, [_manual_candidate_dict(path=app_path)])
-    monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
+    monkeypatch.setattr("frais.commands.update.ADVICE_CACHE", cache)
 
     ran = []
-    monkeypatch.setattr("frais.cli.subprocess.run", lambda cmd, **kw: ran.append(cmd))
-    monkeypatch.setattr("frais.cli.typer.confirm", lambda *a, **kw: True)
+    monkeypatch.setattr("frais.plugins.applications.subprocess.run", lambda cmd, **kw: ran.append(cmd))
+    monkeypatch.setattr("frais.commands.update.typer.confirm", lambda *a, **kw: True)
+    monkeypatch.setattr("frais.plugins.applications.typer.confirm", lambda *a, **kw: True)
 
     update(only=None)
 
@@ -127,10 +128,10 @@ def test_update_manual_opens_app_on_confirm(monkeypatch, tmp_path: Path) -> None
 
 def test_update_manual_skipped_on_no_confirm(monkeypatch, tmp_path: Path) -> None:
     cache = _write_cache(tmp_path, [_manual_candidate_dict(path="/Applications/Example.app")])
-    monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
+    monkeypatch.setattr("frais.commands.update.ADVICE_CACHE", cache)
 
     confirm_calls = []
-    monkeypatch.setattr("frais.cli.typer.confirm", lambda *a, **kw: confirm_calls.append(a[0]) or False)
+    monkeypatch.setattr("frais.commands.update.typer.confirm", lambda *a, **kw: confirm_calls.append(a[0]) or False)
 
     update(only=None)
     assert len(confirm_calls) == 1
@@ -138,11 +139,11 @@ def test_update_manual_skipped_on_no_confirm(monkeypatch, tmp_path: Path) -> Non
 
 def test_update_filter_by_id(monkeypatch, tmp_path: Path) -> None:
     cache = _write_cache(tmp_path, [_brew_candidate_dict(), _manual_candidate_dict()])
-    monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
+    monkeypatch.setattr("frais.commands.update.ADVICE_CACHE", cache)
 
     ran = []
-    monkeypatch.setattr("frais.cli.subprocess.run", lambda cmd, **kw: ran.append(cmd))
-    monkeypatch.setattr("frais.cli.typer.confirm", lambda *a, **kw: True)
+    monkeypatch.setattr("frais.plugins.base.subprocess.run", lambda cmd, **kw: ran.append(cmd))
+    monkeypatch.setattr("frais.commands.update.typer.confirm", lambda *a, **kw: True)
 
     update(only="node")
 
@@ -152,7 +153,7 @@ def test_update_filter_by_id(monkeypatch, tmp_path: Path) -> None:
 
 def test_update_no_cache_exits(monkeypatch, tmp_path: Path) -> None:
     cache = tmp_path / "nonexistent.json"
-    monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
+    monkeypatch.setattr("frais.commands.update.ADVICE_CACHE", cache)
 
     with pytest.raises(typer.Exit):
         update(only=None)
@@ -466,7 +467,7 @@ def test_doctor_json_output(monkeypatch, capsys) -> None:
         "applications": _fake_plugin("applications", True, available=True),
         "homebrew": _fake_plugin("homebrew", False, available=False),
     })
-    monkeypatch.setattr("frais.cli.load_config", lambda: None)
+    monkeypatch.setattr("frais.commands.doctor.load_config", lambda: None)
 
     doctor(json_output=True)
     captured = capsys.readouterr()
@@ -495,7 +496,7 @@ def test_doctor_json_output_with_llm(monkeypatch, capsys) -> None:
         "model": "deepseek-v4-flash",
         "api_key": "sk-12345678abcd",
     })()
-    monkeypatch.setattr("frais.cli.load_config", lambda: fake_config)
+    monkeypatch.setattr("frais.commands.doctor.load_config", lambda: fake_config)
 
     doctor(json_output=True)
     captured = capsys.readouterr()
@@ -677,7 +678,7 @@ def test_summarize_json_no_cache(monkeypatch, capsys, tmp_path: Path) -> None:
     from frais.commands.summarize import summarize
 
     cache = tmp_path / "nonexistent.json"
-    monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
+    monkeypatch.setattr("frais.commands.summarize.ADVICE_CACHE", cache)
     # Restore after test
     try:
         with pytest.raises(typer.Exit) as exc_info:
@@ -688,7 +689,7 @@ def test_summarize_json_no_cache(monkeypatch, capsys, tmp_path: Path) -> None:
         assert data["ok"] is False
         assert "No scan cache" in data["error"]
     finally:
-        monkeypatch.setattr("frais.cli._ADVICE_CACHE", _ADVICE_CACHE)
+        monkeypatch.setattr("frais.commands.summarize.ADVICE_CACHE", _ADVICE_CACHE)
 
 
 def test_summarize_json_candidate_not_found(monkeypatch, capsys, tmp_path: Path) -> None:
@@ -697,7 +698,7 @@ def test_summarize_json_candidate_not_found(monkeypatch, capsys, tmp_path: Path)
 
     cache = tmp_path / "cache.json"
     cache.write_text(json.dumps({"plugin_results": {"applications": {"candidates": []}}}))
-    monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
+    monkeypatch.setattr("frais.commands.summarize.ADVICE_CACHE", cache)
     try:
         with pytest.raises(typer.Exit) as exc_info:
             summarize("missing-id", json_output=True)
@@ -707,7 +708,7 @@ def test_summarize_json_candidate_not_found(monkeypatch, capsys, tmp_path: Path)
         assert data["ok"] is False
         assert "No candidate found" in data["error"]
     finally:
-        monkeypatch.setattr("frais.cli._ADVICE_CACHE", _ADVICE_CACHE)
+        monkeypatch.setattr("frais.commands.summarize.ADVICE_CACHE", _ADVICE_CACHE)
 
 
 def test_scan_json_bad_plugins(monkeypatch, capsys) -> None:

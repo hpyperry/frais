@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## 首要开发规范
 
@@ -20,13 +20,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 When the user signals a new implementation task (e.g. "新任务", "给你一个任务", "帮我实现", "加个功能"), follow these steps in order. For simple questions, bug reports, or quick checks, skip the workflow and respond directly.
 
 1. **Enter plan mode** — do not write code before planning is approved.
-2. **Research** — read CLAUDE.md and README.md, analyze recent git log for context.
+2. **Research** — read AGENTS.md and README.md, analyze recent git log for context.
 3. **Impact analysis** — evaluate the task's impact on the full codebase.
 4. **Write plan** — list detailed changes, files to touch, and implementation approach.
 5. **Test coverage** — review existing tests and add new ones to cover all changed paths.
 6. **Build binary** — run `uv run --extra build python scripts/build_binary.py` and verify with the built artifact.
-7. **Update docs** — update CLAUDE.md and README.md to reflect the changes.
-8. **Git commit** — Ask the user whether to commit. If yes, commit with Co-Authored-By using the model that performed the work (e.g. `DeepSeek-V4-Pro`, not a hardcoded Claude model name).
+7. **Update docs** — update AGENTS.md and README.md to reflect the changes.
+8. **Git commit** — Ask the user whether to commit. If yes, commit with Co-Authored-By using the model that performed the work (e.g. `DeepSeek-V4-Pro`, not a hardcoded Codex model name).
 
 ## Project overview
 

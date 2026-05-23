@@ -20,7 +20,7 @@ from frais.plugins.base import ScannerPlugin
 
 def test_doctor_basic(monkeypatch) -> None:
     from frais.cli import doctor
-    monkeypatch.setattr("frais.cli.load_config", lambda: None)
+    monkeypatch.setattr("frais.commands.doctor.load_config", lambda: None)
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {})
     monkeypatch.setattr("frais.system.detect_system",
         lambda: SystemProfile(os_name="macOS", os_version="15.0", arch="arm64",
@@ -30,7 +30,7 @@ def test_doctor_basic(monkeypatch) -> None:
 
 def test_config_show_not_configured(monkeypatch) -> None:
     from frais.cli import config_show
-    monkeypatch.setattr("frais.cli.load_config", lambda: None)
+    monkeypatch.setattr("frais.commands.config.load_config", lambda: None)
     config_show()
 
 
@@ -342,7 +342,7 @@ def test_config_show_configured(monkeypatch) -> None:
     fake_provider = type("P", (), {"id": "test", "name": "Test", "chat_url": "https://test", "models": fake_models})()
     fake_config = ProviderConfig(provider=fake_provider, model="test", api_key="sk-1234",
                                  api_key_source="env")
-    monkeypatch.setattr("frais.cli.load_config", lambda: fake_config)
+    monkeypatch.setattr("frais.commands.config.load_config", lambda: fake_config)
     config_show()
 
 
@@ -598,7 +598,7 @@ def test_summarize_plugin_not_found(monkeypatch, tmp_path: Path) -> None:
             "can_auto_update": False, "command": [], "evidence": [],
         }], "skipped": []}},
     }))
-    monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
+    monkeypatch.setattr("frais.commands.summarize.ADVICE_CACHE", cache)
     with pytest.raises(typer.Exit):
         summarize(item_id="a")
 
@@ -611,7 +611,7 @@ def test_summarize_corrupt_cache(monkeypatch, tmp_path: Path) -> None:
 
     cache = tmp_path / "cache.json"
     cache.write_text("not json")
-    monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
+    monkeypatch.setattr("frais.commands.summarize.ADVICE_CACHE", cache)
     with pytest.raises(typer.Exit):
         summarize(item_id="a")
 
@@ -666,7 +666,7 @@ def test_homebrew_scan_all_runtime_error(monkeypatch) -> None:
 
 
 def test_run_json_non_zero(monkeypatch) -> None:
-    from frais.plugins._utils import run_json
+    from frais.plugins.subprocess_json import run_json
 
     result_mock = type("R", (), {"returncode": 1, "stdout": "bad", "stderr": "error"})()
     monkeypatch.setattr("subprocess.run", lambda cmd, **kw: result_mock)
@@ -734,7 +734,7 @@ def test_digits_only_empty() -> None:
 
 
 def test_web_fetch_github_error(monkeypatch) -> None:
-    from frais.tools import web_fetch
+    from frais.web_tools import web_fetch
     monkeypatch.setattr("httpx.Client.get",
         lambda self, url, **kw: exec('raise RuntimeError("fetch down")'))
     result = web_fetch("https://github.com/test/repo/releases")
@@ -772,7 +772,7 @@ def test_llm_request_error_str() -> None:
 
 
 def test_run_json_empty_stdout(monkeypatch) -> None:
-    from frais.plugins._utils import run_json
+    from frais.plugins.subprocess_json import run_json
 
     result_mock = type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
     monkeypatch.setattr("subprocess.run", lambda cmd, **kw: result_mock)
@@ -784,7 +784,7 @@ def test_run_json_empty_stdout(monkeypatch) -> None:
 
 
 def test_run_json_ok_codes_match(monkeypatch) -> None:
-    from frais.plugins._utils import run_json
+    from frais.plugins.subprocess_json import run_json
 
     result_mock = type("R", (), {"returncode": 1, "stdout": '{"key":"val"}', "stderr": ""})()
     monkeypatch.setattr("subprocess.run", lambda cmd, **kw: result_mock)
@@ -793,7 +793,7 @@ def test_run_json_ok_codes_match(monkeypatch) -> None:
 
 
 def test_run_json_ok_codes_no_match(monkeypatch) -> None:
-    from frais.plugins._utils import run_json
+    from frais.plugins.subprocess_json import run_json
 
     result_mock = type("R", (), {"returncode": 2, "stdout": "bad", "stderr": "err"})()
     monkeypatch.setattr("subprocess.run", lambda cmd, **kw: result_mock)
@@ -865,7 +865,7 @@ def test_npm_scan_all_runtime_error(monkeypatch) -> None:
 
 
 def test_run_json_timeout(monkeypatch) -> None:
-    from frais.plugins._utils import run_json
+    from frais.plugins.subprocess_json import run_json
 
     def fake_run(cmd, **kw):
         raise subprocess.TimeoutExpired(cmd, 30)

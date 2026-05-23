@@ -8,8 +8,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
-from ..cli import _ADVICE_CACHE
-from ..store.ignore_store import load_ignored
+from ..paths import ADVICE_CACHE
 from . import _split_plugins
 from ._output import exit_with_error, print_json_success
 from ._scan_core import run_scan_phase
@@ -82,16 +81,19 @@ def scan(
 
     orig_handler = signal.signal(signal.SIGINT, _on_interrupt)
     try:
-        result, ignored_count, scan_elapsed = run_scan_phase(
+        phase_result = run_scan_phase(
             active, system, show_all=show_all,
-            json_output=json_output, cache_path=_ADVICE_CACHE,
+            json_output=json_output, cache_path=ADVICE_CACHE,
         )
     finally:
         signal.signal(signal.SIGINT, orig_handler)
 
+    result = phase_result.scan_result
     if json_output:
         print_json_success(**result.to_dict())
     else:
+        ignored_count = phase_result.ignored_count
+        scan_elapsed = phase_result.scan_elapsed
         max_scan_time = max(scan_elapsed.values()) if scan_elapsed else 0.0
         console.print(f"  [dim]Total: {max_scan_time:.1f}s[/dim]")
         _print_advise_result(result, ignored_count, show_all=show_all)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from abc import ABC, abstractmethod
 from typing import Callable
 
@@ -40,7 +41,6 @@ class ScannerPlugin(ABC):
     def update(self, candidate: UpdateCandidate) -> bool:
         """Execute the update for *candidate*. Default: subprocess.run(candidate.command)."""
         if candidate.can_auto_update and candidate.command:
-            import subprocess
             subprocess.run(candidate.command, check=False)
             return True
         return False

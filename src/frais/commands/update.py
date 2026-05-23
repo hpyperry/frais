@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.padding import Padding
 
 from ..models import SourceKind, UpdateCandidate
+from ..paths import ADVICE_CACHE
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -35,14 +36,12 @@ def update(
       frais update
       frais update npm
     """
-    from ..cli import _ADVICE_CACHE
-
-    if not _ADVICE_CACHE.exists():
+    if not ADVICE_CACHE.exists():
         console.print("No advice cache found. Run [bold]frais advise[/bold] first.")
         raise typer.Exit(1)
 
     try:
-        data = json.loads(_ADVICE_CACHE.read_text())
+        data = json.loads(ADVICE_CACHE.read_text())
     except (json.JSONDecodeError, OSError) as exc:
         console.print(f"Failed to read advice cache: {exc}")
         raise typer.Exit(1)

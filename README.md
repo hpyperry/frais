@@ -35,10 +35,10 @@ User     ──▶ frais advise                   (scan + summarize + Rich UI)
               frais plugins enable/disable   (plugin management)
 
 Internal:
-  CLI  ──▶ coordinator.py  ──▶ plugins/
-           select_plugins        applications/  (discover → LLM research)
-           run_scan              homebrew/      (brew outdated)
-           run_summaries         npm/           (npm outdated)
+  cli.py assembles Typer commands
+  commands/ ──▶ coordinator.py ──▶ plugins/
+  store/ handles config, plugin state, ignore list, and scan cache
+  web_tools.py handles search/fetch for application research
 ```
 
 **Scan layer** — each plugin discovers installed software via its own `scan()` / `scan_all()` methods. Homebrew and NPM plugins can directly identify outdated packages from their package managers.

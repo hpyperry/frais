@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from frais.tools import _extract_text, _format_github_api, _github_url_to_api, web_fetch, web_fetch_batch, web_search
+from frais.web_tools import _extract_text, _format_github_api, _github_url_to_api, web_fetch, web_fetch_batch, web_search
 
 
 # --- web_search ---
@@ -19,7 +19,7 @@ class _FakeDDGS:
 
 def test_web_search_returns_formatted_results(monkeypatch) -> None:
     fake = _FakeDDGS([{"title": "T", "href": "https://x.com", "body": "snippet"}])
-    monkeypatch.setattr("frais.tools.DDGS", lambda: fake)
+    monkeypatch.setattr("frais.web_tools.DDGS", lambda: fake)
     result = web_search("test query")
     assert result == [{"title": "T", "url": "https://x.com", "snippet": "snippet"}]
 
@@ -27,7 +27,7 @@ def test_web_search_returns_formatted_results(monkeypatch) -> None:
 def test_web_search_returns_empty_on_failure(monkeypatch) -> None:
     def raise_error():
         raise RuntimeError("search down")
-    monkeypatch.setattr("frais.tools.DDGS", raise_error)
+    monkeypatch.setattr("frais.web_tools.DDGS", raise_error)
     result = web_search("test query")
     assert result == []
 
@@ -70,7 +70,7 @@ def test_web_fetch_returns_error_message_on_failure(monkeypatch) -> None:
 
 
 def test_web_fetch_batch_aggregates_results(monkeypatch) -> None:
-    monkeypatch.setattr("frais.tools.web_fetch", lambda url: f"content of {url}")
+    monkeypatch.setattr("frais.web_tools.web_fetch", lambda url: f"content of {url}")
     result = web_fetch_batch(["https://a.com", "https://b.com"])
     assert result == {"https://a.com": "content of https://a.com", "https://b.com": "content of https://b.com"}
 

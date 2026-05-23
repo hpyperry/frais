@@ -29,7 +29,7 @@ def test_npm_outdated_candidate(monkeypatch) -> None:
         )
 
     monkeypatch.setattr("frais.plugins.npm.shutil.which", fake_which)
-    monkeypatch.setattr("frais.plugins._utils.subprocess.run", fake_run)
+    monkeypatch.setattr("frais.plugins.subprocess_json.subprocess.run", fake_run)
 
     result = NpmPlugin().scan(detect_system())
 
@@ -53,7 +53,7 @@ def test_npm_no_outdated(monkeypatch) -> None:
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr("frais.plugins.npm.shutil.which", fake_which)
-    monkeypatch.setattr("frais.plugins._utils.subprocess.run", fake_run)
+    monkeypatch.setattr("frais.plugins.subprocess_json.subprocess.run", fake_run)
 
     result = NpmPlugin().scan(detect_system())
 
@@ -99,7 +99,7 @@ def test_npm_multiple_packages(monkeypatch) -> None:
         )
 
     monkeypatch.setattr("frais.plugins.npm.shutil.which", fake_which)
-    monkeypatch.setattr("frais.plugins._utils.subprocess.run", fake_run)
+    monkeypatch.setattr("frais.plugins.subprocess_json.subprocess.run", fake_run)
 
     result = NpmPlugin().scan(detect_system())
 

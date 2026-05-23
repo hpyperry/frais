@@ -12,14 +12,12 @@ logger = logging.getLogger(__name__)
 
 _SEARCH_MAX_RESULTS = 5
 _FETCH_MAX_CHARS = 5000
-
 _GITHUB_REPO_RE = re.compile(r"github\.com/([^/]+/[^/]+?)(?:\.git)?(?:/|$)")
 
 _fetch_client: httpx.Client | None = None
 
 
 def _get_fetch_client() -> httpx.Client:
-    """Return a shared httpx.Client for web_fetch with connection pooling."""
     global _fetch_client
     if _fetch_client is None:
         _fetch_client = httpx.Client(
@@ -31,15 +29,15 @@ def _get_fetch_client() -> httpx.Client:
 
 
 def web_search(query: str) -> list[dict[str, str]]:
-    """Search the web and return a list of {title, url, snippet}."""
+    """Search the web and return a list of title/url/snippet mappings."""
     logger.info("web_search query=%s", query)
     try:
         results = []
-        for r in DDGS().text(query, max_results=_SEARCH_MAX_RESULTS):
+        for result in DDGS().text(query, max_results=_SEARCH_MAX_RESULTS):
             results.append({
-                "title": r.get("title", ""),
-                "url": r.get("href", ""),
-                "snippet": r.get("body", ""),
+                "title": result.get("title", ""),
+                "url": result.get("href", ""),
+                "snippet": result.get("body", ""),
             })
         logger.info("web_search found %d results", len(results))
         return results
@@ -51,29 +49,27 @@ def web_search(query: str) -> list[dict[str, str]]:
 def web_fetch(url: str) -> str:
     """Fetch a URL and return extracted text content."""
     logger.info("web_fetch url=%s", url)
-    github_api = _github_url_to_api(url)
-    if github_api:
-        url = github_api
+    resolved_url = _github_url_to_api(url) or url
     try:
-        headers = {}
-        if "api.github.com" in url:
+        headers: dict[str, str] = {}
+        if "api.github.com" in resolved_url:
             headers["Accept"] = "application/vnd.github+json"
-        response = _get_fetch_client().get(url, headers=headers or None)
+        response = _get_fetch_client().get(resolved_url, headers=headers or None)
         response.raise_for_status()
-        if "api.github.com" in url:
-            return _format_github_api(response.json(), url)
+        if "api.github.com" in resolved_url:
+            return _format_github_api(response.json(), resolved_url)
         text = _extract_text(response.text)
         if len(text) > _FETCH_MAX_CHARS:
             text = text[:_FETCH_MAX_CHARS] + "\n...<truncated>"
-        logger.info("web_fetch got %d chars from %s", len(text), url)
+        logger.info("web_fetch got %d chars from %s", len(text), resolved_url)
         return text
     except Exception as exc:
-        logger.warning("web_fetch failed for %s: %s", url, exc)
+        logger.warning("web_fetch failed for %s: %s", resolved_url, exc)
         return f"Failed to fetch: {exc}"
 
 
 def web_fetch_batch(urls: list[str]) -> dict[str, str]:
-    """Fetch multiple URLs in parallel and return {url: content}."""
+    """Fetch multiple URLs in parallel and return a URL-to-content map."""
     results: dict[str, str] = {}
     with ThreadPoolExecutor(max_workers=min(len(urls), 5)) as pool:
         futures = {pool.submit(web_fetch, url): url for url in urls}
@@ -108,7 +104,6 @@ def _format_github_api(data: Any, url: str) -> str:
         published = data.get("published_at", "")
         return f"Tag: {tag}\nPublished: {published}\nRelease Notes:\n{body}"
     return str(data)[:_FETCH_MAX_CHARS]
-
 
 
 def _extract_text(html: str) -> str:
