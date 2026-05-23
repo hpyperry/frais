@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 import signal
@@ -12,6 +11,7 @@ from rich.console import Console
 from ..cli import _ADVICE_CACHE
 from ..ignore import load_ignored
 from . import _split_plugins
+from ._output import exit_with_error, print_json_success
 from ._scan_core import run_scan_phase
 from .advise import _print_advise_result
 
@@ -57,10 +57,10 @@ def scan(
     active = _coord_select(explicit=_explicit)
     if _explicit:
         unknown = set(_explicit) - set(active)
-        if unknown:
-            console.print(f"[yellow]Unavailable plugins: {', '.join(sorted(unknown))}[/yellow]")
         if not active:
-            raise typer.Exit(1)
+            exit_with_error(f"No available plugins matched: {', '.join(sorted(unknown))}", json_output)
+        if unknown and not json_output:
+            console.print(f"[yellow]Unavailable plugins: {', '.join(sorted(unknown))}[/yellow]")
 
     if not json_output:
         console.print()
@@ -83,7 +83,7 @@ def scan(
         signal.signal(signal.SIGINT, orig_handler)
 
     if json_output:
-        console.print_json(json.dumps(result.to_dict(), ensure_ascii=False))
+        print_json_success(**result.to_dict())
     else:
         max_scan_time = max(scan_elapsed.values()) if scan_elapsed else 0.0
         console.print(f"  [dim]Total: {max_scan_time:.1f}s[/dim]")

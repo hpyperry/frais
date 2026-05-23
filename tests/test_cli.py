@@ -449,3 +449,296 @@ class _fake_plugin:
 
     def is_available(self) -> bool:
         return self._available
+
+
+# --- JSON output tests ---
+
+
+def test_doctor_json_output(monkeypatch, capsys) -> None:
+    from frais.cli import doctor
+    from frais.models import SystemProfile
+
+    monkeypatch.setattr("frais.system.detect_system", lambda: SystemProfile(
+        os_name="macOS", os_version="26.5", arch="arm64",
+        applications_paths=["/Applications", "/Users/test/Applications"],
+    ))
+    monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {
+        "applications": _fake_plugin("applications", True, available=True),
+        "homebrew": _fake_plugin("homebrew", False, available=False),
+    })
+    monkeypatch.setattr("frais.cli.load_config", lambda: None)
+
+    doctor(json_output=True)
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["ok"] is True
+    assert data["system"]["os_name"] == "macOS"
+    assert data["system"]["os_version"] == "26.5"
+    assert data["plugins"]["applications"]["available"] == "yes"
+    assert data["plugins"]["homebrew"]["available"] == "no"
+    assert data["llm"] is None
+
+
+def test_doctor_json_output_with_llm(monkeypatch, capsys) -> None:
+    from frais.cli import doctor
+    from frais.models import SystemProfile
+
+    monkeypatch.setattr("frais.system.detect_system", lambda: SystemProfile(
+        os_name="macOS", os_version="15.0", arch="arm64",
+        applications_paths=["/Applications"],
+    ))
+    monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {})
+    fake_provider = type("P", (), {"name": "DeepSeek", "id": "deepseek"})()
+    fake_config = type("C", (), {
+        "is_ready": True,
+        "provider": fake_provider,
+        "model": "deepseek-v4-flash",
+        "api_key": "sk-12345678abcd",
+    })()
+    monkeypatch.setattr("frais.cli.load_config", lambda: fake_config)
+
+    doctor(json_output=True)
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["llm"]["configured"] is True
+    assert data["llm"]["provider"] == "DeepSeek"
+    assert data["llm"]["model"] == "deepseek-v4-flash"
+    assert "abcd" in data["llm"]["key_suffix"]
+
+
+def test_plugins_list_json_output(monkeypatch, capsys) -> None:
+    from frais.cli import plugins_list
+
+    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.plugins.config.load_plugins_config", lambda: {"homebrew": False})
+    monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {
+        "applications": _fake_plugin("applications", True),
+        "homebrew": _fake_plugin("homebrew", True),
+        "npm": _fake_plugin("npm", True, available=False),
+    })
+
+    plugins_list(json_output=True)
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["ok"] is True
+    names = [p["name"] for p in data["plugins"]]
+    assert "applications" in names
+    assert "homebrew" in names
+    homebrew = next(p for p in data["plugins"] if p["name"] == "homebrew")
+    assert homebrew["effective"] == "disabled"
+
+
+def test_ignore_list_json_output(monkeypatch, capsys) -> None:
+    from frais.cli import ignore_list
+
+    monkeypatch.setattr("frais.ignore.init_ignored", lambda: None)
+    monkeypatch.setattr("frais.cli.load_ignored", lambda: {"com.app1", "com.app2"})
+
+    ignore_list(json_output=True)
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["ok"] is True
+    assert sorted(data["ignored"]) == ["com.app1", "com.app2"]
+    assert data["count"] == 2
+
+
+def test_ignore_list_json_empty(monkeypatch, capsys) -> None:
+    from frais.cli import ignore_list
+
+    monkeypatch.setattr("frais.ignore.init_ignored", lambda: None)
+    monkeypatch.setattr("frais.cli.load_ignored", lambda: set())
+
+    ignore_list(json_output=True)
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["ok"] is True
+    assert data["ignored"] == []
+    assert data["count"] == 0
+
+
+def test_ignore_add_json_new(monkeypatch, capsys) -> None:
+    from frais.cli import ignore_add
+
+    monkeypatch.setattr("frais.ignore.init_ignored", lambda: None)
+    monkeypatch.setattr("frais.cli.add_ignored", lambda app_id: True)
+
+    ignore_add("com.newapp", json_output=True)
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["ok"] is True
+    assert data["app_id"] == "com.newapp"
+    assert data["action"] == "added"
+
+
+def test_ignore_add_json_already_exists(monkeypatch, capsys) -> None:
+    from frais.cli import ignore_add
+
+    monkeypatch.setattr("frais.ignore.init_ignored", lambda: None)
+    monkeypatch.setattr("frais.cli.add_ignored", lambda app_id: False)
+
+    ignore_add("com.existing", json_output=True)
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["ok"] is True
+    assert data["app_id"] == "com.existing"
+    assert data["action"] == "already_ignored"
+
+
+def test_ignore_remove_json_removes(monkeypatch, capsys) -> None:
+    from frais.cli import ignore_remove
+
+    monkeypatch.setattr("frais.ignore.init_ignored", lambda: None)
+    monkeypatch.setattr("frais.cli.remove_ignored", lambda app_id: True)
+
+    ignore_remove("com.remove_me", json_output=True)
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["ok"] is True
+    assert data["app_id"] == "com.remove_me"
+    assert data["action"] == "removed"
+
+
+def test_ignore_remove_json_not_in_list(monkeypatch, capsys) -> None:
+    from frais.cli import ignore_remove
+
+    monkeypatch.setattr("frais.ignore.init_ignored", lambda: None)
+    monkeypatch.setattr("frais.cli.remove_ignored", lambda app_id: False)
+
+    ignore_remove("com.not_there", json_output=True)
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["ok"] is True
+    assert data["app_id"] == "com.not_there"
+    assert data["action"] == "not_in_list"
+
+
+def test_plugins_enable_json(monkeypatch, capsys) -> None:
+    from frais.cli import plugins_enable
+
+    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.plugins.config.save_plugin_state", lambda name, enabled: None)
+    monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {"homebrew": _fake_plugin("homebrew", True)})
+
+    plugins_enable("homebrew", json_output=True)
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["ok"] is True
+    assert data["plugin"] == "homebrew"
+    assert data["action"] == "enabled"
+
+
+def test_plugins_enable_json_unknown(monkeypatch, capsys) -> None:
+    from frais.cli import plugins_enable
+
+    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {})
+
+    with pytest.raises(typer.Exit) as exc_info:
+        plugins_enable("nonexistent", json_output=True)
+    assert exc_info.value.exit_code == 1
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["ok"] is False
+    assert "Unknown plugin" in data["error"]
+
+
+def test_plugins_disable_json(monkeypatch, capsys) -> None:
+    from frais.cli import plugins_disable
+
+    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.plugins.config.save_plugin_state", lambda name, enabled: None)
+    monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {"homebrew": _fake_plugin("homebrew", True)})
+
+    plugins_disable("homebrew", json_output=True)
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["ok"] is True
+    assert data["plugin"] == "homebrew"
+    assert data["action"] == "disabled"
+
+
+def test_plugins_disable_json_unknown(monkeypatch, capsys) -> None:
+    from frais.cli import plugins_disable
+
+    monkeypatch.setattr("frais.plugins.config.init_plugins_config", lambda: None)
+    monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {})
+
+    with pytest.raises(typer.Exit) as exc_info:
+        plugins_disable("nonexistent", json_output=True)
+    assert exc_info.value.exit_code == 1
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["ok"] is False
+    assert "Unknown plugin" in data["error"]
+
+
+def test_summarize_json_no_cache(monkeypatch, capsys, tmp_path: Path) -> None:
+    from frais.cli import _ADVICE_CACHE
+    from frais.commands.summarize import summarize
+
+    cache = tmp_path / "nonexistent.json"
+    monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
+    # Restore after test
+    try:
+        with pytest.raises(typer.Exit) as exc_info:
+            summarize("some-id", json_output=True)
+        assert exc_info.value.exit_code == 1
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["ok"] is False
+        assert "No scan cache" in data["error"]
+    finally:
+        monkeypatch.setattr("frais.cli._ADVICE_CACHE", _ADVICE_CACHE)
+
+
+def test_summarize_json_candidate_not_found(monkeypatch, capsys, tmp_path: Path) -> None:
+    from frais.cli import _ADVICE_CACHE
+    from frais.commands.summarize import summarize
+
+    cache = tmp_path / "cache.json"
+    cache.write_text(json.dumps({"plugin_results": {"applications": {"candidates": []}}}))
+    monkeypatch.setattr("frais.cli._ADVICE_CACHE", cache)
+    try:
+        with pytest.raises(typer.Exit) as exc_info:
+            summarize("missing-id", json_output=True)
+        assert exc_info.value.exit_code == 1
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["ok"] is False
+        assert "No candidate found" in data["error"]
+    finally:
+        monkeypatch.setattr("frais.cli._ADVICE_CACHE", _ADVICE_CACHE)
+
+
+def test_scan_json_bad_plugins(monkeypatch, capsys) -> None:
+    from frais.commands.scan import scan
+
+    from frais.models import SystemProfile
+    monkeypatch.setattr("frais.system.detect_system", lambda: SystemProfile(
+        os_name="macOS", os_version="15.0", arch="arm64", applications_paths=["/Applications"],
+    ))
+    monkeypatch.setattr("frais.coordinator.select_plugins", lambda explicit=None: {})
+    monkeypatch.setattr("frais.commands.scan._split_plugins", lambda x: ["badone"])
+
+    with pytest.raises(typer.Exit) as exc_info:
+        scan(plugins="badone", json_output=True)
+    assert exc_info.value.exit_code == 1
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["ok"] is False
+    assert "badone" in data["error"]
+
+
+def test_config_test_json_no_config(monkeypatch, capsys) -> None:
+    from frais.commands.config import config_test
+
+    monkeypatch.setattr("frais.commands.config.require_config",
+                        lambda: (_ for _ in ()).throw(ValueError("No LLM provider configured")))
+
+    with pytest.raises(typer.Exit) as exc_info:
+        config_test(json_output=True)
+    assert exc_info.value.exit_code == 1
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["ok"] is False
+    assert "No LLM provider" in data["error"]

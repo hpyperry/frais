@@ -9,6 +9,7 @@ from rich.console import Console
 
 from ..config import require_config
 from ..models import UpdateCandidate
+from ._output import exit_with_error, print_json_success
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -36,14 +37,12 @@ def summarize(
     from ..cli import _ADVICE_CACHE
 
     if not _ADVICE_CACHE.exists():
-        console.print("No scan cache found. Run [bold]frais advise[/bold] or [bold]frais scan[/bold] first.")
-        raise typer.Exit(1)
+        exit_with_error("No scan cache found. Run `frais advise` or `frais scan` first.", json_output)
 
     try:
         data = json.loads(_ADVICE_CACHE.read_text())
     except (json.JSONDecodeError, OSError) as exc:
-        console.print(f"Failed to read scan cache: {exc}")
-        raise typer.Exit(1)
+        exit_with_error(f"Failed to read scan cache: {exc}", json_output)
 
     from ..llm import LLMClient
     from ..plugins.registry import all_plugins
@@ -64,19 +63,17 @@ def summarize(
                 break
 
     if candidate is None:
-        console.print(f"[red]No candidate found for: {item_id}[/red]")
-        raise typer.Exit(1)
+        exit_with_error(f"No candidate found for: {item_id}", json_output)
 
     try:
         config = require_config()
         llm = LLMClient(config)
     except ValueError as exc:
-        raise typer.BadParameter(str(exc)) from exc
+        exit_with_error(str(exc), json_output, exit_code=2)
 
     plugin = all_plugins().get(plugin_name or "")
     if plugin is None:
-        console.print(f"[red]Plugin not found: {plugin_name}[/red]")
-        raise typer.Exit(1)
+        exit_with_error(f"Plugin not found: {plugin_name}", json_output)
 
     summary = plugin.summarize(llm, candidate)
 
@@ -97,6 +94,6 @@ def summarize(
         logger.warning("failed to update scan cache: %s", exc)
 
     if json_output:
-        console.print_json(json.dumps({"item_id": item_id, "ai_summary": summary}, ensure_ascii=False))
+        print_json_success(item_id=item_id, ai_summary=summary)
     else:
         console.print(summary or "(no summary generated)")

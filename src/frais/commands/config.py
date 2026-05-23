@@ -5,12 +5,12 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-import click
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from ..config import CONFIG_PATH, load_config, require_config, save_config
+from ._output import exit_with_error, print_json_success
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -213,7 +213,12 @@ def _test_and_save(provider, model, api_key) -> None:
     console.print(f"[green]Config saved to {CONFIG_PATH}[/green]")
 
 
-def config_show() -> None:
+def config_show(
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output structured JSON (for agent consumption)."),
+    ] = False,
+) -> None:
     """Show current LLM provider config with secrets redacted.
 
     The API key is never printed; only presence and a final 4-character suffix
@@ -224,7 +229,21 @@ def config_show() -> None:
     """
     llm = load_config()
     if not llm:
+        if json_output:
+            print_json_success(configured=False)
+            return
         console.print("[dim]Not configured. Run `frais config manage` to set up.[/dim]")
+        return
+
+    if json_output:
+        key_suffix = "***" + llm.api_key[-4:] if len(llm.api_key) >= 4 else "***"
+        print_json_success(
+            configured=True,
+            provider=llm.provider.name,
+            model=llm.model,
+            key_suffix=key_suffix if llm.api_key else None,
+            key_source=llm.api_key_source,
+        )
         return
 
     table = Table("Key", "Value")
@@ -249,7 +268,12 @@ def config_path() -> None:
     console.print(str(CONFIG_PATH))
 
 
-def config_test() -> None:
+def config_test(
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output structured JSON (for agent consumption)."),
+    ] = False,
+) -> None:
     """Send a minimal LLM request to validate provider settings.
 
     This never prints the API key. It reports the provider, model,
@@ -262,10 +286,20 @@ def config_test() -> None:
 
     try:
         config = require_config()
-        console.print(f"Provider: {config.provider.name}")
-        console.print(f"Model: {config.model}")
-        console.print(f"Chat completions URL: {config.provider.chat_url}")
         text = LLMClient(config).test_connection()
     except (ValueError, LLMRequestError) as exc:
-        raise click.ClickException(str(exc)) from exc
+        exit_with_error(str(exc), json_output)
+
+    if json_output:
+        print_json_success(
+            provider=config.provider.name,
+            model=config.model,
+            url=config.provider.chat_url,
+            response=text.strip(),
+        )
+        return
+
+    console.print(f"Provider: {config.provider.name}")
+    console.print(f"Model: {config.model}")
+    console.print(f"Chat completions URL: {config.provider.chat_url}")
     console.print(f"LLM test response: {text.strip()}")

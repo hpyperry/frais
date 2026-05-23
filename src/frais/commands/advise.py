@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 import signal
@@ -18,6 +17,7 @@ from ..ignore import load_ignored
 from ..llm import LLMClient
 from ..models import SourceKind, ScanResult
 from . import _split_plugins
+from ._output import exit_with_error, print_json_success
 from ._scan_core import _save_cache, run_scan_phase
 
 logger = logging.getLogger(__name__)
@@ -122,7 +122,7 @@ def advise(
     try:
         config = require_config()
     except ValueError as exc:
-        raise typer.BadParameter(str(exc)) from exc
+        exit_with_error(str(exc), json_output, exit_code=2)
     logger.info("advise using provider=%s model=%s jobs=%d", config.provider.name, config.model, jobs)
     llm = LLMClient(config)
 
@@ -140,19 +140,20 @@ def advise(
         active_plugins = _coord_select(_explicit_plugins)
         if _explicit_plugins:
             unknown = set(_explicit_plugins) - set(active_plugins)
-            if unknown:
-                console.print(f"[yellow]Unavailable plugins: {', '.join(sorted(unknown))}[/yellow]")
             if not active_plugins:
-                raise typer.Exit(1)
+                exit_with_error(f"No available plugins matched: {', '.join(sorted(unknown))}", json_output)
+            if unknown and not json_output:
+                console.print(f"[yellow]Unavailable plugins: {', '.join(sorted(unknown))}[/yellow]")
 
-        console.print()
-        plugin_labels = ", ".join(active_plugins)
-        console.print(
-            f"  [bold cyan]OS:[/] {system.os_name} {system.os_version}  "
-            f"[bold cyan]Arch:[/] {system.arch}  "
-            f"[bold cyan]Plugins:[/] {plugin_labels}"
-        )
-        console.print()
+        if not json_output:
+            console.print()
+            plugin_labels = ", ".join(active_plugins)
+            console.print(
+                f"  [bold cyan]OS:[/] {system.os_name} {system.os_version}  "
+                f"[bold cyan]Arch:[/] {system.arch}  "
+                f"[bold cyan]Plugins:[/] {plugin_labels}"
+            )
+            console.print()
 
         result, ignored_count, scan_elapsed = run_scan_phase(
             active_plugins, system, show_all=show_all, jobs=jobs,
@@ -165,15 +166,19 @@ def advise(
         all_candidates = result.all_candidates
         summarize_elapsed = 0.0
         if all_candidates:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                MofNCompleteColumn(),
-                TimeElapsedColumn(),
-                console=console,
-            ) as summary_progress:
-                summarize_task = summary_progress.add_task("Summaries", total=len(all_candidates))
+            if not json_output:
+                summary_progress_ctx = Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    MofNCompleteColumn(),
+                    TimeElapsedColumn(),
+                    console=console,
+                )
+                summary_progress = summary_progress_ctx.__enter__()
+            try:
+                if not json_output:
+                    summarize_task = summary_progress.add_task("Summaries", total=len(all_candidates))
                 candidate_plugin_map: dict[int, str] = {}
                 for pname, pr in result.plugin_results.items():
                     for c in pr.candidates:
@@ -181,16 +186,20 @@ def advise(
                 t0 = time.monotonic()
                 run_summaries(llm, all_candidates, candidate_plugin_map,
                               active_plugins, max_workers=jobs,
-                              on_progress=lambda: summary_progress.advance(summarize_task))
+                              on_progress=lambda: summary_progress.advance(summarize_task) if not json_output else None)
                 summarize_elapsed = time.monotonic() - t0
+            finally:
+                if not json_output:
+                    summary_progress_ctx.__exit__(None, None, None)
 
-            total_time = max_scan_time + summarize_elapsed
-            console.print(f"  [dim]Total: {total_time:.1f}s[/dim]")
+            if not json_output:
+                total_time = max_scan_time + summarize_elapsed
+                console.print(f"  [dim]Total: {total_time:.1f}s[/dim]")
 
         _save_cache(result, _ADVICE_CACHE)
 
         if json_output:
-            console.print_json(json.dumps(result.to_dict(), ensure_ascii=False))
+            print_json_success(**result.to_dict())
         else:
             _print_advise_result(result, ignored_count, show_all=show_all)
 

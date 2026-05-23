@@ -13,6 +13,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from .commands._output import exit_with_error, print_json_success
 from .commands.config import config_manage, config_path, config_show, config_test
 from .config import CONFIG_PATH, load_config
 from .ignore import add_ignored, load_ignored, remove_ignored
@@ -178,7 +179,12 @@ def main(
 
 
 @app.command()
-def doctor() -> None:
+def doctor(
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output structured JSON (for agent consumption)."),
+    ] = False,
+) -> None:
     """Show runtime readiness without changing the system.
 
     Prints detected OS version, CPU architecture, scanned Applications paths,
@@ -192,10 +198,30 @@ def doctor() -> None:
     from .system import detect_system
 
     system = detect_system()
-    llm = load_config()
+    llm_cfg = load_config()
     logger.info("doctor system=%s %s arch=%s", system.os_name, system.os_version, system.arch)
-    if llm:
-        logger.info("doctor llm_ready=%s provider=%s", llm.is_ready, llm.provider.name)
+    if llm_cfg:
+        logger.info("doctor llm_ready=%s provider=%s", llm_cfg.is_ready, llm_cfg.provider.name)
+
+    if json_output:
+        plugins_data: dict[str, dict[str, str]] = {}
+        for name, plugin in all_plugins().items():
+            plugins_data[name] = {
+                "available": "yes" if plugin.is_available() else "no",
+                "default": "enabled" if plugin.enabled_by_default else "disabled",
+            }
+        llm_data: dict[str, str | bool] | None = None
+        if llm_cfg:
+            masked_key = "***" + llm_cfg.api_key[-4:] if len(llm_cfg.api_key) >= 4 else "***"
+            llm_data = {
+                "configured": llm_cfg.is_ready,
+                "provider": llm_cfg.provider.name,
+                "model": llm_cfg.model,
+                "key_suffix": masked_key,
+            }
+        print_json_success(system=system.to_dict(), plugins=plugins_data, llm=llm_data)
+        return
+
     table = Table("Key", "Value")
     table.add_row("OS", f"{system.os_name} {system.os_version}")
     table.add_row("Arch", system.arch)
@@ -204,10 +230,10 @@ def doctor() -> None:
         status = "available" if plugin.is_available() else "missing"
         default = "enabled" if plugin.enabled_by_default else "disabled"
         table.add_row(f"Plugin {name}", f"{status}, {default} by default")
-    if llm:
-        masked_key = "***" + llm.api_key[-4:] if len(llm.api_key) >= 4 else "***"
-        table.add_row("LLM provider", llm.provider.name)
-        table.add_row("LLM model", llm.model)
+    if llm_cfg:
+        masked_key = "***" + llm_cfg.api_key[-4:] if len(llm_cfg.api_key) >= 4 else "***"
+        table.add_row("LLM provider", llm_cfg.provider.name)
+        table.add_row("LLM model", llm_cfg.model)
         table.add_row("LLM key", masked_key)
     else:
         table.add_row("LLM", "not configured (run `frais config manage`)")
@@ -215,10 +241,16 @@ def doctor() -> None:
 
 
 @config_app.callback(invoke_without_command=True)
-def config_default(ctx: typer.Context) -> None:
+def config_default(
+    ctx: typer.Context,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output structured JSON (for agent consumption)."),
+    ] = False,
+) -> None:
     """Show redacted BYOK config when no subcommand is provided."""
     if ctx.invoked_subcommand is None:
-        config_show()
+        config_show(json_output=json_output)
 
 
 config_app.command("manage")(config_manage)
@@ -228,14 +260,25 @@ config_app.command("test")(config_test)
 
 
 @plugins_app.callback(invoke_without_command=True)
-def plugins_default(ctx: typer.Context) -> None:
+def plugins_default(
+    ctx: typer.Context,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output structured JSON (for agent consumption)."),
+    ] = False,
+) -> None:
     """List plugins when no subcommand is provided."""
     if ctx.invoked_subcommand is None:
-        plugins_list()
+        plugins_list(json_output=json_output)
 
 
 @plugins_app.command("list")
-def plugins_list() -> None:
+def plugins_list(
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output structured JSON (for agent consumption)."),
+    ] = False,
+) -> None:
     """List all known plugins and their status.
 
     Shows all discovered plugins (built-in and third-party), whether the
@@ -249,6 +292,19 @@ def plugins_list() -> None:
 
     init_plugins_config()
     persisted = load_plugins_config()
+
+    if json_output:
+        plugins_data: list[dict[str, str]] = []
+        for name, plugin in all_plugins().items():
+            plugins_data.append({
+                "name": name,
+                "available": "yes" if plugin.is_available() else "no",
+                "default": "enabled" if plugin.enabled_by_default else "disabled",
+                "effective": "enabled" if persisted.get(name, plugin.enabled_by_default) else "disabled",
+            })
+        print_json_success(plugins=plugins_data)
+        return
+
     table = Table("Plugin", "Available", "Default", "Effective")
     for name, plugin in all_plugins().items():
         available = "yes" if plugin.is_available() else "no"
@@ -261,6 +317,10 @@ def plugins_list() -> None:
 @plugins_app.command("enable")
 def plugins_enable(
     name: Annotated[str, typer.Argument(help="Plugin name, for example: homebrew")],
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output structured JSON (for agent consumption)."),
+    ] = False,
 ) -> None:
     """Persistently enable a plugin.
 
@@ -272,16 +332,22 @@ def plugins_enable(
 
     init_plugins_config()
     if name not in all_plugins():
-        console.print(f"[red]Unknown plugin: {name}[/red]")
-        raise typer.Exit(1)
+        exit_with_error(f"Unknown plugin: {name}", json_output)
 
     save_plugin_state(name, True)
+    if json_output:
+        print_json_success(plugin=name, action="enabled")
+        return
     console.print(f"Plugin [bold]{name}[/bold] enabled (persisted).")
 
 
 @plugins_app.command("disable")
 def plugins_disable(
     name: Annotated[str, typer.Argument(help="Plugin name, for example: homebrew")],
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output structured JSON (for agent consumption)."),
+    ] = False,
 ) -> None:
     """Persistently disable a plugin.
 
@@ -293,26 +359,42 @@ def plugins_disable(
 
     init_plugins_config()
     if name not in all_plugins():
-        console.print(f"[red]Unknown plugin: {name}[/red]")
-        raise typer.Exit(1)
+        exit_with_error(f"Unknown plugin: {name}", json_output)
 
     save_plugin_state(name, False)
+    if json_output:
+        print_json_success(plugin=name, action="disabled")
+        return
     console.print(f"Plugin [bold]{name}[/bold] disabled (persisted).")
 
 
 @ignore_app.callback(invoke_without_command=True)
-def ignore_default(ctx: typer.Context) -> None:
+def ignore_default(
+    ctx: typer.Context,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output structured JSON (for agent consumption)."),
+    ] = False,
+) -> None:
     """List ignored apps when no subcommand is provided."""
     if ctx.invoked_subcommand is None:
-        ignore_list()
+        ignore_list(json_output=json_output)
 
 
 @ignore_app.command("list")
-def ignore_list() -> None:
+def ignore_list(
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output structured JSON (for agent consumption)."),
+    ] = False,
+) -> None:
     """List all ignored app IDs."""
     from .ignore import init_ignored
     init_ignored()
     ids = load_ignored()
+    if json_output:
+        print_json_success(ignored=sorted(ids), count=len(ids))
+        return
     if not ids:
         console.print("No ignored apps.")
         return
@@ -324,11 +406,19 @@ def ignore_list() -> None:
 @ignore_app.command("add")
 def ignore_add(
     app_id: Annotated[str, typer.Argument(help="App ID (bundle id) to ignore.")],
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output structured JSON (for agent consumption)."),
+    ] = False,
 ) -> None:
     """Add an app to the ignore list."""
     from .ignore import init_ignored
     init_ignored()
-    if add_ignored(app_id):
+    was_added = add_ignored(app_id)
+    if json_output:
+        print_json_success(app_id=app_id, action="added" if was_added else "already_ignored")
+        return
+    if was_added:
         console.print(f"Added: {app_id}")
     else:
         console.print(f"Already ignored: {app_id}")
@@ -337,11 +427,19 @@ def ignore_add(
 @ignore_app.command("remove")
 def ignore_remove(
     app_id: Annotated[str, typer.Argument(help="App ID (bundle id) to remove from ignore list.")],
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output structured JSON (for agent consumption)."),
+    ] = False,
 ) -> None:
     """Remove an app from the ignore list."""
     from .ignore import init_ignored
     init_ignored()
-    if remove_ignored(app_id):
+    was_removed = remove_ignored(app_id)
+    if json_output:
+        print_json_success(app_id=app_id, action="removed" if was_removed else "not_in_list")
+        return
+    if was_removed:
         console.print(f"Removed: {app_id}")
     else:
         console.print(f"Not in ignore list: {app_id}")
