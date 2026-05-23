@@ -24,14 +24,28 @@ def print_json_success(**kwargs: typing.Any) -> None:
     console.print_json(json.dumps(data, ensure_ascii=False))
 
 
-def exit_with_error(message: str, json_mode: bool, exit_code: int = 1) -> typing.NoReturn:
+def exit_with_error(message: str, json_mode: bool, exit_code: int = 1,
+                    reason: str = "", hint: str = "",
+                    **extra: typing.Any) -> typing.NoReturn:
     """Print an error and exit.
 
-    In JSON mode prints ``{"ok": false, "error": "..."}`` to stdout.
-    In CLI mode prints red text to stderr.
+    In JSON mode prints ``{"ok": false, "error": "...", "reason": "...", "hint": "..."}`` to stdout.
+    In CLI mode prints red text to stderr (reason and hint shown as dim text).
+
+    *reason* is a stable machine-readable enum value the LLM can branch on.
+    *hint* tells the LLM what action to take next.
+    *extra* carries context fields (e.g. item_id, plugin_name) for the JSON output.
     """
     if json_mode:
-        console.print_json(json.dumps({"ok": False, "error": message}, ensure_ascii=False))
+        data: dict[str, typing.Any] = {"ok": False, "error": message}
+        if reason:
+            data["reason"] = reason
+        if hint:
+            data["hint"] = hint
+        data.update(extra)
+        console.print_json(json.dumps(data, ensure_ascii=False))
     else:
         _stderr_console.print(f"[red]Error: {message}[/red]")
+        if hint:
+            _stderr_console.print(f"[dim]{hint}[/dim]")
     raise typer.Exit(exit_code)

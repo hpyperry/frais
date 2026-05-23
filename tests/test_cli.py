@@ -737,8 +737,9 @@ def test_config_test_json_no_config(monkeypatch, capsys) -> None:
 
     with pytest.raises(typer.Exit) as exc_info:
         config_test(json_output=True)
-    assert exc_info.value.exit_code == 1
+    assert exc_info.value.exit_code == 2
     captured = capsys.readouterr()
     data = json.loads(captured.out)
     assert data["ok"] is False
+    assert data["reason"] == "config_missing"
     assert "No LLM provider" in data["error"]

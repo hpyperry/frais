@@ -200,11 +200,48 @@ Plugins that don't need research (Homebrew, npm) skip the LLM pipeline entirely 
 
 ## JSON output formats
 
-All commands that support `--json` use a uniform envelope: success `{"ok": true, ...fields}`, error `{"ok": false, "error": "..."}`. The `ok` key is always present and always a boolean. Commands without `--json` emit Rich-formatted text only (no JSON errors).
+All commands that support `--json` follow a unified **LLM Agent Contract**: the JSON output is designed so an external LLM can consume it deterministically — parse it, branch on structured fields, and produce consistent repeatable responses. Without `--json`, commands emit Rich-formatted text only.
 
-**Shared helpers** (`commands/_output.py`):
+### Universal envelope
+
+```json
+// Success — ok is always true, always the first key:
+{"ok": true, ...command-specific fields}
+
+// Error — ok is always false, error then reason then hint then context fields:
+{"ok": false, "error": "<what happened>", "reason": "<stable enum>", "hint": "<what to do next>", ...context}
+```
+
+**Invariants** (guaranteed across all commands, all versions):
+
+1. `ok` is always the first key and always a boolean.
+2. On error, `error` is always the second key (human-readable), `reason` is always the third (stable machine enum), `hint` is always the fourth (actionable next step).
+3. Additional context keys (`item_id`, `plugin_name`, `requested`) carry structured data for LLM branching — they appear on error responses where relevant.
+4. Exit code `0` = success. Exit code `1` = general error. Exit code `2` = config/parameter error.
+5. `null` always means "not yet computed" — never "I forgot to include this."
+6. Empty list `[]` means "checked and found nothing" — never "I didn't check."
+7. **IDs round-trip**: an `id` from `scan --json` is a valid argument to `summarize <id>` and `update <id>`. A plugin `name` from `plugins list --json` is a valid argument to `plugins enable/disable <name>`. An `app_id` from `ignore list --json` is a valid argument to `ignore add/remove <app_id>`.
+8. Enum values (SourceKind, risk_level, impact_level, reason, action) are lowercased stable strings — the full set is documented below.
+
+### Error reasons (stable enum)
+
+Every error response includes a `reason` field the LLM can branch on:
+
+| `reason` | Meaning | Commands that return it |
+|----------|---------|------------------------|
+| `config_missing` | No LLM provider configured | advise, summarize, config test |
+| `connection_error` | LLM connection failed | config test |
+| `no_plugins_matched` | All requested plugins unavailable or disabled | scan, advise |
+| `unknown_plugin` | Plugin name not in registry | plugins enable, plugins disable |
+| `plugin_not_found` | Plugin from cache no longer installed | summarize |
+| `no_cache` | No scan cache file exists | summarize |
+| `cache_read_error` | Cache file exists but is corrupt | summarize |
+| `candidate_not_found` | ID not in cached scan results | summarize |
+
+### Shared helpers (`commands/_output.py`)
+
 - `print_json_success(**kwargs)` — prints `{"ok": true, ...}` to stdout via Rich `print_json`. The `ok` key is reserved; callers cannot override it.
-- `exit_with_error(message, json_mode, exit_code=1)` — in JSON mode prints `{"ok": false, "error": message}` to stdout then `raise typer.Exit(code)`. In CLI mode prints red error text to stderr then exits. Single call replaces `console.print("[red]...")` + `raise typer.Exit(1)`.
+- `exit_with_error(message, json_mode, exit_code=1, reason="", hint="", **extra)` — in JSON mode prints `{"ok": false, "error": message, "reason": reason, "hint": hint, ...extra}` to stdout then `raise typer.Exit(code)`. In CLI mode prints red error text (+ dim hint) to stderr then exits.
 
 ### doctor --json
 
@@ -308,8 +345,16 @@ All commands that support `--json` use a uniform envelope: success `{"ok": true,
 }
 
 // Error:
-{"ok": false, "error": "<error message>"}
+{"ok": false, "error": "...", "reason": "config_missing|connection_error", "hint": "..."}
 ```
+
+### config path --json
+
+```json
+{"ok": true, "path": "/Users/hpy/.frais/config/config.toml"}
+```
+
+`config manage` is interactive only — ``--json`` is not supported. See `frais config manage --help`.
 
 ### scan --json / advise --json
 
@@ -383,10 +428,94 @@ Both commands output a serialized `ScanResult` wrapped in the success envelope:
 ### Error format (all commands)
 
 ```json
-{"ok": false, "error": "<human-readable message>"}
+{
+  "ok": false,
+  "error": "<human-readable what happened>",
+  "reason": "<stable machine enum — see table above>",
+  "hint": "<actionable next step for the LLM to follow or tell the user>",
+  ...context fields (item_id, plugin_name, requested — vary by reason)
+}
 ```
 
-Error exit codes: `1` for general errors, `2` for config/parameter errors (matches `typer.BadParameter` convention). The `error` string is stable enough for agent branching but not guaranteed across versions.
+Error exit codes: `1` for general errors, `2` for config/parameter errors (matches `typer.BadParameter` convention).
+
+The LLM should branch on `reason` (stable enum), not on `error` (natural language). The `hint` field tells the LLM what command to run next or what to tell the user.
+
+### Command contract summary
+
+Each `--json` command is a deterministic function: same state → same output. An LLM can reason about inputs and outputs from this table:
+
+| Command | Precondition | Key success fields | Error reasons | Next command |
+|---------|-------------|-------------------|---------------|--------------|
+| `doctor --json` | none | `system`, `plugins.<name>.available`, `llm.configured` | (none — always succeeds) | `config manage` if `!llm.configured` |
+| `config show --json` | none | `configured`, `provider`, `key_source` | (none) | `config test` to verify |
+| `config test --json` | config exists | `provider`, `model`, `url`, `response` | `config_missing`, `connection_error` | `scan` or `advise` |
+| `config path --json` | none | `path` | (none) | — (informational) |
+| `plugins list --json` | none | `plugins[].name`, `.available`, `.effective` | (none) | `plugins enable/disable <name>` |
+| `plugins enable/disable --json <name>` | plugin exists | `plugin`, `action` | `unknown_plugin` | `plugins list` to verify |
+| `ignore list --json` | none | `ignored[]`, `count` | (none) | `ignore add/remove <id>` |
+| `ignore add/remove --json <id>` | none | `app_id`, `action` | (none) | `ignore list` to verify |
+| `scan --json` | LLM optional | `plugin_results.<plugin>.items[]`, `.candidates[]` | `no_plugins_matched` | `summarize <id>` or `update <id>` |
+| `advise --json` | LLM configured | same as `scan` + `ai_summary` populated | `config_missing`, `no_plugins_matched` | `update <id>` |
+| `summarize --json <id>` | cache exists | `item_id`, `ai_summary` | `no_cache`, `cache_read_error`, `candidate_not_found`, `plugin_not_found`, `config_missing` | `update <id>` |
+
+### LLM agent workflow
+
+An LLM agent consuming frais JSON output should follow this decision tree:
+
+```
+1. doctor --json
+   ├─ llm.configured == false → tell user "Run frais config manage"
+   ├─ any plugin.available == "no" → warn user, proceed with available
+   └─ ok → continue
+
+2. scan --json  (use advise --json if AI summaries wanted immediately)
+   ├─ reason == "no_plugins_matched" → tell user "No plugins available"
+   └─ ok → for each candidate: check latest_version vs current_version
+
+3. For each candidate where ai_summary is null and user wants details:
+   summarize --json <candidate.item.id>
+   ├─ reason == "no_cache" → tell user "Run frais scan --json first"
+   ├─ reason == "candidate_not_found" → check the id, suggest scan
+   └─ ok → display ai_summary to user
+
+4. update <candidate.item.id> — interactive, LLM cannot automate.
+   Present the command to the user and explain the risk_level.
+```
+
+### Recommended agent system prompt
+
+To use frais as a tool in any LLM agent, include this in the agent's system prompt:
+
+```
+You have access to the `frais` CLI for checking macOS software updates.
+All read commands accept `--json` and return a uniform JSON envelope.
+
+Envelope:
+  Success: {"ok": true, ...fields}
+  Error:   {"ok": false, "error": "...", "reason": "<enum>", "hint": "...", ...context}
+
+Rules for consuming frais output:
+1. Branch on `ok` first — true = success path, false = error path.
+2. On error, branch on `reason` (stable enum values, not natural language):
+   - config_missing → tell user to run `frais config manage`
+   - connection_error → suggest checking API key and network
+   - no_cache → tell user to run `frais scan --json` first
+   - candidate_not_found → suggest running `frais scan --json` to refresh
+   - unknown_plugin → tell user to run `frais plugins list --json`
+   - plugin_not_found → the plugin was removed from the system
+   - no_plugins_matched → tell user no requested plugins are available
+   - cache_read_error → suggest deleting ~/.frais/log/last_advice.json and rescanning
+3. Follow the `hint` field — it tells you the next action.
+4. IDs round-trip: an id from scan is the exact argument for summarize and update.
+5. `null` = not yet computed. `[]` = checked, none found.
+6. `can_auto_update: true` means the `command` list is safe to execute.
+7. `recommended_action: "No action"` means the item is already up to date.
+
+Workflow:
+   doctor --json → scan --json → summarize --json <id> → present to user
+   `update` is interactive — tell the user to run it, do not automate.
+```
 
 ## Key patterns
 

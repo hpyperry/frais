@@ -332,7 +332,11 @@ def plugins_enable(
 
     init_plugins_config()
     if name not in all_plugins():
-        exit_with_error(f"Unknown plugin: {name}", json_output)
+        exit_with_error(
+        f"Unknown plugin: {name}", json_output,
+        reason="unknown_plugin",
+        hint="Run `frais plugins list --json` to see available plugins.",
+        plugin_name=name)
 
     save_plugin_state(name, True)
     if json_output:
@@ -359,7 +363,11 @@ def plugins_disable(
 
     init_plugins_config()
     if name not in all_plugins():
-        exit_with_error(f"Unknown plugin: {name}", json_output)
+        exit_with_error(
+        f"Unknown plugin: {name}", json_output,
+        reason="unknown_plugin",
+        hint="Run `frais plugins list --json` to see available plugins.",
+        plugin_name=name)
 
     save_plugin_state(name, False)
     if json_output:

@@ -23,6 +23,7 @@ LLM features require user-owned configuration in `~/.frais/config/config.toml`. 
 Agent LLM ──▶ frais doctor --json           (system readiness)
               frais config show --json       (redacted config)
               frais config test --json       (connection validation)
+              frais config path --json       (config file location)
               frais plugins list --json      (plugin inventory)
               frais ignore list --json       (exclusion list)
               frais scan --json              (structured scan output)
@@ -48,7 +49,7 @@ Internal:
 
 ## Commands
 
-All commands that accept `--json` use a uniform JSON envelope: success `{"ok": true, ...}`, error `{"ok": false, "error": "..."}`. The `ok` key is always the first field and always a boolean. Without `--json`, commands emit Rich-formatted terminal output.
+All commands that accept `--json` follow a unified **LLM Agent Contract**: success `{"ok": true, ...}`, error `{"ok": false, "error": "...", "reason": "<enum>", "hint": "..."}`. The `reason` field is a stable machine-readable enum that an LLM agent can branch on deterministically; the `hint` field tells the agent what action to take next. IDs round-trip between commands (scan → summarize → update). Without `--json`, commands emit Rich-formatted terminal output. See [CLAUDE.md](./CLAUDE.md) for the full contract specification.
 
 ### `doctor`
 
@@ -259,7 +260,13 @@ API key resolution order: `FRAIS_LLM_API_KEY` env var → `OPENAI_API_KEY` env v
 {"ok": false, "error": "connection failed: timeout"}
 ```
 
-`config path` and `config manage` do not support `--json`.
+`config path --json`:
+
+```json
+{"ok": true, "path": "/Users/hpy/.frais/config/config.toml"}
+```
+
+`config manage` is interactive only — `--json` is not supported.
 
 ### `update`
 

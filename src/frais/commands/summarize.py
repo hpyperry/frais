@@ -37,12 +37,16 @@ def summarize(
     from ..cli import _ADVICE_CACHE
 
     if not _ADVICE_CACHE.exists():
-        exit_with_error("No scan cache found. Run `frais advise` or `frais scan` first.", json_output)
+        exit_with_error("No scan cache found.", json_output,
+                        reason="no_cache",
+                        hint="Run `frais scan --json` or `frais advise --json` first to generate a scan cache.")
 
     try:
         data = json.loads(_ADVICE_CACHE.read_text())
     except (json.JSONDecodeError, OSError) as exc:
-        exit_with_error(f"Failed to read scan cache: {exc}", json_output)
+        exit_with_error(f"Failed to read scan cache: {exc}", json_output,
+                        reason="cache_read_error",
+                        hint="The scan cache file is corrupted. Run `frais scan --json` to rebuild it.")
 
     from ..llm import LLMClient
     from ..plugins.registry import all_plugins
@@ -63,17 +67,25 @@ def summarize(
                 break
 
     if candidate is None:
-        exit_with_error(f"No candidate found for: {item_id}", json_output)
+        exit_with_error(f"No candidate found for: {item_id}", json_output,
+                        reason="candidate_not_found",
+                        hint="Run `frais scan --json` to see available candidate IDs.",
+                        item_id=item_id)
 
     try:
         config = require_config()
         llm = LLMClient(config)
     except ValueError as exc:
-        exit_with_error(str(exc), json_output, exit_code=2)
+        exit_with_error(str(exc), json_output, exit_code=2,
+                        reason="config_missing",
+                        hint="Run `frais config manage` to set up your provider and API key.")
 
     plugin = all_plugins().get(plugin_name or "")
     if plugin is None:
-        exit_with_error(f"Plugin not found: {plugin_name}", json_output)
+        exit_with_error(f"Plugin not found: {plugin_name}", json_output,
+                        reason="plugin_not_found",
+                        hint="Run `frais plugins list --json` to see available plugins.",
+                        plugin_name=plugin_name)
 
     summary = plugin.summarize(llm, candidate)
 

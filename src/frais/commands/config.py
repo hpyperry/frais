@@ -30,6 +30,8 @@ def config_manage() -> None:
 
     Press Ctrl+C or choose Cancel at any step to abort without saving.
 
+    This command is interactive only — ``--json`` is not supported.
+
     Example:
       frais config manage
     """
@@ -259,12 +261,20 @@ def config_show(
     console.print(table)
 
 
-def config_path() -> None:
+def config_path(
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output structured JSON (for agent consumption)."),
+    ] = False,
+) -> None:
     """Print the default BYOK config file path.
 
     Example:
       frais config path
     """
+    if json_output:
+        print_json_success(path=str(CONFIG_PATH))
+        return
     console.print(str(CONFIG_PATH))
 
 
@@ -287,8 +297,14 @@ def config_test(
     try:
         config = require_config()
         text = LLMClient(config).test_connection()
-    except (ValueError, LLMRequestError) as exc:
-        exit_with_error(str(exc), json_output)
+    except ValueError as exc:
+        exit_with_error(str(exc), json_output, exit_code=2,
+                        reason="config_missing",
+                        hint="Run `frais config manage` to set up your provider and API key.")
+    except LLMRequestError as exc:
+        exit_with_error(str(exc), json_output, exit_code=2,
+                        reason="connection_error",
+                        hint="Check your API key and network connection, then try again.")
 
     if json_output:
         print_json_success(

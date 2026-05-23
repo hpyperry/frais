@@ -58,7 +58,10 @@ def scan(
     if _explicit:
         unknown = set(_explicit) - set(active)
         if not active:
-            exit_with_error(f"No available plugins matched: {', '.join(sorted(unknown))}", json_output)
+            exit_with_error(f"No available plugins matched: {', '.join(sorted(unknown))}", json_output,
+                            reason="no_plugins_matched",
+                            hint="Run `frais plugins list --json` to see available plugins.",
+                            requested=sorted(unknown))
         if unknown and not json_output:
             console.print(f"[yellow]Unavailable plugins: {', '.join(sorted(unknown))}[/yellow]")
 

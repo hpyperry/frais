@@ -122,7 +122,9 @@ def advise(
     try:
         config = require_config()
     except ValueError as exc:
-        exit_with_error(str(exc), json_output, exit_code=2)
+        exit_with_error(str(exc), json_output, exit_code=2,
+                        reason="config_missing",
+                        hint="Run `frais config manage` to set up your provider and API key.")
     logger.info("advise using provider=%s model=%s jobs=%d", config.provider.name, config.model, jobs)
     llm = LLMClient(config)
 
@@ -141,7 +143,10 @@ def advise(
         if _explicit_plugins:
             unknown = set(_explicit_plugins) - set(active_plugins)
             if not active_plugins:
-                exit_with_error(f"No available plugins matched: {', '.join(sorted(unknown))}", json_output)
+                exit_with_error(f"No available plugins matched: {', '.join(sorted(unknown))}", json_output,
+                                reason="no_plugins_matched",
+                                hint="Run `frais plugins list --json` to see available plugins.",
+                                requested=sorted(unknown))
             if unknown and not json_output:
                 console.print(f"[yellow]Unavailable plugins: {', '.join(sorted(unknown))}[/yellow]")
 
