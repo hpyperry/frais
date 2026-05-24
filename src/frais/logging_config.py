@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from rich.console import Console
@@ -12,15 +13,10 @@ _stderr_console = Console(stderr=True)
 LOG_FORMAT = "%(asctime)s.%(msecs)03d %(levelname)-5s [%(name)s] %(filename)s:%(lineno)d %(funcName)s() — %(message)s"
 LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
-
-def _rotate_log(path: Path) -> None:
-    """Clear log file if it exceeds max size."""
-    if path.exists() and path.stat().st_size > LOG_MAX_SIZE:
-        path.write_text("")
+_BACKUP_COUNT = 2
 
 
 def _ensure_log_dir(path: Path) -> bool:
-    """Create parent directories for a log file. Returns False on failure."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         return True
@@ -29,13 +25,21 @@ def _ensure_log_dir(path: Path) -> bool:
         return False
 
 
-def _add_file_handler(handlers: list[logging.Handler], path: Path, level: int) -> None:
-    """Create and add a FileHandler for the given path and level."""
+def _add_file_handler(
+    handlers: list[logging.Handler],
+    path: Path,
+    level: int,
+    backup_count: int = _BACKUP_COUNT,
+) -> None:
     if not _ensure_log_dir(path):
         return
-    _rotate_log(path)
     try:
-        handler = logging.FileHandler(str(path), encoding="utf-8")
+        handler = RotatingFileHandler(
+            str(path),
+            encoding="utf-8",
+            maxBytes=LOG_MAX_SIZE,
+            backupCount=backup_count,
+        )
         handler.setLevel(level)
         handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=LOG_DATE_FORMAT))
         handlers.append(handler)
@@ -57,8 +61,8 @@ def configure_logging(verbose: bool, debug: bool, log_file: str | None, no_log: 
         root_log_path = Path(log_file) if log_file else DEFAULT_LOG_FILE
         error_log_path = Path(log_file).parent / "error.log" if log_file else DEFAULT_ERROR_LOG_FILE
 
-        _add_file_handler(handlers, root_log_path, file_level)
-        _add_file_handler(handlers, error_log_path, logging.ERROR)
+        _add_file_handler(handlers, root_log_path, file_level, backup_count=2)
+        _add_file_handler(handlers, error_log_path, logging.ERROR, backup_count=1)
 
     logging.basicConfig(
         level=logging.DEBUG,

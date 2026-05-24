@@ -431,11 +431,14 @@ def test_configure_logging_stderr_level_debug(tmp_path) -> None:
     assert stderr_handler.level == logging.DEBUG
 
 
-def test_configure_logging_truncates_large_file(tmp_path) -> None:
+def test_configure_logging_rotates_large_file(tmp_path) -> None:
     log_path = tmp_path / "big.log"
     log_path.write_text("x" * (6 * 1024 * 1024))  # 6MB > 5MB limit
     _configure_logging(verbose=False, debug=False, log_file=str(log_path), no_log=False)
-    assert log_path.stat().st_size < 100
+    logging.getLogger("test").warning("trigger rotation")  # RotatingFileHandler rotates on first emit
+    backup = tmp_path / "big.log.1"
+    assert backup.exists()
+    assert log_path.stat().st_size < 6 * 1024 * 1024
 
 
 def test_configure_logging_no_log(tmp_path) -> None:
