@@ -24,16 +24,14 @@ class _FakeDDGS:
 
 def test_web_search_returns_formatted_results(monkeypatch) -> None:
     fake = _FakeDDGS([{"title": "T", "href": "https://x.com", "body": "snippet"}])
-    monkeypatch.setattr("frais.web_tools.DDGS", lambda: fake)
+    monkeypatch.setattr("frais.web_tools.DDGS", lambda **kw: fake)
     result = web_search("test query")
     assert result == [{"title": "T", "url": "https://x.com", "snippet": "snippet"}]
 
 
 def test_web_search_returns_empty_on_failure(monkeypatch) -> None:
-    def raise_error():
-        raise RuntimeError("search down")
     monkeypatch.setattr("frais.web_tools._ddgs", None)
-    monkeypatch.setattr("frais.web_tools.DDGS", raise_error)
+    monkeypatch.setattr("frais.web_tools.DDGS", lambda **kw: exec('raise RuntimeError("search down")'))
     result = web_search("test query")
     assert result == []
 

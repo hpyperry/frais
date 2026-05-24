@@ -18,11 +18,13 @@ _GITHUB_REPO_RE = re.compile(r"github\.com/([^/]+/[^/]+?)(?:\.git)?(?:/|$)")
 _fetch_client: httpx.Client | None = None
 _ddgs: DDGS | None = None
 
+_DDGS_BACKEND = "lite"
+
 
 def _get_ddgs() -> DDGS:
     global _ddgs
     if _ddgs is None:
-        _ddgs = DDGS()
+        _ddgs = DDGS(backend=_DDGS_BACKEND)  # type: ignore[call-arg]
     return _ddgs
 
 
