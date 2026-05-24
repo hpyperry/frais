@@ -412,7 +412,7 @@ def test_configure_logging_stderr_level_default(tmp_path) -> None:
     _configure_logging(debug=False, log_file=str(log_path), no_log=False)
     root = logging.getLogger()
     stderr_handler = next(h for h in root.handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler))
-    assert stderr_handler.level == logging.INFO
+    assert stderr_handler.level == logging.CRITICAL
 
 
 def test_configure_logging_stderr_level_debug(tmp_path) -> None:

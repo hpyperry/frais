@@ -48,9 +48,8 @@ def _add_file_handler(
 
 
 def configure_logging(debug: bool, log_file: str | None, no_log: bool) -> None:
-    level = logging.DEBUG if debug else logging.INFO
-    file_level = level
-    stderr_level = level
+    file_level = logging.DEBUG if debug else logging.INFO
+    stderr_level = logging.DEBUG if debug else logging.CRITICAL
 
     stderr_handler = logging.StreamHandler()
     stderr_handler.setLevel(stderr_level)
