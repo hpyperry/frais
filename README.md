@@ -47,7 +47,7 @@ Internal:
 
 **Scan layer** — each plugin discovers installed software via its own `scan()` / `scan_all()` methods. Homebrew and NPM plugins can directly identify outdated packages from their package managers.
 
-**Research layer** (plugin-private) — `ApplicationsPlugin.scan()` internally runs a structured 3-step LLM pipeline: generate search queries → pick best URLs → extract version. App Store apps use the iTunes API directly (~1s). Both the iTunes fast path (`applications/_store.py`) and the LLM pipeline (`applications/_research.py`) are private to the applications plugin. Summaries are generated via `plugin.summarize()` per-candidate.
+**Research layer** (plugin-private) — `ApplicationsPlugin.scan()` internally runs a structured 3-step LLM pipeline: generate search queries → pick best URLs → extract version. App Store apps use the iTunes API directly (~1s). Both the iTunes fast path (`applications/app_store.py`) and the LLM pipeline (`applications/research/`) are private to the applications plugin. Summaries are generated via `plugin.summarize()` per-candidate.
 
 **Update layer** — each plugin provides its own `update()` method. Homebrew runs `brew upgrade`, NPM runs `npm install -g`, and Applications resolve App Store deep links or prompt to open the `.app` bundle.
 
@@ -479,13 +479,12 @@ After installing your package, `frais plugins list` will show it.
 ## Logs
 
 ```bash
-frais --verbose advise       # INFO to stderr
-frais --debug advise         # DEBUG to stderr (includes LLM traces)
+frais --debug advise         # DEBUG level logging (includes LLM traces)
 frais --log-file ./my.log advise
 frais --no-log advise        # disable file logging
 ```
 
-Logs are written to both stderr and `~/.frais/log/frais.log` by default. Log files auto-truncate at 5 MB.
+Logs are written to `~/.frais/log/frais.log` by default. Log files auto-truncate at 5 MB.
 
 ## Testing
 
