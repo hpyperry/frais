@@ -42,7 +42,7 @@ class HomebrewPlugin(ScannerPlugin):
             logger.info("homebrew scan outdated start")
             raw = run_json(["brew", "outdated", "--json=v2"], ok_codes=(0, 1))
         except RuntimeError as exc:
-            logger.warning("homebrew outdated failed error=%s", exc)
+            logger.warning("homebrew outdated failed error=%s", exc, exc_info=True)
             return PluginScanResult(skipped=[str(exc)])
 
         candidates, items = self._parse_outdated(raw)
@@ -62,7 +62,7 @@ class HomebrewPlugin(ScannerPlugin):
             installed_raw = run_json(["brew", "info", "--json=v2", "--installed"])
             outdated_raw = run_json(["brew", "outdated", "--json=v2"], ok_codes=(0, 1))
         except RuntimeError as exc:
-            logger.warning("homebrew scan all failed error=%s", exc)
+            logger.warning("homebrew scan all failed error=%s", exc, exc_info=True)
             return PluginScanResult(skipped=[str(exc)])
 
         candidates, _ = self._parse_outdated(outdated_raw)
@@ -172,8 +172,8 @@ def _brew_info(name: str, cask: bool = False) -> dict[str, Any]:
     command.append(name)
     try:
         data = run_json(command)
-    except RuntimeError:
-        logger.warning("homebrew info failed name=%s cask=%s", name, cask)
+    except RuntimeError as exc:
+        logger.warning("homebrew info failed name=%s cask=%s: %s", name, cask, exc, exc_info=True)
         return {}
     section = "casks" if cask else "formulae"
     items = data.get(section, [])
@@ -193,8 +193,8 @@ def _brew_uses(name: str) -> list[str]:
             timeout=30,
             env=env,
         )
-    except subprocess.TimeoutExpired:
-        logger.debug("homebrew uses timed out name=%s", name)
+    except subprocess.TimeoutExpired as exc:
+        logger.debug("homebrew uses timed out name=%s: %s", name, exc)
         return []
     if result.returncode != 0:
         logger.debug("homebrew uses failed name=%s returncode=%s", name, result.returncode)

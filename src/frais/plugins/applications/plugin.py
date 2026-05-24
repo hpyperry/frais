@@ -42,7 +42,7 @@ class ApplicationsPlugin(ScannerPlugin):
             config = require_config()
             llm = get_client(config)
         except (ValueError, RuntimeError) as exc:
-            logger.warning("LLM not available for applications research: %s", exc)
+            logger.warning("LLM not available for applications research: %s", exc, exc_info=True)
             return PluginScanResult(items=items, candidates=[], skipped=[str(exc)])
 
         candidates: list[UpdateCandidate] = []
@@ -59,7 +59,8 @@ class ApplicationsPlugin(ScannerPlugin):
                 try:
                     candidate = future.result()
                 except Exception as exc:
-                    logger.warning("research failed: %s", exc, exc_info=True)
+                    item_for_log = futures[future]
+                    logger.warning("research failed for %s: %s", item_for_log.name, exc, exc_info=True)
                     if on_progress:
                         on_progress(1, researched, len(to_research))
                     continue

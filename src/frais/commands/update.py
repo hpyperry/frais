@@ -43,7 +43,7 @@ def _parse_candidates_from_cache(data: Any) -> tuple[list[UpdateCandidate], dict
         try:
             candidates.append(UpdateCandidate.from_dict(raw))
         except Exception as exc:
-            logger.warning("failed to parse cached candidate: %s", exc)
+            logger.warning("failed to parse cached candidate: %s", exc, exc_info=True)
     return candidates, plugin_map
 
 

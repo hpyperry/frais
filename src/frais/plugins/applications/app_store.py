@@ -38,7 +38,7 @@ def check_app_store_version(item: SoftwareItem) -> tuple[str | None, int | None]
                 return version, track_id
         return None, None
     except Exception as exc:
-        logger.warning("itunes api failed for %s: %s", item.name, exc)
+        logger.warning("itunes api failed for %s: %s", item.name, exc, exc_info=True)
         return None, None
 
 
@@ -57,5 +57,5 @@ def resolve_app_store_command(item: SoftwareItem) -> tuple[list[str], bool]:
             if track_id:
                 return ["open", f"macappstore://apps.apple.com/app/id{track_id}"], True
     except Exception as exc:
-        logger.debug("itunes lookup failed for %s: %s", item.name, exc)
+        logger.debug("itunes lookup failed for %s: %s", item.name, exc, exc_info=True)
     return [], False

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import signal
 from typing import Annotated
 
@@ -15,7 +14,6 @@ from ._scan_core import run_scan_phase
 from ._signal import install_interrupt_handler
 from .advise import _print_advise_result
 
-logger = logging.getLogger(__name__)
 console = Console()
 
 

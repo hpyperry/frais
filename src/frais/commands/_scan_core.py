@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -8,8 +7,6 @@ from ..ignore_filter import apply_ignore_filter
 from ..models import ScanResult, SystemProfile
 from ..plugins.base import ScannerPlugin
 from ..store.scan_cache import save_scan_cache
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)

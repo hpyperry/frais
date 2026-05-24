@@ -40,7 +40,7 @@ class NpmPlugin(ScannerPlugin):
             logger.info("npm scan outdated start")
             raw = run_json(["npm", "outdated", "-g", "--json"], ok_codes=(0, 1))
         except RuntimeError as exc:
-            logger.warning("npm outdated failed error=%s", exc)
+            logger.warning("npm outdated failed error=%s", exc, exc_info=True)
             return PluginScanResult(skipped=[str(exc)])
 
         if not raw:
@@ -64,7 +64,7 @@ class NpmPlugin(ScannerPlugin):
             installed_raw = run_json(["npm", "ls", "-g", "--depth=0", "--json"])
             outdated_raw = run_json(["npm", "outdated", "-g", "--json"], ok_codes=(0, 1))
         except RuntimeError as exc:
-            logger.warning("npm scan all failed error=%s", exc)
+            logger.warning("npm scan all failed error=%s", exc, exc_info=True)
             return PluginScanResult(skipped=[str(exc)])
 
         candidates, _ = self._parse_outdated(outdated_raw)

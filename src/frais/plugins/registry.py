@@ -18,5 +18,5 @@ def all_plugins() -> dict[str, ScannerPlugin]:
             plugin = cls()
             plugins[plugin.name] = plugin
         except Exception as exc:
-            logger.warning("failed to load plugin %s: %s", ep.name, exc)
+            logger.warning("failed to load plugin %s: %s", ep.name, exc, exc_info=True)
     return plugins

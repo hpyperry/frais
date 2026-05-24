@@ -86,6 +86,10 @@ class OpenAICompatibleClient(LLMClient):
     def _post(self, payload: dict[str, Any]) -> str:
         url = self.config.provider.chat_url
         logger.debug("llm request url=%s model=%s", url, self.config.model)
+        logger.debug(
+            "llm request payload=%s",
+            _json.dumps(payload, ensure_ascii=False)[:2000],
+        )
         response = self._http.post(url, json=payload)
         try:
             response.raise_for_status()
@@ -108,5 +112,14 @@ class OpenAICompatibleClient(LLMClient):
                 f"Message keys: {list(message)}",
                 status_code=response.status_code,
                 response_text=_json.dumps(message),
+            )
+        logger.debug("llm response content=%s", text[:2000] if text else "(empty)")
+        usage = body.get("usage", {})
+        if usage:
+            logger.debug(
+                "llm token usage prompt=%s completion=%s total=%s",
+                usage.get("prompt_tokens"),
+                usage.get("completion_tokens"),
+                usage.get("total_tokens"),
             )
         return text

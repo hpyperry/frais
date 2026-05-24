@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import logging
 from abc import ABC, abstractmethod
 
 import httpx
 
 from ..store.config_store import ProviderConfig
-
-logger = logging.getLogger(__name__)
 
 
 class LLMClient(ABC):

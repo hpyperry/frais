@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Annotated
 
 import typer
@@ -12,7 +11,6 @@ from rich.table import Table
 from ..store.config_store import CONFIG_PATH, load_config, require_config, save_config
 from ._output import exit_with_error, print_json_success
 
-logger = logging.getLogger(__name__)
 console = Console()
 
 

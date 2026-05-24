@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -40,9 +41,10 @@ def web_search(query: str) -> list[dict[str, str]]:
                 "snippet": result.get("body", ""),
             })
         logger.info("web_search found %d results", len(results))
+        logger.debug("web_search results=%s", json.dumps(results, ensure_ascii=False)[:2000])
         return results
     except Exception as exc:
-        logger.warning("web_search failed: %s", exc)
+        logger.warning("web_search failed: %s", exc, exc_info=True)
         return []
 
 
@@ -62,9 +64,10 @@ def web_fetch(url: str) -> str:
         if len(text) > _FETCH_MAX_CHARS:
             text = text[:_FETCH_MAX_CHARS] + "\n...<truncated>"
         logger.info("web_fetch got %d chars from %s", len(text), resolved_url)
+        logger.debug("web_fetch content=%s", text[:2000])
         return text
     except Exception as exc:
-        logger.warning("web_fetch failed for %s: %s", resolved_url, exc)
+        logger.warning("web_fetch failed for %s: %s", resolved_url, exc, exc_info=True)
         return f"Failed to fetch: {exc}"
 
 
@@ -78,6 +81,7 @@ def web_fetch_batch(urls: list[str]) -> dict[str, str]:
             try:
                 results[url] = future.result()
             except Exception as exc:
+                logger.warning("fetch_batch failed url=%s: %s", url, exc, exc_info=True)
                 results[url] = f"Failed: {exc}"
     return results
 

@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 console = Console()
 
 
-def _load_llm_config_or_exit(json_output: bool) -> tuple[ProviderConfig, LLMClient]:
+def _load_llm_config_or_exit(json_output: bool, jobs: int) -> tuple[ProviderConfig, LLMClient]:
     """Load provider config and create LLM client, or exit with error."""
     try:
         config = require_config()
@@ -40,7 +40,7 @@ def _load_llm_config_or_exit(json_output: bool) -> tuple[ProviderConfig, LLMClie
         exit_with_error(str(exc), json_output, exit_code=2,
                         reason="config_missing",
                         hint="Run `frais config manage` to set up your provider and API key.")
-    logger.info("advise using provider=%s model=%s jobs=%s", config.provider.name, config.model, "10")
+    logger.info("advise using provider=%s model=%s jobs=%d", config.provider.name, config.model, jobs)
     return config, get_client(config)
 
 
@@ -238,7 +238,7 @@ def advise(
       frais advise --json
       frais advise -j 5
     """
-    config, llm = _load_llm_config_or_exit(json_output)
+    config, llm = _load_llm_config_or_exit(json_output, jobs)
     active_plugins, _explicit_set, system = _resolve_active_plugins(plugins, json_output)
 
     orig_handler = install_interrupt_handler()

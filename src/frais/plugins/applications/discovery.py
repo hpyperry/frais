@@ -30,7 +30,7 @@ def scan_applications(paths: list[str]) -> list[SoftwareItem]:
                 logger.debug("applications skipped duplicate id=%s path=%s", item.id, app_path)
                 continue
             seen.add(item.id)
-            logger.info(
+            logger.debug(
                 "applications item name=%s id=%s version=%s source=%s",
                 item.name,
                 item.id,

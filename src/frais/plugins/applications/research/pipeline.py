@@ -23,7 +23,9 @@ def generate_search_queries(llm: LLMClient, item: SoftwareItem) -> list[str]:
         f"current: {item.current_version or 'unknown'}, "
         f"source: {item.source.value}."
     )
+    logger.debug("step1 prompt for %s: %s", item.name, prompt)
     text = llm.chat(_SEARCH_QUERIES_PROMPT, prompt, disable_thinking=True)
+    logger.debug("step1 response for %s: %s", item.name, text)
     return _parse_json_list(text)
 
 
@@ -34,7 +36,9 @@ def pick_urls(llm: LLMClient, item: SoftwareItem, search_results: list[dict[str,
         ensure_ascii=False,
     )
     prompt = f"App: {item.name}\n\nSearch results:\n{results_text}"
+    logger.debug("step2 input for %s: %s", item.name, results_text[:2000])
     text = llm.chat(_PICK_URLS_PROMPT, prompt, disable_thinking=True)
+    logger.debug("step2 response for %s: %s", item.name, text)
     return _parse_json_list(text)[:3]
 
 
@@ -48,8 +52,11 @@ def extract_version(llm: LLMClient, item: SoftwareItem, fetched_content: dict[st
         f"App: {item.name}, current version: {item.current_version or 'unknown'}\n\n"
         f"Page contents:\n{content_text}"
     )
+    logger.debug("step3 input for %s: %s", item.name, content_text[:2000])
     text = llm.chat(_EXTRACT_VERSION_PROMPT, prompt, disable_thinking=True)
+    logger.debug("step3 response for %s: %s", item.name, text)
     data = _parse_json_object(text)
+    logger.debug("step3 result for %s: %s", item.name, data)
     return ResearchResult(
         latest_version=data.get("latest_version"),
         release_notes_url=data.get("release_notes_url"),
@@ -83,14 +90,15 @@ def _llm_structured_research(llm: LLMClient, item: SoftwareItem) -> ResearchResu
     try:
         queries = generate_search_queries(llm, item)
     except Exception as exc:
-        logger.warning("generate_search_queries failed for %s: %s", item.name, exc)
+        logger.warning("generate_search_queries failed for %s: %s", item.name, exc, exc_info=True)
         return None
 
     if not queries:
         logger.info("no search queries generated for %s", item.name)
         return None
 
-    logger.info("generated %d queries for %s: %s", len(queries), item.name, queries)
+    logger.info("generated %d queries for %s", len(queries), item.name)
+    logger.debug("queries for %s: %s", item.name, queries)
 
     # Execute all searches in parallel
     all_results: list[dict[str, str]] = []
@@ -100,7 +108,7 @@ def _llm_structured_research(llm: LLMClient, item: SoftwareItem) -> ResearchResu
             try:
                 all_results.extend(future.result())
             except Exception as exc:
-                logger.warning("web_search failed: %s", exc)
+                logger.warning("web_search failed for %s: %s", item.name, exc, exc_info=True)
 
     # Deduplicate by URL
     seen_urls: set[str] = set()
@@ -121,14 +129,15 @@ def _llm_structured_research(llm: LLMClient, item: SoftwareItem) -> ResearchResu
     try:
         urls = pick_urls(llm, item, unique_results)
     except Exception as exc:
-        logger.warning("pick_urls failed for %s: %s", item.name, exc)
+        logger.warning("pick_urls failed for %s: %s", item.name, exc, exc_info=True)
         return None
 
     if not urls:
         logger.info("no URLs picked for %s", item.name)
         return None
 
-    logger.info("picked %d URLs for %s: %s", len(urls), item.name, urls)
+    logger.info("picked %d URLs for %s", len(urls), item.name)
+    logger.debug("urls for %s: %s", item.name, urls)
 
     # Fetch all picked URLs in parallel
     fetched = web_fetch_batch(urls)
@@ -137,5 +146,5 @@ def _llm_structured_research(llm: LLMClient, item: SoftwareItem) -> ResearchResu
     try:
         return extract_version(llm, item, fetched)
     except Exception as exc:
-        logger.warning("extract_version failed for %s: %s", item.name, exc)
+        logger.warning("extract_version failed for %s: %s", item.name, exc, exc_info=True)
         return None

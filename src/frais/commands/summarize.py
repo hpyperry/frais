@@ -84,7 +84,8 @@ def _find_candidate_in_cache(
             if raw.get("item", {}).get("id") == item_id:
                 try:
                     candidate = UpdateCandidate.from_dict(raw)
-                except (KeyError, TypeError, ValueError):
+                except (KeyError, TypeError, ValueError) as exc:
+                    logger.warning("summarize skip corrupt cache entry for %s: %s", pname, exc)
                     continue
                 return candidate, str(pname)
     return None, None
