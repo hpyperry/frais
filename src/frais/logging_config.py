@@ -60,7 +60,7 @@ def configure_logging(debug: bool, log_file: str | None, no_log: bool) -> None:
         _add_file_handler(handlers, error_log_path, logging.ERROR, backup_count=1)
 
     logging.basicConfig(
-        level=file_level,
+        level=logging.INFO,
         handlers=handlers,
         force=True,
     )
