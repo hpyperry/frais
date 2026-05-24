@@ -31,9 +31,12 @@ class OpenAICompatibleClient(LLMClient):
     def close(self) -> None:
         self._client.close()
 
-    def chat(self, system: str, user: str, max_tokens: int | None = None) -> str:
+    def chat(self, system: str, user: str, max_tokens: int | None = None,
+             *, disable_thinking: bool = False) -> str:
         messages = self._build_messages(system, user)
-        thinking_enabled = self.config.thinking and self._model_supports_thinking()
+        thinking_enabled = self._model_supports_thinking()
+        if disable_thinking:
+            thinking_enabled = False
         payload = self._build_payload(messages, max_tokens)
         if self._model_supports_thinking():
             extra = self._apply_thinking(thinking_enabled)

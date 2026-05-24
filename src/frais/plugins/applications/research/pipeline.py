@@ -25,7 +25,7 @@ def generate_search_queries(llm: LLMClient, item: SoftwareItem) -> list[str]:
         f"source: {item.source.value}."
     )
     logger.debug("step1 prompt for %s: %s", item.name, prompt)
-    text = llm.chat(_SEARCH_QUERIES_PROMPT, prompt)
+    text = llm.chat(_SEARCH_QUERIES_PROMPT, prompt, disable_thinking=True)
     logger.debug("step1 response for %s: %s", item.name, text)
     return _parse_json_list(text)
 
@@ -38,7 +38,7 @@ def pick_urls(llm: LLMClient, item: SoftwareItem, search_results: list[dict[str,
     )
     prompt = f"App: {item.name}\n\nSearch results:\n{results_text}"
     logger.debug("step2 input for %s: %s", item.name, results_text[:2000])
-    text = llm.chat(_PICK_URLS_PROMPT, prompt)
+    text = llm.chat(_PICK_URLS_PROMPT, prompt, disable_thinking=True)
     logger.debug("step2 response for %s: %s", item.name, text)
     return _parse_json_list(text)[:5]
 
@@ -54,7 +54,7 @@ def extract_version(llm: LLMClient, item: SoftwareItem, fetched_content: dict[st
         f"Page contents:\n{content_text}"
     )
     logger.debug("step3 input for %s: %s", item.name, content_text[:2000])
-    text = llm.chat(_EXTRACT_VERSION_PROMPT, prompt)
+    text = llm.chat(_EXTRACT_VERSION_PROMPT, prompt, disable_thinking=True)
     logger.debug("step3 response for %s: %s", item.name, text)
     data = _parse_json_object(text)
     logger.debug("step3 result for %s: %s", item.name, data)

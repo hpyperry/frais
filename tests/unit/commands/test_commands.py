@@ -250,4 +250,3 @@ class _fake_llm_config:
     model = "deepseek-v4-flash"
     api_key = "sk-test"
     api_key_source = None
-    thinking = True

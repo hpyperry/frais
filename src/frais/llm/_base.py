@@ -21,7 +21,8 @@ class LLMClient(ABC):
         self.config = config
 
     @abstractmethod
-    def chat(self, system: str, user: str, max_tokens: int | None = None) -> str:
+    def chat(self, system: str, user: str, max_tokens: int | None = None,
+             *, disable_thinking: bool = False) -> str:
         """Send a chat completion request and return the response text."""
         ...
 

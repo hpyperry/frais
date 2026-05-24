@@ -262,14 +262,14 @@ class TestCreate:
 # --- thinking tests ---
 
 
-def _config_with_thinking(thinking_enabled: bool, model_supports: bool = True) -> ProviderConfig:
+def _config_with_thinking(model_supports: bool = True) -> ProviderConfig:
     provider = _test_provider(
         models=[ModelInfo(id="test-model", name="Test", supports_thinking=model_supports)],
     )
-    return ProviderConfig(provider=provider, model="test-model", api_key="sk-test", thinking=thinking_enabled)
+    return ProviderConfig(provider=provider, model="test-model", api_key="sk-test")
 
 
-def test_thinking_disabled_injects_extra_body(monkeypatch) -> None:
+def test_thinking_enabled_by_default(monkeypatch) -> None:
     captured: dict = {}
 
     def fake_create(inst, payload):
@@ -277,26 +277,26 @@ def test_thinking_disabled_injects_extra_body(monkeypatch) -> None:
         return "ok"
 
     monkeypatch.setattr(OpenAICompatibleClient, "_create", fake_create)
-    config = _config_with_thinking(thinking_enabled=False)
-    client = DeepSeekOpenAIClient(config)
-    client.chat("", "hello")
-    client.close()
-    assert captured.get("extra_body") == {"thinking": {"type": "disabled"}}
-
-
-def test_thinking_enabled_injects_extra_body(monkeypatch) -> None:
-    captured: dict = {}
-
-    def fake_create(inst, payload):
-        captured.update(payload)
-        return "ok"
-
-    monkeypatch.setattr(OpenAICompatibleClient, "_create", fake_create)
-    config = _config_with_thinking(thinking_enabled=True)
+    config = _config_with_thinking()
     client = DeepSeekOpenAIClient(config)
     client.chat("", "hello")
     client.close()
     assert captured.get("extra_body") == {"thinking": {"type": "enabled"}}
+
+
+def test_disable_thinking_injects_disabled(monkeypatch) -> None:
+    captured: dict = {}
+
+    def fake_create(inst, payload):
+        captured.update(payload)
+        return "ok"
+
+    monkeypatch.setattr(OpenAICompatibleClient, "_create", fake_create)
+    config = _config_with_thinking()
+    client = DeepSeekOpenAIClient(config)
+    client.chat("", "hello", disable_thinking=True)
+    client.close()
+    assert captured.get("extra_body") == {"thinking": {"type": "disabled"}}
 
 
 def test_thinking_skipped_for_unsupported_model(monkeypatch) -> None:
@@ -307,7 +307,7 @@ def test_thinking_skipped_for_unsupported_model(monkeypatch) -> None:
         return "ok"
 
     monkeypatch.setattr(OpenAICompatibleClient, "_create", fake_create)
-    config = _config_with_thinking(thinking_enabled=True, model_supports=False)
+    config = _config_with_thinking(model_supports=False)
     client = DeepSeekOpenAIClient(config)
     client.chat("", "hello")
     client.close()

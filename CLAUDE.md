@@ -30,7 +30,7 @@ When the user signals a new implementation task (e.g. "新任务", "给你一个
 
 ## Project overview
 
-Frais is a macOS CLI that scans installed Applications, Homebrew packages, and npm global packages for available updates. It uses the DeepSeek LLM API (user-supplied key) with a structured 3-step research pipeline for finding latest versions and generating update advice. Extended thinking is user-configurable via `config.toml` (`thinking = true/false`), with per-provider parameter injection handled by protocol-specific Client subclasses.
+Frais is a macOS CLI that scans installed Applications, Homebrew packages, and npm global packages for available updates. It uses the DeepSeek LLM API (user-supplied key) with a structured 3-step research pipeline for finding latest versions and generating update advice. Extended thinking is enabled automatically when the selected model supports it, with per-provider parameter injection handled by protocol-specific Client subclasses.
 
 All scanning is plugin-based — the built-in `applications`, `homebrew`, and `npm` scanners are all `ScannerPlugin` implementations.
 
@@ -66,7 +66,7 @@ src/frais/
                         #   PluginScanResult, ScanResult, ResearchResult, etc.
   providers.py          # Provider/ModelInfo dataclasses; DeepSeek provider definition
   store/                # Persistent storage layer
-    config_store.py      #   ProviderConfig + config.toml CRUD, env var overrides, thinking toggle
+    config_store.py      #   ProviderConfig + config.toml CRUD, env var overrides
     plugin_store.py      #   Plugin state: reads/writes plugins.toml
     ignore_store.py      #   Ignore list: ignore.txt CRUD
     scan_cache.py        #   Atomic last_advice.json cache writes
@@ -368,7 +368,6 @@ Every error response includes a `reason` field the LLM can branch on:
   "model": "deepseek-v4-flash",  // Model id
   "key_suffix": "***abcd",       // Masked key suffix (null if no key set)
   "key_source": "env:FRAIS_LLM_API_KEY|env:OPENAI_API_KEY|config",  // Where the key came from
-  "thinking": true               // Whether extended thinking is enabled
 }
 ```
 
@@ -559,8 +558,8 @@ Workflow:
 
 ## Key patterns
 
-- **Provider registry**: Providers defined in `providers.py` as `Provider` dataclasses with `ModelInfo` entries (`supports_thinking` flag). No provider-specific logic in the data layer. Configuration stored as `[llm]` TOML with `provider`, `model`, `api_key`, `thinking` (boolean). `FRAIS_LLM_API_KEY` env var overrides the file-stored key. API keys are never logged or printed in full.
-- **LLM client layer**: `llm/` package — protocol-agnostic ABC (`LLMClient`) with protocol-specific base classes (`OpenAICompatibleClient`, `AnthropicClient`) and provider-specific subclasses (`DeepSeekOpenAIClient`). Factory `get_client(config, protocol)` selects by `(provider_id, protocol)` from `_CLIENT_MAP`. Each provider subclass overrides `_apply_thinking()` to inject its own thinking control parameters. `summarize_candidate()` is a standalone function in `commands/summarize.py`, not a Client method.
+- **Provider registry**: Providers defined in `providers.py` as `Provider` dataclasses with `ModelInfo` entries (`supports_thinking` flag). No provider-specific logic in the data layer. Configuration stored as `[llm]` TOML with `provider`, `model`, `api_key`. `FRAIS_LLM_API_KEY` env var overrides the file-stored key. API keys are never logged or printed in full.
+- **LLM client layer**: `llm/` package — protocol-agnostic ABC (`LLMClient`) with `OpenAICompatibleClient` as the base implementation and `DeepSeekOpenAIClient` for DeepSeek-specific thinking injection. Factory `get_client(config, protocol)` selects by `(provider_id, protocol)` from `_CLIENT_MAP`. Each provider subclass overrides `_apply_thinking()` to inject its own thinking control parameters via `extra_body`. `summarize_candidate()` is a standalone function in `commands/summarize.py`, not a Client method.
 - **JSON/CLI output**: `commands/_output.py` provides `print_json_success(**kwargs)` and `exit_with_error(message, json_mode, exit_code=1)`. Every command uses these two helpers — errors are a single function call with no branching in the command body; success output is one `if json_output:` / `else:` at the end. The `ok` key in `print_json_success` is reserved (caller-provided `ok` is discarded). `exit_with_error` uses Rich stderr Console for CLI mode to match `click.ClickException` behavior.
 - **Testing**: Uses `monkeypatch` (pytest fixture) for all external dependencies — subprocess, filesystem, env vars. No mock library.
 - **Version comparison**: Uses `packaging.version.Version`; strips leading `v`/`V` before comparing.
