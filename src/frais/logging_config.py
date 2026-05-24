@@ -65,8 +65,3 @@ def configure_logging(debug: bool, log_file: str | None, no_log: bool) -> None:
         force=True,
     )
     logging.getLogger("frais").setLevel(logging.DEBUG if debug else logging.INFO)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-    logging.getLogger("ddgs").setLevel(logging.WARNING)
-    logging.getLogger("primp").setLevel(logging.WARNING)
