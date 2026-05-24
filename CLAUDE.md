@@ -53,8 +53,15 @@ uv run pytest
 uv run pytest tests/test_cli.py
 uv run pytest tests/test_homebrew.py
 
-# Build macOS binary (requires pyinstaller; --noupx for macOS compatibility)
+# Build macOS binary (onedir mode for fast startup, requires pyinstaller)
 uv run --extra build python scripts/build_binary.py
+
+# Test the built binary
+dist/frais/frais doctor
+dist/frais/frais plugins list
+
+# Distribute: zip the frais/ directory + frais.sh, user runs:
+bash frais.sh doctor    # first run installs to ~/.frais/bin/, subsequent runs are instant
 ```
 
 ## Architecture
@@ -569,6 +576,7 @@ Workflow:
 - **Progress bar**: `_scan_core.run_scan_phase()` renders a Rich `Progress` bar with one task row per plugin. Each row shows the plugin's current `scan_steps` label with live `TimeElapsedColumn`. Progress is driven by `on_progress(step, done, total)`. After scans, a dedicated task row shows Summaries progress. Total time = max(scan times) + summarize time.
 - **Ignore list**: `~/.frais/config/ignore.txt` stores app IDs to skip during `advise`. Auto-created on first access via `init_ignored()`. Managed via `frais ignore add/remove/list`. Filtered after scan, before research.
 - **Plugin discovery**: `registry.py` uses `importlib.metadata.entry_points(group="frais.plugins")` to discover all plugins at runtime. Built-in plugins (applications, homebrew, npm) are always present. Failed loads are logged, not fatal.
+- **Lazy imports**: The applications plugin defers heavy imports (`scan_applications`, `research_application_update`) into its `scan()` method body. This prevents `all_plugins()` — called by lightweight commands like `plugins list` and `doctor` — from pulling in the LLM client, DDGS, and lxml import chain.
 - **Plugin persistence**: `store/plugin_store.py` manages `~/.frais/config/plugins.toml`. First run auto-creates the file with all discovered plugins set to their defaults. `plugins enable/disable` persist state. `select_plugins()` precedence: `--plugins` (explicit) overrides persisted config; default path uses `enabled_by_default` when not persisted.
 - **Ctrl+C handling**: `advise` and `scan` use `commands/_signal.install_interrupt_handler()` — a shared SIGINT handler. It uses `os.write(1, b"\033[?25h\n")` (wrapped in `try/except OSError`) to directly write the cursor-show ANSI escape to the stdout fd — bypassing Rich's internal segment buffer, which can swallow escapes when a nested `with self.console:` context is held (e.g. by Progress's auto-refresh thread). Then `os._exit(130)`. Original handler is restored via `try/finally`. Signal handler (not KeyboardInterrupt) is needed because ThreadPoolExecutor.__exit__ blocks on worker threads. The handler must only call async-signal-safe functions (`os.write`, `os._exit`) — no logging, no Rich API calls, no string formatting.
 - **Atomic writes**: Config and state files (`config.toml`, `ignore.txt`, `plugins.toml`, `last_advice.json`) are written to a `.tmp` sibling then atomically renamed via `Path.replace()` to prevent truncated/corrupt reads on concurrent access or crash.
