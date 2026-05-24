@@ -7,6 +7,8 @@ macOS update checker CLI with LLM-powered version research. Pipeline: **scan** (
 
 Supports DeepSeek with user-configurable extended thinking control. Multi-protocol LLM client layer (OpenAI-compatible + Anthropic-native reserved).
 
+Frais is a **traditional CLI tool enhanced with LLM** — not an AI agent. Commands are deterministic: same input → same output. An external LLM agent (Claude Code, Copilot, etc.) can consume its `--json` output via the agent contract documented below. Native MCP Server / Agent-mode is planned as future work.
+
 ## Quick start
 
 ```bash
@@ -497,7 +499,14 @@ Tests use `monkeypatch` for all external dependencies — no real HTTP calls or 
 
 ```bash
 uv run --extra build python scripts/build_binary.py
-./dist/frais doctor
+dist/frais/frais doctor
 ```
 
-Built with PyInstaller. The binary contains no API keys or secrets. LLM access uses the provider config in `~/.frais/config/config.toml`.
+Uses PyInstaller `--onedir` mode for fast startup. First-run install via `frais.sh` copies to `~/.frais/bin/`:
+
+```bash
+bash frais.sh doctor          # auto-installs to ~/.frais/bin/, then runs
+~/.frais/bin/frais doctor     # instant after first install
+```
+
+The binary contains no API keys or secrets. LLM access uses the provider config in `~/.frais/config/config.toml`.
