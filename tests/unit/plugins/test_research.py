@@ -74,12 +74,12 @@ def test_generate_search_queries_passes_disable_thinking(monkeypatch) -> None:
     assert calls == [True]
 
 
-def test_pick_urls_limits_to_three(monkeypatch) -> None:
+def test_pick_urls_limits_to_five(monkeypatch) -> None:
     client = _dummy_llm()
-    monkeypatch.setattr(client, "chat", lambda *a, **kw: '["u1","u2","u3","u4"]')
+    monkeypatch.setattr(client, "chat", lambda *a, **kw: '["u1","u2","u3","u4","u5","u6"]')
     item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
     result = pick_urls(client, item, [{"title": "t", "url": "u", "snippet": "s"}])
-    assert result == ["u1", "u2", "u3"]
+    assert result == ["u1", "u2", "u3", "u4", "u5"]
 
 
 def test_pick_urls_passes_disable_thinking(monkeypatch) -> None:

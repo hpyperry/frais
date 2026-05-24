@@ -40,7 +40,7 @@ def pick_urls(llm: LLMClient, item: SoftwareItem, search_results: list[dict[str,
     logger.debug("step2 input for %s: %s", item.name, results_text[:2000])
     text = llm.chat(_PICK_URLS_PROMPT, prompt, disable_thinking=True)
     logger.debug("step2 response for %s: %s", item.name, text)
-    return _parse_json_list(text)[:3]
+    return _parse_json_list(text)[:5]
 
 
 def extract_version(llm: LLMClient, item: SoftwareItem, fetched_content: dict[str, str]) -> ResearchResult | None:

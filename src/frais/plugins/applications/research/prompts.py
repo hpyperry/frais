@@ -10,12 +10,12 @@ _SEARCH_QUERIES_PROMPT = (
 
 _PICK_URLS_PROMPT = (
     "You are a macOS software update research assistant. "
-    "Given search results for an application, pick the top 3 URLs most likely to contain "
+    "Given search results for an application, pick the top 5 URLs most likely to contain "
     "the latest version number. Return ONLY a JSON array of URL strings.\n"
     "Prefer: official download pages, GitHub releases, version history pages.\n"
     "Avoid: forums, blog posts, review sites.\n"
     "CRITICAL: Only pick URLs that are genuinely about the target application. "
-    "If no search result is clearly relevant, return fewer than 3 URLs or an empty array []. "
+    "If no search result is clearly relevant, return fewer than 5 URLs or an empty array []. "
     "Do NOT pick a URL for a different project just because it looks like a release page."
 )
 
