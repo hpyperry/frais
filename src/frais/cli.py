@@ -96,14 +96,6 @@ _configure_logging = configure_logging
 
 @app.callback()
 def main(
-    verbose: Annotated[
-        bool,
-        typer.Option(
-            "--verbose",
-            "-v",
-            help="Print scan execution logs to stderr.",
-        ),
-    ] = False,
     debug: Annotated[
         bool,
         typer.Option(
@@ -131,10 +123,9 @@ def main(
     if platform.system() != "Darwin":
         console.print("[red]Frais only supports macOS.[/red]")
         raise typer.Exit(1)
-    configure_logging(verbose=verbose, debug=debug, log_file=log_file, no_log=no_log)
-    if verbose or debug:
-        log_target = "disabled" if no_log else (log_file or str(DEFAULT_LOG_FILE))
-        logger.info("logging enabled level=%s log_file=%s", "DEBUG" if debug else "INFO", log_target)
+    configure_logging(debug=debug, log_file=log_file, no_log=no_log)
+    log_target = "disabled" if no_log else (log_file or str(DEFAULT_LOG_FILE))
+    logger.info("logging enabled level=%s log_file=%s", "DEBUG" if debug else "INFO", log_target)
 
 
 @config_app.callback(invoke_without_command=True)

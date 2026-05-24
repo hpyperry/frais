@@ -47,9 +47,10 @@ def _add_file_handler(
         _stderr_console.print(f"[yellow]Warning: could not open log file {path}: {exc}[/yellow]")
 
 
-def configure_logging(verbose: bool, debug: bool, log_file: str | None, no_log: bool) -> None:
-    file_level = logging.DEBUG if debug else logging.INFO if verbose else logging.WARNING
-    stderr_level = logging.DEBUG if debug else logging.INFO if verbose else logging.ERROR
+def configure_logging(debug: bool, log_file: str | None, no_log: bool) -> None:
+    level = logging.DEBUG if debug else logging.INFO
+    file_level = level
+    stderr_level = level
 
     stderr_handler = logging.StreamHandler()
     stderr_handler.setLevel(stderr_level)

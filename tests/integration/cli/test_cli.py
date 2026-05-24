@@ -409,15 +409,7 @@ def test_print_advise_result_shows_updates_section(capsys) -> None:
 
 def test_configure_logging_stderr_level_default(tmp_path) -> None:
     log_path = tmp_path / "test.log"
-    _configure_logging(verbose=False, debug=False, log_file=str(log_path), no_log=False)
-    root = logging.getLogger()
-    stderr_handler = next(h for h in root.handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler))
-    assert stderr_handler.level == logging.ERROR
-
-
-def test_configure_logging_stderr_level_verbose(tmp_path) -> None:
-    log_path = tmp_path / "test.log"
-    _configure_logging(verbose=True, debug=False, log_file=str(log_path), no_log=False)
+    _configure_logging(debug=False, log_file=str(log_path), no_log=False)
     root = logging.getLogger()
     stderr_handler = next(h for h in root.handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler))
     assert stderr_handler.level == logging.INFO
@@ -425,7 +417,7 @@ def test_configure_logging_stderr_level_verbose(tmp_path) -> None:
 
 def test_configure_logging_stderr_level_debug(tmp_path) -> None:
     log_path = tmp_path / "test.log"
-    _configure_logging(verbose=False, debug=True, log_file=str(log_path), no_log=False)
+    _configure_logging(debug=True, log_file=str(log_path), no_log=False)
     root = logging.getLogger()
     stderr_handler = next(h for h in root.handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler))
     assert stderr_handler.level == logging.DEBUG
@@ -434,7 +426,7 @@ def test_configure_logging_stderr_level_debug(tmp_path) -> None:
 def test_configure_logging_rotates_large_file(tmp_path) -> None:
     log_path = tmp_path / "big.log"
     log_path.write_text("x" * (6 * 1024 * 1024))  # 6MB > 5MB limit
-    _configure_logging(verbose=False, debug=False, log_file=str(log_path), no_log=False)
+    _configure_logging(debug=False, log_file=str(log_path), no_log=False)
     logging.getLogger("test").warning("trigger rotation")  # RotatingFileHandler rotates on first emit
     backup = tmp_path / "big.log.1"
     assert backup.exists()
@@ -443,7 +435,7 @@ def test_configure_logging_rotates_large_file(tmp_path) -> None:
 
 def test_configure_logging_no_log(tmp_path) -> None:
     log_path = tmp_path / "no_write.log"
-    _configure_logging(verbose=False, debug=False, log_file=str(log_path), no_log=True)
+    _configure_logging(debug=False, log_file=str(log_path), no_log=True)
     assert not log_path.exists()
 
 
