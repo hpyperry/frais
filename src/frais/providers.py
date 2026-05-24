@@ -16,6 +16,7 @@ class Provider:
     name: str
     base_url: str
     models: list[ModelInfo]
+    protocols: list[str]
 
 
 PROVIDERS: list[Provider] = [
@@ -28,6 +29,7 @@ PROVIDERS: list[Provider] = [
             ModelInfo(id="deepseek-v4-pro", name="DeepSeek V4 Pro", supports_thinking=True),
             ModelInfo(id="deepseek-chat", name="DeepSeek Chat (deprecated)", supports_thinking=False),
         ],
+        protocols=["openai"],
     ),
 ]
 

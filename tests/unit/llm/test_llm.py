@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import anthropic
 import httpx
 import openai
 import pytest
 
 from frais.commands.summarize import summarize_candidate
 from frais.llm import (
-    AnthropicClient,
-    DeepSeekAnthropicClient,
     DeepSeekOpenAIClient,
     LLMClient,
     LLMRequestError,
@@ -28,6 +25,7 @@ def _test_provider(**kw) -> Provider:
         "name": "Test",
         "base_url": "https://api.test.com",
         "models": [ModelInfo(id="test-model", name="Test Model")],
+        "protocols": ["openai"],
     }
     return Provider(**(defaults | kw))
 
@@ -66,18 +64,6 @@ class _FakeResponse:
         self.usage = usage
 
 
-class _FakeTextBlock:
-    def __init__(self, text: str) -> None:
-        self.text = text
-        self.type = "text"
-
-
-class _FakeAnthropicResponse:
-    def __init__(self, text: str, *, usage: _FakeUsage | None = None) -> None:
-        self.content = [_FakeTextBlock(text)]
-        self.usage = usage
-
-
 # --- provider tests ---
 
 
@@ -101,6 +87,24 @@ def test_all_providers_have_base_url() -> None:
         assert p.base_url.startswith("https://"), f"{p.id} base_url: {p.base_url}"
 
 
+def test_providers_protocols_match_client_map() -> None:
+    from frais.llm import _CLIENT_MAP
+
+    for p in PROVIDERS:
+        for protocol in p.protocols:
+            assert (p.id, protocol) in _CLIENT_MAP, (
+                f"Provider '{p.id}' declares protocol '{protocol}' but "
+                f"_CLIENT_MAP has no entry for ({p.id!r}, {protocol!r})"
+            )
+    for (provider_id, protocol) in _CLIENT_MAP:
+        provider = get_provider(provider_id)
+        assert provider is not None, f"_CLIENT_MAP has ({provider_id!r}, {protocol!r}) but no such provider"
+        assert protocol in provider.protocols, (
+            f"_CLIENT_MAP has ({provider_id!r}, {protocol!r}) but "
+            f"Provider.protocols = {provider.protocols}"
+        )
+
+
 # --- factory tests ---
 
 
@@ -120,15 +124,14 @@ def test_get_client_unknown_pair_raises() -> None:
         get_client(config, protocol="nonexistent")
 
 
-def test_get_client_returns_deepseek_anthropic_client() -> None:
+def test_get_client_raises_for_unsupported_protocol() -> None:
     config = ProviderConfig(
         provider=get_provider("deepseek"),
         model="deepseek-v4-flash",
         api_key="sk-test",
     )
-    client = get_client(config, protocol="anthropic")
-    assert isinstance(client, DeepSeekAnthropicClient)
-    client.close()
+    with pytest.raises(ValueError, match="does not support protocol"):
+        get_client(config, protocol="anthropic")
 
 
 # --- LLMClient ABC tests ---
@@ -360,123 +363,6 @@ def test_resolve_thinking_model_not_found() -> None:
     result = client._resolve_thinking(disable_thinking=False)
     assert result is False
     client.close()
-
-
-# --- AnthropicClient tests ---
-
-
-def test_anthropic_client_apply_thinking_enabled() -> None:
-    config = _test_config()
-    client = AnthropicClient(config)
-    result = client._apply_thinking(thinking_enabled=True)
-    assert result == {"type": "enabled", "budget_tokens": 4096}
-    client.close()
-
-
-def test_anthropic_client_apply_thinking_disabled() -> None:
-    config = _test_config()
-    client = AnthropicClient(config)
-    result = client._apply_thinking(thinking_enabled=False)
-    assert result == {"type": "disabled"}
-    client.close()
-
-
-class TestAnthropicCreate:
-    def test_passes_payload_to_sdk(self, monkeypatch) -> None:
-        captured = {}
-
-        def fake_create(**kwargs):
-            captured.update(kwargs)
-            return _FakeAnthropicResponse("ok")
-
-        client = AnthropicClient(_test_config())
-        monkeypatch.setattr(client._client.messages, "create", fake_create)
-        payload = {"model": "test-model", "messages": [{"role": "user", "content": "hi"}],
-                   "temperature": 0.2, "max_tokens": 4096}
-        client._create(payload)
-        assert captured["model"] == "test-model"
-        assert captured["messages"] == [{"role": "user", "content": "hi"}]
-        assert captured["temperature"] == 0.2
-        client.close()
-
-    def test_raises_llm_request_error_on_api_status_error(self, monkeypatch) -> None:
-        fake_response = httpx.Response(500, json={"error": "server error"},
-                                        request=httpx.Request("POST", "https://api.test.com"))
-        error = anthropic.APIStatusError("server error", response=fake_response, body={"error": "server error"})
-
-        def fake_create(**kwargs):
-            raise error
-
-        client = AnthropicClient(_test_config())
-        monkeypatch.setattr(client._client.messages, "create", fake_create)
-        with pytest.raises(LLMRequestError) as exc_info:
-            client._create({"model": "m", "messages": [], "temperature": 0.2, "max_tokens": 100})
-        assert exc_info.value.status_code == 500
-        client.close()
-
-    def test_raises_llm_request_error_on_empty_content(self, monkeypatch) -> None:
-        empty_response = _FakeAnthropicResponse("")  # empty text
-
-        def fake_create(**kwargs):
-            return empty_response
-
-        client = AnthropicClient(_test_config())
-        monkeypatch.setattr(client._client.messages, "create", fake_create)
-        with pytest.raises(LLMRequestError, match="empty content"):
-            client._create({"model": "m", "messages": [], "temperature": 0.2, "max_tokens": 100})
-        client.close()
-
-
-class TestDeepSeekAnthropicClient:
-    def test_is_anthropic_subclass(self) -> None:
-        config = ProviderConfig(
-            provider=get_provider("deepseek"),
-            model="deepseek-v4-flash",
-            api_key="sk-test",
-        )
-        client = DeepSeekAnthropicClient(config)
-        assert isinstance(client, AnthropicClient)
-        client.close()
-
-    def test_apply_thinking_returns_none(self) -> None:
-        config = ProviderConfig(
-            provider=get_provider("deepseek"),
-            model="deepseek-v4-flash",
-            api_key="sk-test",
-        )
-        client = DeepSeekAnthropicClient(config)
-        assert client._apply_thinking(True) is None
-        assert client._apply_thinking(False) is None
-        client.close()
-
-    def test_build_extra_body_injects_thinking(self) -> None:
-        config = ProviderConfig(
-            provider=get_provider("deepseek"),
-            model="deepseek-v4-flash",
-            api_key="sk-test",
-        )
-        client = DeepSeekAnthropicClient(config)
-        assert client._build_extra_body(True) == {"thinking": {"type": "enabled"}}
-        assert client._build_extra_body(False) == {"thinking": {"type": "disabled"}}
-        client.close()
-
-    def test_chat_injects_extra_body(self, monkeypatch) -> None:
-        captured: dict = {}
-
-        def fake_create(inst, payload):
-            captured.update(payload)
-            return "ok"
-
-        monkeypatch.setattr(AnthropicClient, "_create", fake_create)
-        config = ProviderConfig(
-            provider=get_provider("deepseek"),
-            model="deepseek-v4-flash",
-            api_key="sk-test",
-        )
-        client = DeepSeekAnthropicClient(config)
-        client.chat("", "hello")
-        client.close()
-        assert captured.get("extra_body") == {"thinking": {"type": "enabled"}}
 
 
 # --- LLMRequestError tests ---

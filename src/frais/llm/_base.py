@@ -11,8 +11,8 @@ class LLMClient(ABC):
     """Abstract interface for LLM provider clients.
 
     Concrete implementations handle protocol-specific request construction
-    (OpenAI-compatible, Anthropic-native, etc.) while provider-specific
-    behavior is injected via subclass hooks like _apply_thinking().
+    while provider-specific behavior is injected via subclass hooks like
+    _apply_thinking().
     """
 
     def __init__(self, config: ProviderConfig) -> None:
