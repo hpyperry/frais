@@ -60,11 +60,13 @@ def configure_logging(debug: bool, log_file: str | None, no_log: bool) -> None:
         _add_file_handler(handlers, error_log_path, logging.ERROR, backup_count=1)
 
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=file_level,
         handlers=handlers,
         force=True,
     )
-    third_party_level = logging.INFO if debug else logging.WARNING
-    logging.getLogger("httpx").setLevel(third_party_level)
-    for logger_name in ("httpcore", "urllib3", "ddgs", "primp"):
-        logging.getLogger(logger_name).setLevel(third_party_level)
+    logging.getLogger("frais").setLevel(logging.DEBUG if debug else logging.INFO)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("ddgs").setLevel(logging.WARNING)
+    logging.getLogger("primp").setLevel(logging.WARNING)
