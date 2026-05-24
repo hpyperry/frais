@@ -63,33 +63,12 @@ def test_generate_search_queries_empty_on_parse_failure(monkeypatch) -> None:
     assert result == []
 
 
-def test_generate_search_queries_passes_disable_thinking(monkeypatch) -> None:
-    client = _dummy_llm()
-    calls = []
-    def capture(system, user, max_tokens=None, disable_thinking=False):
-        calls.append(disable_thinking)
-        return '["q"]'
-    monkeypatch.setattr(client, "chat", capture)
-    item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
-    generate_search_queries(client, item)
-    assert calls == [True]
-
-
 def test_pick_urls_limits_to_five(monkeypatch) -> None:
     client = _dummy_llm()
     monkeypatch.setattr(client, "chat", lambda *a, **kw: '["u1","u2","u3","u4","u5","u6"]')
     item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
     result = pick_urls(client, item, [{"title": "t", "url": "u", "snippet": "s"}])
     assert result == ["u1", "u2", "u3", "u4", "u5"]
-
-
-def test_pick_urls_passes_disable_thinking(monkeypatch) -> None:
-    client = _dummy_llm()
-    calls = []
-    monkeypatch.setattr(client, "chat", lambda *a, **kw: calls.append(kw.get("disable_thinking")) or '["u"]')
-    item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
-    pick_urls(client, item, [])
-    assert calls == [True]
 
 
 def test_extract_version_returns_research_result(monkeypatch) -> None:
@@ -102,15 +81,6 @@ def test_extract_version_returns_research_result(monkeypatch) -> None:
     assert result.confidence == "high"
     assert result.evidence == ["changelog"]
     assert result.release_notes == "Bug fixes"
-
-
-def test_extract_version_passes_disable_thinking(monkeypatch) -> None:
-    client = _dummy_llm()
-    calls = []
-    monkeypatch.setattr(client, "chat", lambda *a, **kw: calls.append(kw.get("disable_thinking")) or "{}")
-    item = SoftwareItem(id="com.example.app", name="MyApp", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
-    extract_version(client, item, {})
-    assert calls == [True]
 
 
 # --- research_application_update tests ---

@@ -309,60 +309,9 @@ def test_thinking_skipped_for_unsupported_model(monkeypatch) -> None:
     monkeypatch.setattr(OpenAICompatibleClient, "_create", fake_create)
     config = _config_with_thinking(thinking_enabled=True, model_supports=False)
     client = DeepSeekOpenAIClient(config)
-    client.chat("", "hello", disable_thinking=False)
+    client.chat("", "hello")
     client.close()
     assert "extra_body" not in captured
-
-
-def test_disable_thinking_overrides_config(monkeypatch) -> None:
-    captured: dict = {}
-
-    def fake_create(inst, payload):
-        captured.update(payload)
-        return "ok"
-
-    monkeypatch.setattr(OpenAICompatibleClient, "_create", fake_create)
-    config = _config_with_thinking(thinking_enabled=True)
-    client = DeepSeekOpenAIClient(config)
-    client.chat("", "hello", disable_thinking=True)
-    client.close()
-    assert captured.get("extra_body") == {"thinking": {"type": "disabled"}}
-
-
-# --- _resolve_thinking unit tests ---
-
-
-def test_resolve_thinking_all_true() -> None:
-    config = _config_with_thinking(thinking_enabled=True)
-    client = OpenAICompatibleClient(config)
-    result = client._resolve_thinking(disable_thinking=False)
-    assert result is True
-    client.close()
-
-
-def test_resolve_thinking_disable_flag() -> None:
-    config = _config_with_thinking(thinking_enabled=True)
-    client = OpenAICompatibleClient(config)
-    result = client._resolve_thinking(disable_thinking=True)
-    assert result is False
-    client.close()
-
-
-def test_resolve_thinking_config_false() -> None:
-    config = _config_with_thinking(thinking_enabled=False)
-    client = OpenAICompatibleClient(config)
-    result = client._resolve_thinking(disable_thinking=False)
-    assert result is False
-    client.close()
-
-
-def test_resolve_thinking_model_not_found() -> None:
-    provider = _test_provider(models=[ModelInfo(id="other", name="Other")])
-    config = ProviderConfig(provider=provider, model="missing", api_key="sk-test", thinking=True)
-    client = OpenAICompatibleClient(config)
-    result = client._resolve_thinking(disable_thinking=False)
-    assert result is False
-    client.close()
 
 
 # --- LLMRequestError tests ---
