@@ -2,10 +2,13 @@
 
 _SEARCH_QUERIES_PROMPT = (
     "You are a macOS software update research assistant. "
-    "Given an application, generate 2-3 web search queries to find its latest version. "
+    "Given an application with its bundle ID, generate 2-3 web search queries "
+    "to find its latest version.\n"
     "Return ONLY a JSON array of query strings.\n"
-    "Example: [\"Keka macOS latest version download\", \"Keka changelog 2026\"]\n"
-    "Focus on: official download pages, GitHub releases, changelog pages."
+    "Example: [\"Keka macOS latest version download\", \"com.aone.keka github releases\"]\n"
+    "CRITICAL: At least one query MUST include the bundle ID (e.g. \"com.example.app github\"). "
+    "The bundle ID is the most reliable way to find the correct project on GitHub, "
+    "Homebrew, or the developer's website. Never omit it."
 )
 
 _PICK_URLS_PROMPT = (
