@@ -89,30 +89,45 @@ src/frais/
     doctor.py            # doctor command
     _output.py           # print_json_success() + exit_with_error() — shared JSON/CLI output helpers
     _scan_core.py        # run_scan_phase — shared scan/progress orchestration
-    advise.py            # advise command (scan + summaries + total time)
+    _signal.py           # install_interrupt_handler() — shared SIGINT handler for advise/scan
+    advise.py            # advise command (scan + summaries, helpers <50 lines each)
     config.py            # config commands: manage (interactive), show, path, test
     ignore.py            # ignore commands: list, add, remove
     plugins.py           # plugins commands: list, enable, disable
     scan.py              # scan command (agent-facing, --json output)
     summarize.py         # summarize <id> command (single-candidate summary)
-    update.py            # update command (interactive confirmation → plugin.update)
+    update.py            # update command (helpers: load, parse, filter, execute loop)
+  ui/
+    __init__.py
+    scan_progress.py     # Rich progress bar rendering extracted from _scan_core.py
   plugins/
     __init__.py          # Re-exports ScannerPlugin as public API
     base.py              # ScannerPlugin ABC: scan, scan_all, update, summarize
     subprocess_json.py   # Shared helper: run_json() with env isolation for subprocess calls
     registry.py          # Plugin registry; discovers built-in + third-party plugins via entry points
     applications/
-      __init__.py        # ApplicationsPlugin + scan_applications, read_application, classify_source
-      _store.py          # iTunes API (check_app_store_version, resolve_app_store_command)
-      _research.py       # LLM 3-step pipeline (generate_search_queries, pick_urls,
-                        #   extract_version) + version helpers + research_application_update
+      __init__.py        # Re-exports: ApplicationsPlugin, scan_applications, classify_source
+      plugin.py          # ApplicationsPlugin class
+      discovery.py       # scan_applications, read_application
+      source_classifier.py # classify_source, _path_id, _signing_summary, _quarantine_summary
+      app_store.py       # iTunes API (check_app_store_version, resolve_app_store_command)
+      research/          # LLM 3-step pipeline (split from monolithic _research.py)
+        __init__.py       #   Re-exports all symbols
+        pipeline.py       #   research_application_update, _llm_structured_research,
+                         #     generate_search_queries, pick_urls, extract_version
+        prompts.py        #   _SEARCH_QUERIES_PROMPT, _PICK_URLS_PROMPT, _EXTRACT_VERSION_PROMPT
+        json_parser.py    #   _extract_json, _parse_json_list, _parse_json_object, _ensure_list
+        candidate_factory.py # _make_candidate
+        version_compare.py   # _is_newer, _normalize, _digits_only
     homebrew/
-      __init__.py        # HomebrewPlugin + brew info/uses helpers
+      __init__.py        # Re-exports: HomebrewPlugin
+      plugin.py          # HomebrewPlugin + _brew_info, _brew_uses, _first, etc.
     npm/
-      __init__.py        # NpmPlugin
+      __init__.py        # Re-exports: NpmPlugin
+      plugin.py          # NpmPlugin + _make_candidate
 ```
 
-Design principle: all functionality is plugin-based. The CLI provides `plugins`, `config`, `ignore`, `doctor`. Agent-facing atomic commands: `scan` (structured output), `summarize <id>` (single summary), `update` (execute). `advise` is a convenience command = scan + summaries + display. Each plugin owns its entire scan pipeline internally — ApplicationsPlugin does discovery + LLM research in one call; Homebrew/npm do a single step. `applications/_store.py` and `applications/_research.py` are private to the applications plugin. `--plugins` respects persisted enable/disable state; disabled or unknown plugins show a warning.
+Design principle: all functionality is plugin-based. The CLI provides `plugins`, `config`, `ignore`, `doctor`. Agent-facing atomic commands: `scan` (structured output), `summarize <id>` (single summary), `update` (execute). `advise` is a convenience command = scan + summaries + display. Each plugin owns its entire scan pipeline internally — ApplicationsPlugin does discovery + LLM research in one call; Homebrew/npm do a single step. `applications/app_store.py` and `applications/research/` are private to the applications plugin. `--plugins` respects persisted enable/disable state; disabled or unknown plugins show a warning.
 
 ## Plugin interface
 
@@ -148,9 +163,9 @@ class ScannerPlugin(ABC):
 
 All plugins are registered via entry points in `pyproject.toml`:
 ```
-applications = "frais.plugins.applications:ApplicationsPlugin"
-homebrew = "frais.plugins.homebrew:HomebrewPlugin"
-npm = "frais.plugins.npm:NpmPlugin"
+applications = "frais.plugins.applications.plugin:ApplicationsPlugin"
+homebrew = "frais.plugins.homebrew.plugin:HomebrewPlugin"
+npm = "frais.plugins.npm.plugin:NpmPlugin"
 ```
 
 ## PluginScanResult
@@ -184,11 +199,11 @@ Two layers of concurrency:
 
 ## Progress bar
 
-`_scan_core.run_scan_phase()` renders a Rich `Progress` bar. Each plugin gets one task row labeled with its `scan_steps`. The `on_progress` callback updates the task's description (step name) and completed/total. Per-task `TimeElapsedColumn` shows live elapsed time independently. After all scans, the total time (= max scan time + summarize time) is printed.
+`_scan_core.run_scan_phase()` delegates Rich rendering to `ui/scan_progress.py`. Each plugin gets one task row labeled with its `scan_steps`. The `on_progress` callback updates the task's description (step name) and completed/total. Per-task `TimeElapsedColumn` shows live elapsed time independently. After all scans, the total time (= max scan time + summarize time) is printed.
 
 ## Research flow (ApplicationsPlugin-private)
 
-The LLM 3-step research pipeline lives in `plugins/applications/_research.py` — an internal implementation detail of `ApplicationsPlugin.scan()`, not a general capability.
+The LLM 3-step research pipeline lives in `plugins/applications/research/` — an internal implementation detail of `ApplicationsPlugin.scan()`, not a general capability. The module is split by responsibility: `pipeline.py` (orchestration), `prompts.py` (constants), `json_parser.py` (LLM output parsing), `candidate_factory.py` (UpdateCandidate construction), `version_compare.py` (normalization and comparison).
 
 Each non-App Store app goes through a structured 3-step pipeline:
 
@@ -556,6 +571,6 @@ Workflow:
 - **Ignore list**: `~/.frais/config/ignore.txt` stores app IDs to skip during `advise`. Auto-created on first access via `init_ignored()`. Managed via `frais ignore add/remove/list`. Filtered after scan, before research.
 - **Plugin discovery**: `registry.py` uses `importlib.metadata.entry_points(group="frais.plugins")` to discover all plugins at runtime. Built-in plugins (applications, homebrew, npm) are always present. Failed loads are logged, not fatal.
 - **Plugin persistence**: `store/plugin_store.py` manages `~/.frais/config/plugins.toml`. First run auto-creates the file with all discovered plugins set to their defaults. `plugins enable/disable` persist state. `select_plugins()` precedence: `--plugins` (explicit) overrides persisted config; default path uses `enabled_by_default` when not persisted.
-- **Ctrl+C handling**: `advise` and `scan` register a SIGINT handler before entering the Progress/ThreadPoolExecutor block. The handler uses `os.write(1, b"\033[?25h\n")` (wrapped in `try/except OSError`) to directly write the cursor-show ANSI escape to the stdout fd — bypassing Rich's internal segment buffer, which can swallow escapes when a nested `with self.console:` context is held (e.g. by Progress's auto-refresh thread). Then `os._exit(130)`. Original handler is restored via `try/finally`. Signal handler (not KeyboardInterrupt) is needed because ThreadPoolExecutor.__exit__ blocks on worker threads. The handler must only call async-signal-safe functions (`os.write`, `os._exit`) — no logging, no Rich API calls, no string formatting.
+- **Ctrl+C handling**: `advise` and `scan` use `commands/_signal.install_interrupt_handler()` — a shared SIGINT handler. It uses `os.write(1, b"\033[?25h\n")` (wrapped in `try/except OSError`) to directly write the cursor-show ANSI escape to the stdout fd — bypassing Rich's internal segment buffer, which can swallow escapes when a nested `with self.console:` context is held (e.g. by Progress's auto-refresh thread). Then `os._exit(130)`. Original handler is restored via `try/finally`. Signal handler (not KeyboardInterrupt) is needed because ThreadPoolExecutor.__exit__ blocks on worker threads. The handler must only call async-signal-safe functions (`os.write`, `os._exit`) — no logging, no Rich API calls, no string formatting.
 - **Atomic writes**: Config and state files (`config.toml`, `ignore.txt`, `plugins.toml`, `last_advice.json`) are written to a `.tmp` sibling then atomically renamed via `Path.replace()` to prevent truncated/corrupt reads on concurrent access or crash.
-- **Subprocess env isolation**: All subprocess calls (`run_json()` in `plugins/subprocess_json.py`, `_brew_uses()` in `plugins/homebrew.py`, `_signing_summary()` and `_quarantine_summary()` in `plugins/applications/__init__.py`) clear `DYLD_LIBRARY_PATH` from the subprocess environment to prevent PyInstaller-bundled dylibs from interfering with system commands.
+- **Subprocess env isolation**: All subprocess calls (`run_json()` in `plugins/subprocess_json.py`, `_brew_uses()` in `plugins/homebrew/plugin.py`, `_signing_summary()` and `_quarantine_summary()` in `plugins/applications/source_classifier.py`) clear `DYLD_LIBRARY_PATH` from the subprocess environment to prevent PyInstaller-bundled dylibs from interfering with system commands.

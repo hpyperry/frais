@@ -103,8 +103,8 @@ src/frais/
     registry.py          # Plugin registry; discovers built-in + third-party plugins via entry points
     applications/
       __init__.py        # ApplicationsPlugin + scan_applications, read_application, classify_source
-      _store.py          # iTunes API (check_app_store_version, resolve_app_store_command)
-      _research.py       # LLM 3-step pipeline (generate_search_queries, pick_urls,
+      app_store.py       # iTunes API (check_app_store_version, resolve_app_store_command)
+      research/          # LLM 3-step pipeline (split from monolithic _research.py)
                         #   extract_version) + version helpers + research_application_update
     homebrew/
       __init__.py        # HomebrewPlugin + brew info/uses helpers
