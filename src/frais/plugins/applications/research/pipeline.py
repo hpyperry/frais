@@ -43,7 +43,7 @@ def pick_urls(llm: LLMClient, item: SoftwareItem, search_results: list[dict[str,
     return _parse_json_list(text)[:3]
 
 
-def extract_version(llm: LLMClient, item: SoftwareItem, fetched_content: dict[str, str]) -> ResearchResult:
+def extract_version(llm: LLMClient, item: SoftwareItem, fetched_content: dict[str, str]) -> ResearchResult | None:
     """Step 3: extract version info from fetched page content."""
     content_text = json.dumps(
         [{"url": url, "content": content[:3000]} for url, content in fetched_content.items()],
@@ -58,12 +58,16 @@ def extract_version(llm: LLMClient, item: SoftwareItem, fetched_content: dict[st
     logger.debug("step3 response for %s: %s", item.name, text)
     data = _parse_json_object(text)
     logger.debug("step3 result for %s: %s", item.name, data)
+    confidence = data.get("confidence") or "unknown"
+    if confidence == "none":
+        logger.info("research step3 name=%s skipped (page content mismatch)", item.name)
+        return None
     return ResearchResult(
         latest_version=data.get("latest_version"),
         release_notes_url=data.get("release_notes_url"),
         download_url=data.get("download_url"),
         source_repo_url=data.get("source_repo_url"),
-        confidence=data.get("confidence") or "unknown",
+        confidence=confidence,
         evidence=_ensure_list(data.get("evidence")),
         release_notes=data.get("release_notes"),
     )
