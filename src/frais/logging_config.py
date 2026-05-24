@@ -49,13 +49,8 @@ def _add_file_handler(
 
 def configure_logging(debug: bool, log_file: str | None, no_log: bool) -> None:
     file_level = logging.DEBUG if debug else logging.INFO
-    stderr_level = logging.DEBUG if debug else logging.CRITICAL
 
-    stderr_handler = logging.StreamHandler()
-    stderr_handler.setLevel(stderr_level)
-    stderr_handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=LOG_DATE_FORMAT))
-
-    handlers: list[logging.Handler] = [stderr_handler]
+    handlers: list[logging.Handler] = []
 
     if not no_log:
         root_log_path = Path(log_file) if log_file else DEFAULT_LOG_FILE

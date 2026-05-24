@@ -407,20 +407,20 @@ def test_print_advise_result_shows_updates_section(capsys) -> None:
 # --- _configure_logging ---
 
 
-def test_configure_logging_stderr_level_default(tmp_path) -> None:
+def test_configure_logging_file_level_default(tmp_path) -> None:
     log_path = tmp_path / "test.log"
     _configure_logging(debug=False, log_file=str(log_path), no_log=False)
     root = logging.getLogger()
-    stderr_handler = next(h for h in root.handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler))
-    assert stderr_handler.level == logging.CRITICAL
+    file_handler = next(h for h in root.handlers if isinstance(h, logging.FileHandler))
+    assert file_handler.level == logging.INFO
 
 
-def test_configure_logging_stderr_level_debug(tmp_path) -> None:
+def test_configure_logging_file_level_debug(tmp_path) -> None:
     log_path = tmp_path / "test.log"
     _configure_logging(debug=True, log_file=str(log_path), no_log=False)
     root = logging.getLogger()
-    stderr_handler = next(h for h in root.handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler))
-    assert stderr_handler.level == logging.DEBUG
+    file_handler = next(h for h in root.handlers if isinstance(h, logging.FileHandler))
+    assert file_handler.level == logging.DEBUG
 
 
 def test_configure_logging_rotates_large_file(monkeypatch, tmp_path) -> None:
