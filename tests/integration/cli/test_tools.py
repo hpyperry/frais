@@ -30,8 +30,7 @@ def test_web_search_returns_formatted_results(monkeypatch) -> None:
 
 
 def test_web_search_returns_empty_on_failure(monkeypatch) -> None:
-    monkeypatch.setattr("frais.web_tools._ddgs", None)
-    monkeypatch.setattr("frais.web_tools.DDGS", lambda **kw: exec('raise RuntimeError("search down")'))
+    monkeypatch.setattr("frais.web_tools._get_ddgs", lambda: exec('raise RuntimeError("search down")'))
     result = web_search("test query")
     assert result == []
 

@@ -5,6 +5,10 @@
 
 # 遗留问题
 
+## bug
+1. /Users/hpy/Workspace/frais/src/frais/llm/_openai_compatible.py 的 OpenAICompatibleClient 需要更改为 openai 的 sdk实现
+2. deepseek的thinking，需要放到extra_body使用
+
 ## 优化
 - cli输出/json输出，需要根据plugin分组
 - applications插件的research流程，耗时问题

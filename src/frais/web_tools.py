@@ -1,9 +1,8 @@
-from __future__ import annotations
-
 import json
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import cache
 from typing import Any
 
 import httpx
@@ -15,34 +14,28 @@ _SEARCH_MAX_RESULTS = 5
 _FETCH_MAX_CHARS = 5000
 _GITHUB_REPO_RE = re.compile(r"github\.com/([^/]+/[^/]+?)(?:\.git)?(?:/|$)")
 
-_fetch_client: httpx.Client | None = None
-_ddgs: DDGS | None = None
 
-def _get_ddgs() -> DDGS:
-    global _ddgs
-    if _ddgs is None:
-        _ddgs = DDGS()
-    return _ddgs
+@cache
+def _get_ddgs() -> Any:
+    return DDGS()
 
 
-def _get_fetch_client() -> httpx.Client:
-    global _fetch_client
-    if _fetch_client is None:
-        _fetch_client = httpx.Client(
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/148.0.0.0 Safari/537.36"
-                ),
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Accept-Encoding": "gzip, deflate",
-            },
-            timeout=httpx.Timeout(8.0, read=15.0),
-            follow_redirects=True,
-        )
-    return _fetch_client
+@cache
+def _get_fetch_client() -> Any:
+    return httpx.Client(
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/148.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate",
+        },
+        timeout=httpx.Timeout(8.0, read=15.0),
+        follow_redirects=True,
+    )
 
 
 def web_search(query: str) -> list[dict[str, str]]:
