@@ -16,6 +16,14 @@ _FETCH_MAX_CHARS = 5000
 _GITHUB_REPO_RE = re.compile(r"github\.com/([^/]+/[^/]+?)(?:\.git)?(?:/|$)")
 
 _fetch_client: httpx.Client | None = None
+_ddgs: DDGS | None = None
+
+
+def _get_ddgs() -> DDGS:
+    global _ddgs
+    if _ddgs is None:
+        _ddgs = DDGS()
+    return _ddgs
 
 
 def _get_fetch_client() -> httpx.Client:
@@ -43,7 +51,7 @@ def web_search(query: str) -> list[dict[str, str]]:
     logger.debug("web_search query=%s", query)
     try:
         results = []
-        for result in DDGS().text(query, max_results=_SEARCH_MAX_RESULTS):
+        for result in _get_ddgs().text(query, max_results=_SEARCH_MAX_RESULTS):
             results.append({
                 "title": result.get("title", ""),
                 "url": result.get("href", ""),
