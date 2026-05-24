@@ -22,7 +22,16 @@ def _get_fetch_client() -> httpx.Client:
     global _fetch_client
     if _fetch_client is None:
         _fetch_client = httpx.Client(
-            headers={"User-Agent": "frais/0.1.0"},
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/148.0.0.0 Safari/537.36"
+                ),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate",
+            },
             timeout=httpx.Timeout(8.0, read=15.0),
             follow_redirects=True,
         )
