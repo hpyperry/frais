@@ -112,8 +112,6 @@ class NpmPlugin(ScannerPlugin):
             item=item,
             latest_version=latest,
             dependency_impact=DependencyImpact(impact_level="low"),
-            risk_level="low",
-            recommended_action="Update",
             can_auto_update=True,
             command=["npm", "install", "-g", name],
             evidence=[f"https://www.npmjs.com/package/{name}"],

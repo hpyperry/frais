@@ -6,7 +6,6 @@ from typing import Annotated, Any
 
 import typer
 from rich.console import Console
-from rich.padding import Padding
 
 from ..models import SourceKind, UpdateCandidate
 from ..paths import ADVICE_CACHE
@@ -69,9 +68,10 @@ def _execute_update_loop(
             f"[green]{candidate.latest_version or 'unknown'}[/green]"
         )
         if candidate.ai_summary:
+            from rich.markdown import Markdown
             console.print()
             console.print("  [bold cyan]AI Analysis[/]")
-            console.print(Padding(candidate.ai_summary, (0, 0, 0, 4)))
+            console.print(Markdown(candidate.ai_summary))
         else:
             console.print()
             console.print(f"  [dim]No AI summary yet — `frais summarize {candidate.item.id}`[/dim]")

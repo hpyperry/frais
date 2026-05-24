@@ -90,9 +90,9 @@ class UpdateCandidate:
     latest_version: str | None = None
     release_notes: str | None = None
     dependency_impact: DependencyImpact = field(default_factory=DependencyImpact)
-    risk_level: str = "unknown"
+    risk_level: str | None = None
     ai_summary: str | None = None
-    recommended_action: str = "No action"
+    recommended_action: str | None = None
     can_auto_update: bool = False
     command: list[str] = field(default_factory=list)
     evidence: list[str] = field(default_factory=list)

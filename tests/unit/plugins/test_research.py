@@ -131,7 +131,7 @@ def test_local_build_can_be_update_candidate(monkeypatch) -> None:
 
     assert candidate is not None
     assert candidate.latest_version == "0.4.0"
-    assert candidate.recommended_action == "Rebuild"
+    assert candidate.recommended_action is None
     assert not candidate.can_auto_update
 
 
@@ -257,16 +257,15 @@ def test_make_candidate_homebrew_cask_command() -> None:
 def test_make_candidate_local_build_action() -> None:
     item = SoftwareItem(id="com.example.tool", name="Tool", kind="application", source=SourceKind.LOCAL_BUILD, current_version="0.3.0")
     c = research._make_candidate(item, "0.4.0")
-    assert c.recommended_action == "Rebuild"
+    assert c.recommended_action is None
     assert c.can_auto_update is False
 
 
-def test_make_candidate_risk_level() -> None:
+def test_make_candidate_defaults_none() -> None:
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
-    c_high = research._make_candidate(item, "2.0", result=ResearchResult(confidence="high"))
-    assert c_high.risk_level == "low"
-    c_medium = research._make_candidate(item, "2.0", result=ResearchResult(confidence="medium"))
-    assert c_medium.risk_level == "unknown"
+    c = research._make_candidate(item, "2.0", result=ResearchResult(confidence="high"))
+    assert c.risk_level is None
+    assert c.recommended_action is None
 
 
 # --- _is_newer fallback paths ---

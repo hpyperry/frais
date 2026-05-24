@@ -57,7 +57,7 @@ def build_summary_prompt(candidate: UpdateCandidate) -> str:
 def summarize_candidate(llm: LLMClient, candidate: UpdateCandidate) -> str:
     """Generate a Chinese-language update recommendation for a candidate."""
     prompt = build_summary_prompt(candidate)
-    return llm.chat("", prompt, max_tokens=500)
+    return llm.chat("", prompt)
 
 
 def _load_cached_scan_or_exit(json_output: bool) -> Any:
@@ -170,4 +170,8 @@ def summarize(
     if json_output:
         print_json_success(item_id=item_id, ai_summary=summary)
     else:
-        console.print(summary or "(no summary generated)")
+        if summary:
+            from rich.markdown import Markdown
+            console.print(Markdown(summary))
+        else:
+            console.print("(no summary generated)")

@@ -101,7 +101,7 @@ class OpenAICompatibleClient(LLMClient):
                 response_text=response.text,
             ) from exc
         message: dict[str, Any] = body["choices"][0]["message"]
-        text = message.get("content") or message.get("reasoning_content") or ""
+        text: str | None = message.get("content")
         if not text:
             raise LLMRequestError(
                 f"LLM returned empty content at {url}. "
