@@ -4,7 +4,7 @@ import json as _json
 import logging
 from typing import Any
 
-import httpx
+import openai
 
 from ..store.config_store import ProviderConfig
 from ._base import LLMClient, LLMRequestError
@@ -15,20 +15,21 @@ logger = logging.getLogger(__name__)
 class OpenAICompatibleClient(LLMClient):
     """Base client for OpenAI-compatible chat completions APIs.
 
-    Handles Bearer auth, /v1/chat/completions endpoint, and
-    choices[0].message.content response parsing. Subclasses override
-    _apply_thinking() to inject provider-specific thinking parameters.
+    Uses the OpenAI Python SDK for typed request/response handling.
+    Provider-specific behavior (e.g. thinking control) is injected via
+    _apply_thinking() which returns extra_body fields.
     """
 
     def __init__(self, config: ProviderConfig) -> None:
         super().__init__(config)
-        self._http = httpx.Client(
-            headers={"Authorization": f"Bearer {config.api_key}"},
-            timeout=httpx.Timeout(15.0, read=300.0),
+        self._client = openai.OpenAI(
+            api_key=config.api_key,
+            base_url=config.provider.base_url,
+            timeout=300.0,
         )
 
     def close(self) -> None:
-        self._http.close()
+        self._client.close()
 
     def chat(self, system: str, user: str, max_tokens: int | None = None,
              *, disable_thinking: bool = False) -> str:
@@ -36,14 +37,10 @@ class OpenAICompatibleClient(LLMClient):
         thinking_enabled = self._resolve_thinking(disable_thinking)
         payload = self._build_payload(messages, max_tokens)
         if self._model_supports_thinking():
-            self._apply_thinking(payload, thinking_enabled)
-        return self._post(payload)
-
-    def _model_supports_thinking(self) -> bool:
-        for m in self.config.provider.models:
-            if m.id == self.config.model:
-                return m.supports_thinking
-        return False
+            extra = self._apply_thinking(thinking_enabled)
+            if extra is not None:
+                payload["extra_body"] = extra
+        return self._create(payload)
 
     def _build_messages(self, system: str, user: str) -> list[dict[str, str]]:
         messages: list[dict[str, str]] = []
@@ -51,18 +48,6 @@ class OpenAICompatibleClient(LLMClient):
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": user})
         return messages
-
-    def _resolve_thinking(self, disable_thinking: bool) -> bool:
-        """Determine the effective thinking state.
-
-        Thinking is enabled only when: user config says yes, caller hasn't
-        overridden with disable_thinking, and the selected model supports it.
-        """
-        if disable_thinking:
-            return False
-        if not self.config.thinking:
-            return False
-        return self._model_supports_thinking()
 
     def _build_payload(self, messages: list[dict[str, str]],
                        max_tokens: int | None) -> dict[str, Any]:
@@ -75,51 +60,55 @@ class OpenAICompatibleClient(LLMClient):
             payload["max_tokens"] = max_tokens
         return payload
 
-    def _apply_thinking(self, payload: dict[str, Any], thinking_enabled: bool) -> None:
-        """Hook for subclasses to inject thinking parameters into the payload.
+    def _apply_thinking(self, thinking_enabled: bool) -> dict[str, Any] | None:
+        """Hook for subclasses to return extra_body fields for thinking control.
 
-        Default is no-op. Provider-specific subclasses override this to add
-        thinking control fields (e.g. DeepSeek's {"thinking": {"type": "disabled"}}).
+        Default is no-op. Provider-specific subclasses override this to return
+        a dict of extra body parameters (e.g. {"thinking": {"type": "disabled"}}).
+        These are passed via the OpenAI SDK's extra_body parameter.
         """
-        return
+        return None
 
-    def _post(self, payload: dict[str, Any]) -> str:
-        url = self.config.provider.chat_url
-        logger.debug("llm request url=%s model=%s", url, self.config.model)
+    def _create(self, payload: dict[str, Any]) -> str:
+        logger.debug(
+            "llm request base_url=%s model=%s",
+            self.config.provider.base_url,
+            self.config.model,
+        )
         logger.debug(
             "llm request payload=%s",
             _json.dumps(payload, ensure_ascii=False)[:2000],
         )
-        response = self._http.post(url, json=payload)
         try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            raise LLMRequestError.from_response(exc.response) from exc
-        try:
-            body: dict[str, Any] = response.json()
-        except (_json.JSONDecodeError, ValueError) as exc:
+            response = self._client.chat.completions.create(**payload)
+        except openai.APIStatusError as exc:
+            body = str(exc.body) if exc.body else ""
             raise LLMRequestError(
-                f"LLM returned non-JSON response at {url}. "
-                f"Body preview: {response.text[:200]!r}",
-                status_code=response.status_code,
-                response_text=response.text,
+                f"LLM request failed with HTTP {exc.status_code}. "
+                f"Response body: {body[:300] or '<empty>'}",
+                status_code=exc.status_code,
+                response_text=body[:300] if body else "",
             ) from exc
-        message: dict[str, Any] = body["choices"][0]["message"]
-        text: str | None = message.get("content")
-        if not text:
+        except (openai.APIConnectionError, openai.APITimeoutError) as exc:
             raise LLMRequestError(
-                f"LLM returned empty content at {url}. "
-                f"Message keys: {list(message)}",
-                status_code=response.status_code,
-                response_text=_json.dumps(message),
+                f"LLM connection failed: {exc.message}",
+            ) from exc
+
+        text: str | None = response.choices[0].message.content
+        if not text:
+            message_dict = response.choices[0].message.model_dump() if response.choices else {}
+            raise LLMRequestError(
+                f"LLM returned empty content. "
+                f"Message keys: {list(message_dict)}",
+                status_code=200,
+                response_text=_json.dumps(message_dict),
             )
         logger.debug("llm response content=%s", text[:2000] if text else "(empty)")
-        usage = body.get("usage", {})
-        if usage:
+        if response.usage:
             logger.debug(
                 "llm token usage prompt=%s completion=%s total=%s",
-                usage.get("prompt_tokens"),
-                usage.get("completion_tokens"),
-                usage.get("total_tokens"),
+                response.usage.prompt_tokens,
+                response.usage.completion_tokens,
+                response.usage.total_tokens,
             )
         return text

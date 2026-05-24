@@ -344,7 +344,7 @@ def test_config_show_configured(monkeypatch) -> None:
     from frais.store.config_store import ProviderConfig
 
     fake_models = [type("M", (), {"id": "test", "name": "Test", "supports_thinking": False})()]
-    fake_provider = type("P", (), {"id": "test", "name": "Test", "chat_url": "https://test", "models": fake_models})()
+    fake_provider = type("P", (), {"id": "test", "name": "Test", "base_url": "https://test", "models": fake_models})()
     fake_config = ProviderConfig(provider=fake_provider, model="test", api_key="sk-1234",
                                  api_key_source="env")
     monkeypatch.setattr("frais.commands.config.load_config", lambda: fake_config)
@@ -758,7 +758,7 @@ def test_llm_client_init_error() -> None:
     from frais.store.config_store import ProviderConfig
 
     fake_models = [ModelInfo(id="test", name="Test")]
-    fake_provider = type("P", (), {"id": "test", "chat_url": "https://test", "models": fake_models})()
+    fake_provider = type("P", (), {"id": "test", "base_url": "https://test", "models": fake_models})()
 
     # Config not ready
     config = ProviderConfig(provider=fake_provider, model="", api_key="")

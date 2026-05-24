@@ -41,6 +41,24 @@ class LLMClient(ABC):
                 f"test_connection() is not available for this client."
             )
 
+    def _model_supports_thinking(self) -> bool:
+        for m in self.config.provider.models:
+            if m.id == self.config.model:
+                return m.supports_thinking
+        return False
+
+    def _resolve_thinking(self, disable_thinking: bool) -> bool:
+        """Determine the effective thinking state.
+
+        Thinking is enabled only when: user config says yes, caller hasn't
+        overridden with disable_thinking, and the selected model supports it.
+        """
+        if disable_thinking:
+            return False
+        if not self.config.thinking:
+            return False
+        return self._model_supports_thinking()
+
 
 class LLMRequestError(RuntimeError):
     """Error raised when an LLM API request fails."""

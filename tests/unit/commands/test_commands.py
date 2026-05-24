@@ -243,7 +243,7 @@ class _fake_llm_config:
     provider = type("P", (), {
         "id": "deepseek",
         "name": "deepseek",
-        "chat_url": "https://api.deepseek.com/v1/chat/completions",
+        "base_url": "https://api.deepseek.com",
         "models": [type("M", (), {"id": "deepseek-v4-flash", "supports_thinking": True})()],
     })()
     model = "deepseek-v4-flash"

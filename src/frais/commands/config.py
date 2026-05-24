@@ -366,12 +366,12 @@ def config_test(
         print_json_success(
             provider=config.provider.name,
             model=config.model,
-            url=config.provider.chat_url,
+            url=config.provider.base_url,
             response=text.strip(),
         )
         return
 
     console.print(f"Provider: {config.provider.name}")
     console.print(f"Model: {config.model}")
-    console.print(f"Chat completions URL: {config.provider.chat_url}")
+    console.print(f"Base URL: {config.provider.base_url}")
     console.print(f"LLM test response: {text.strip()}")

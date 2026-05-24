@@ -380,7 +380,7 @@ Every error response includes a `reason` field the LLM can branch on:
   "ok": true,
   "provider": "deepseek",
   "model": "deepseek-v4-flash",
-  "url": "https://api.deepseek.com/v1/chat/completions",
+  "url": "https://api.deepseek.com",
   "response": "LLM response text"
 }
 

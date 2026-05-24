@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import anthropic
 import httpx
+import openai
 import pytest
 
 from frais.commands.summarize import summarize_candidate
@@ -39,27 +41,50 @@ def _test_config(**kw) -> ProviderConfig:
     return ProviderConfig(**(defaults | kw))
 
 
-def _fake_response(json_data: dict) -> httpx.Response:
-    return httpx.Response(200, json=json_data, request=httpx.Request("POST", "https://api.test.com"))
+class _FakeMessage:
+    def __init__(self, content: str | None) -> None:
+        self.content = content
+
+    def model_dump(self) -> dict:
+        return {"content": self.content}
+
+
+class _FakeChoice:
+    def __init__(self, content: str | None) -> None:
+        self.message = _FakeMessage(content)
+
+
+class _FakeUsage:
+    prompt_tokens = 10
+    completion_tokens = 20
+    total_tokens = 30
+
+
+class _FakeResponse:
+    def __init__(self, content: str | None, *, usage: _FakeUsage | None = None) -> None:
+        self.choices = [_FakeChoice(content)]
+        self.usage = usage
+
+
+class _FakeTextBlock:
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.type = "text"
+
+
+class _FakeAnthropicResponse:
+    def __init__(self, text: str, *, usage: _FakeUsage | None = None) -> None:
+        self.content = [_FakeTextBlock(text)]
+        self.usage = usage
 
 
 # --- provider tests ---
 
 
-def test_provider_chat_url_appends_v1_chat_completions() -> None:
+def test_provider_base_url() -> None:
     provider = get_provider("deepseek")
     assert provider is not None
-    assert provider.chat_url == "https://api.deepseek.com/v1/chat/completions"
-
-
-def test_provider_chat_url_accepts_existing_v1_path() -> None:
-    p = _test_provider(id="test", base_url="https://api.example.com/v1")
-    assert p.chat_url == "https://api.example.com/v1/chat/completions"
-
-
-def test_provider_chat_url_handles_trailing_slash() -> None:
-    p = _test_provider(id="test", base_url="https://api.example.com/v1/")
-    assert p.chat_url == "https://api.example.com/v1/chat/completions"
+    assert provider.base_url == "https://api.deepseek.com"
 
 
 def test_get_provider_returns_none_for_unknown() -> None:
@@ -71,10 +96,9 @@ def test_all_providers_have_models() -> None:
         assert len(p.models) > 0, f"{p.id} has no models"
 
 
-def test_all_providers_have_chat_url() -> None:
+def test_all_providers_have_base_url() -> None:
     for p in PROVIDERS:
-        url = p.chat_url
-        assert url.endswith("/chat/completions"), f"{p.id} chat_url: {url}"
+        assert p.base_url.startswith("https://"), f"{p.id} base_url: {p.base_url}"
 
 
 # --- factory tests ---
@@ -96,7 +120,7 @@ def test_get_client_unknown_pair_raises() -> None:
         get_client(config, protocol="nonexistent")
 
 
-def test_get_client_returns_anthropic_stub() -> None:
+def test_get_client_returns_deepseek_anthropic_client() -> None:
     config = ProviderConfig(
         provider=get_provider("deepseek"),
         model="deepseek-v4-flash",
@@ -104,8 +128,7 @@ def test_get_client_returns_anthropic_stub() -> None:
     )
     client = get_client(config, protocol="anthropic")
     assert isinstance(client, DeepSeekAnthropicClient)
-    with pytest.raises(NotImplementedError):
-        client.chat("", "hello")
+    client.close()
 
 
 # --- LLMClient ABC tests ---
@@ -126,6 +149,12 @@ class TestOpenAICompatibleClientInit:
     def test_succeeds_when_config_ready(self) -> None:
         client = OpenAICompatibleClient(_test_config())
         assert client.config.model == "test-model"
+        client.close()
+
+    def test_uses_provider_base_url(self) -> None:
+        config = _test_config()
+        client = OpenAICompatibleClient(config)
+        assert client._client.base_url == "https://api.test.com"
         client.close()
 
 
@@ -150,33 +179,22 @@ class TestTestConnection:
 
 
 class TestChat:
-    def test_extracts_content_from_response(self, monkeypatch) -> None:
-        def fake_post(inst, payload):
-            return "hello"
-        monkeypatch.setattr(OpenAICompatibleClient, "_post", fake_post)
+    def test_extracts_content_from_create(self, monkeypatch) -> None:
+        monkeypatch.setattr(OpenAICompatibleClient, "_create", lambda s, p: "hello")
         config = _test_config()
         client = OpenAICompatibleClient(config)
         result = client.chat("system prompt", "user prompt")
         assert result == "hello"
         client.close()
 
-    def test_falls_back_to_reasoning_content(self, monkeypatch) -> None:
-        def fake_post(inst, payload):
-            return "thinking..."
-        monkeypatch.setattr(OpenAICompatibleClient, "_post", fake_post)
-        client = OpenAICompatibleClient(_test_config())
-        result = client.chat("", "user prompt")
-        assert result == "thinking..."
-        client.close()
-
     def test_excludes_system_message_when_empty(self, monkeypatch) -> None:
         captured: dict = {}
 
-        def fake_post(inst, payload):
+        def fake_create(inst, payload):
             captured.update(payload)
-            return {"choices": [{"message": {"content": "ok"}}]}
+            return "ok"
 
-        monkeypatch.setattr(OpenAICompatibleClient, "_post", fake_post)
+        monkeypatch.setattr(OpenAICompatibleClient, "_create", fake_create)
         client = OpenAICompatibleClient(_test_config())
         client.chat("", "hello")
         client.close()
@@ -185,35 +203,57 @@ class TestChat:
         assert messages[0] == {"role": "user", "content": "hello"}
 
 
-class TestPost:
-    def test_builds_payload_correctly(self, monkeypatch) -> None:
+class TestCreate:
+    def test_passes_payload_to_sdk(self, monkeypatch) -> None:
         captured = {}
 
-        def fake_post(self, url, **kw):
-            captured.update(kw)
-            return _fake_response({"choices": [{"message": {"content": "ok"}}]})
+        def fake_create(**kwargs):
+            captured.update(kwargs)
+            return _FakeResponse("ok")
 
-        monkeypatch.setattr(httpx.Client, "post", fake_post)
         client = OpenAICompatibleClient(_test_config())
-        client._post({"model": "test-model", "messages": [{"role": "user", "content": "hi"}], "temperature": 0.2})
-        assert captured["json"]["model"] == "test-model"
-        assert captured["json"]["messages"] == [{"role": "user", "content": "hi"}]
-        assert captured["json"]["temperature"] == 0.2
+        monkeypatch.setattr(client._client.chat.completions, "create", fake_create)
+        client._create({"model": "test-model", "messages": [{"role": "user", "content": "hi"}], "temperature": 0.2})
+        assert captured["model"] == "test-model"
+        assert captured["messages"] == [{"role": "user", "content": "hi"}]
+        assert captured["temperature"] == 0.2
         client.close()
 
-    def test_raises_llm_request_error_on_http_failure(self, monkeypatch) -> None:
-        bad_response = httpx.Response(500, json={"error": "server error"},
-                                      request=httpx.Request("POST", "https://api.test.com"))
+    def test_raises_llm_request_error_on_api_status_error(self, monkeypatch) -> None:
+        fake_response = httpx.Response(500, json={"error": "server error"},
+                                        request=httpx.Request("POST", "https://api.test.com"))
+        error = openai.APIStatusError("server error", response=fake_response, body={"error": "server error"})
 
-        def return_bad_response(self, url, **kw):
-            return bad_response
+        def fake_create(**kwargs):
+            raise error
 
-        monkeypatch.setattr(httpx.Client, "post", return_bad_response)
         client = OpenAICompatibleClient(_test_config())
+        monkeypatch.setattr(client._client.chat.completions, "create", fake_create)
         with pytest.raises(LLMRequestError) as exc_info:
-            client._post({"model": "m", "messages": [], "temperature": 0.2})
+            client._create({"model": "m", "messages": [], "temperature": 0.2})
         assert exc_info.value.status_code == 500
         client.close()
+
+    def test_raises_llm_request_error_on_connection_error(self, monkeypatch) -> None:
+        def fake_create(**kwargs):
+            raise openai.APIConnectionError(request=httpx.Request("POST", "https://api.test.com"))
+
+        client = OpenAICompatibleClient(_test_config())
+        monkeypatch.setattr(client._client.chat.completions, "create", fake_create)
+        with pytest.raises(LLMRequestError, match="LLM connection failed"):
+            client._create({"model": "m", "messages": [], "temperature": 0.2})
+        client.close()
+
+    def test_raises_llm_request_error_on_empty_content(self, monkeypatch) -> None:
+        def fake_create(**kwargs):
+            return _FakeResponse(None)
+
+        client = OpenAICompatibleClient(_test_config())
+        monkeypatch.setattr(client._client.chat.completions, "create", fake_create)
+        with pytest.raises(LLMRequestError, match="empty content"):
+            client._create({"model": "m", "messages": [], "temperature": 0.2})
+        client.close()
+
 
 
 # --- thinking tests ---
@@ -226,64 +266,64 @@ def _config_with_thinking(thinking_enabled: bool, model_supports: bool = True) -
     return ProviderConfig(provider=provider, model="test-model", api_key="sk-test", thinking=thinking_enabled)
 
 
-def test_thinking_disabled_injects_body_param(monkeypatch) -> None:
+def test_thinking_disabled_injects_extra_body(monkeypatch) -> None:
     captured: dict = {}
 
-    def fake_post(inst, payload):
+    def fake_create(inst, payload):
         captured.update(payload)
-        return {"choices": [{"message": {"content": "ok"}}]}
+        return "ok"
 
-    monkeypatch.setattr(OpenAICompatibleClient, "_post", fake_post)
+    monkeypatch.setattr(OpenAICompatibleClient, "_create", fake_create)
     config = _config_with_thinking(thinking_enabled=False)
     client = DeepSeekOpenAIClient(config)
     client.chat("", "hello")
     client.close()
-    assert captured.get("thinking") == {"type": "disabled"}
+    assert captured.get("extra_body") == {"thinking": {"type": "disabled"}}
 
 
-def test_thinking_enabled_no_injection(monkeypatch) -> None:
+def test_thinking_enabled_injects_extra_body(monkeypatch) -> None:
     captured: dict = {}
 
-    def fake_post(inst, payload):
+    def fake_create(inst, payload):
         captured.update(payload)
-        return {"choices": [{"message": {"content": "ok"}}]}
+        return "ok"
 
-    monkeypatch.setattr(OpenAICompatibleClient, "_post", fake_post)
+    monkeypatch.setattr(OpenAICompatibleClient, "_create", fake_create)
     config = _config_with_thinking(thinking_enabled=True)
     client = DeepSeekOpenAIClient(config)
     client.chat("", "hello")
     client.close()
-    assert "thinking" not in captured
+    assert captured.get("extra_body") == {"thinking": {"type": "enabled"}}
 
 
 def test_thinking_skipped_for_unsupported_model(monkeypatch) -> None:
     captured: dict = {}
 
-    def fake_post(inst, payload):
+    def fake_create(inst, payload):
         captured.update(payload)
-        return {"choices": [{"message": {"content": "ok"}}]}
+        return "ok"
 
-    monkeypatch.setattr(OpenAICompatibleClient, "_post", fake_post)
+    monkeypatch.setattr(OpenAICompatibleClient, "_create", fake_create)
     config = _config_with_thinking(thinking_enabled=True, model_supports=False)
     client = DeepSeekOpenAIClient(config)
     client.chat("", "hello", disable_thinking=False)
     client.close()
-    assert "thinking" not in captured
+    assert "extra_body" not in captured
 
 
 def test_disable_thinking_overrides_config(monkeypatch) -> None:
     captured: dict = {}
 
-    def fake_post(inst, payload):
+    def fake_create(inst, payload):
         captured.update(payload)
-        return {"choices": [{"message": {"content": "ok"}}]}
+        return "ok"
 
-    monkeypatch.setattr(OpenAICompatibleClient, "_post", fake_post)
+    monkeypatch.setattr(OpenAICompatibleClient, "_create", fake_create)
     config = _config_with_thinking(thinking_enabled=True)
     client = DeepSeekOpenAIClient(config)
     client.chat("", "hello", disable_thinking=True)
     client.close()
-    assert captured.get("thinking") == {"type": "disabled"}
+    assert captured.get("extra_body") == {"thinking": {"type": "disabled"}}
 
 
 # --- _resolve_thinking unit tests ---
@@ -322,28 +362,121 @@ def test_resolve_thinking_model_not_found() -> None:
     client.close()
 
 
-# --- AnthropicClient stub tests ---
+# --- AnthropicClient tests ---
 
 
-def test_anthropic_client_not_implemented() -> None:
+def test_anthropic_client_apply_thinking_enabled() -> None:
     config = _test_config()
     client = AnthropicClient(config)
-    with pytest.raises(NotImplementedError, match="not yet implemented"):
-        client.chat("", "hello")
+    result = client._apply_thinking(thinking_enabled=True)
+    assert result == {"type": "enabled", "budget_tokens": 4096}
     client.close()
 
 
-def test_deepseek_anthropic_client_is_stub() -> None:
-    config = ProviderConfig(
-        provider=get_provider("deepseek"),
-        model="deepseek-v4-flash",
-        api_key="sk-test",
-    )
-    client = DeepSeekAnthropicClient(config)
-    assert isinstance(client, AnthropicClient)
-    with pytest.raises(NotImplementedError):
-        client.chat("", "hello")
+def test_anthropic_client_apply_thinking_disabled() -> None:
+    config = _test_config()
+    client = AnthropicClient(config)
+    result = client._apply_thinking(thinking_enabled=False)
+    assert result == {"type": "disabled"}
     client.close()
+
+
+class TestAnthropicCreate:
+    def test_passes_payload_to_sdk(self, monkeypatch) -> None:
+        captured = {}
+
+        def fake_create(**kwargs):
+            captured.update(kwargs)
+            return _FakeAnthropicResponse("ok")
+
+        client = AnthropicClient(_test_config())
+        monkeypatch.setattr(client._client.messages, "create", fake_create)
+        payload = {"model": "test-model", "messages": [{"role": "user", "content": "hi"}],
+                   "temperature": 0.2, "max_tokens": 4096}
+        client._create(payload)
+        assert captured["model"] == "test-model"
+        assert captured["messages"] == [{"role": "user", "content": "hi"}]
+        assert captured["temperature"] == 0.2
+        client.close()
+
+    def test_raises_llm_request_error_on_api_status_error(self, monkeypatch) -> None:
+        fake_response = httpx.Response(500, json={"error": "server error"},
+                                        request=httpx.Request("POST", "https://api.test.com"))
+        error = anthropic.APIStatusError("server error", response=fake_response, body={"error": "server error"})
+
+        def fake_create(**kwargs):
+            raise error
+
+        client = AnthropicClient(_test_config())
+        monkeypatch.setattr(client._client.messages, "create", fake_create)
+        with pytest.raises(LLMRequestError) as exc_info:
+            client._create({"model": "m", "messages": [], "temperature": 0.2, "max_tokens": 100})
+        assert exc_info.value.status_code == 500
+        client.close()
+
+    def test_raises_llm_request_error_on_empty_content(self, monkeypatch) -> None:
+        empty_response = _FakeAnthropicResponse("")  # empty text
+
+        def fake_create(**kwargs):
+            return empty_response
+
+        client = AnthropicClient(_test_config())
+        monkeypatch.setattr(client._client.messages, "create", fake_create)
+        with pytest.raises(LLMRequestError, match="empty content"):
+            client._create({"model": "m", "messages": [], "temperature": 0.2, "max_tokens": 100})
+        client.close()
+
+
+class TestDeepSeekAnthropicClient:
+    def test_is_anthropic_subclass(self) -> None:
+        config = ProviderConfig(
+            provider=get_provider("deepseek"),
+            model="deepseek-v4-flash",
+            api_key="sk-test",
+        )
+        client = DeepSeekAnthropicClient(config)
+        assert isinstance(client, AnthropicClient)
+        client.close()
+
+    def test_apply_thinking_returns_none(self) -> None:
+        config = ProviderConfig(
+            provider=get_provider("deepseek"),
+            model="deepseek-v4-flash",
+            api_key="sk-test",
+        )
+        client = DeepSeekAnthropicClient(config)
+        assert client._apply_thinking(True) is None
+        assert client._apply_thinking(False) is None
+        client.close()
+
+    def test_build_extra_body_injects_thinking(self) -> None:
+        config = ProviderConfig(
+            provider=get_provider("deepseek"),
+            model="deepseek-v4-flash",
+            api_key="sk-test",
+        )
+        client = DeepSeekAnthropicClient(config)
+        assert client._build_extra_body(True) == {"thinking": {"type": "enabled"}}
+        assert client._build_extra_body(False) == {"thinking": {"type": "disabled"}}
+        client.close()
+
+    def test_chat_injects_extra_body(self, monkeypatch) -> None:
+        captured: dict = {}
+
+        def fake_create(inst, payload):
+            captured.update(payload)
+            return "ok"
+
+        monkeypatch.setattr(AnthropicClient, "_create", fake_create)
+        config = ProviderConfig(
+            provider=get_provider("deepseek"),
+            model="deepseek-v4-flash",
+            api_key="sk-test",
+        )
+        client = DeepSeekAnthropicClient(config)
+        client.chat("", "hello")
+        client.close()
+        assert captured.get("extra_body") == {"thinking": {"type": "enabled"}}
 
 
 # --- LLMRequestError tests ---

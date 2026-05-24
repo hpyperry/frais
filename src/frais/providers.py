@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 
@@ -17,13 +16,6 @@ class Provider:
     name: str
     base_url: str
     models: list[ModelInfo]
-
-    @property
-    def chat_url(self) -> str:
-        base = self.base_url.rstrip("/")
-        if re.search(r"/v\d+$", base):
-            return f"{base}/chat/completions"
-        return f"{base}/v1/chat/completions"
 
 
 PROVIDERS: list[Provider] = [
