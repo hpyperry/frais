@@ -10,8 +10,6 @@ import typer
 from ...models import PluginScanResult, SourceKind, SystemProfile, UpdateCandidate
 from ..base import ScannerPlugin
 from .app_store import resolve_app_store_command
-from .discovery import scan_applications
-from .research import research_application_update
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +26,9 @@ class ApplicationsPlugin(ScannerPlugin):
     def scan(self, system: SystemProfile,
              on_progress: Callable[[int, int, int], None] | None = None,
              max_workers: int = 10) -> PluginScanResult:
+        from .discovery import scan_applications
+        from .research import research_application_update
+
         # Step 1: discover all installed applications
         items = scan_applications(system.applications_paths)
         logger.info("applications scan found=%d", len(items))

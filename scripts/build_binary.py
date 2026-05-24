@@ -23,7 +23,7 @@ def main() -> None:
     subprocess.run(
         [
             "pyinstaller",
-            "--onefile",
+            "--onedir",
             "--noupx",
             "--name",
             "frais",
