@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from ....llm import LLMClient
@@ -73,14 +74,22 @@ def research_application_update(llm: LLMClient, item: SoftwareItem) -> UpdateCan
     # Tier 1: App Store apps via iTunes API (~1s)
     latest, track_id = check_app_store_version(item)
     if latest and _is_newer(item.current_version, latest):
+        logger.info("research result name=%s source=itunes version=%s (current=%s)",
+                     item.name, latest, item.current_version or "unknown")
         return _make_candidate(item, latest, source="itunes", app_store_id=track_id)
     if latest:
-        return None  # Confirmed up to date via iTunes
+        logger.info("research result name=%s source=itunes up-to-date (version=%s)", item.name, latest)
+        return None
 
     # Tier 2: LLM-driven structured research (generate queries -> search -> pick URLs -> extract)
+    t0 = time.monotonic()
     result = _llm_structured_research(llm, item)
+    elapsed = time.monotonic() - t0
     if result and result.latest_version and _is_newer(item.current_version, result.latest_version):
+        logger.info("research result name=%s source=llm version=%s (current=%s) elapsed=%.1fs",
+                     item.name, result.latest_version, item.current_version or "unknown", elapsed)
         return _make_candidate(item, result.latest_version, result=result)
+    logger.info("research result name=%s source=llm up-to-date elapsed=%.1fs", item.name, elapsed)
     return None
 
 

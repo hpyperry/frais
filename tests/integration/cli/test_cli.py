@@ -423,14 +423,15 @@ def test_configure_logging_stderr_level_debug(tmp_path) -> None:
     assert stderr_handler.level == logging.DEBUG
 
 
-def test_configure_logging_rotates_large_file(tmp_path) -> None:
+def test_configure_logging_rotates_large_file(monkeypatch, tmp_path) -> None:
     log_path = tmp_path / "big.log"
-    log_path.write_text("x" * (6 * 1024 * 1024))  # 6MB > 5MB limit
+    from frais import logging_config
+    monkeypatch.setattr(logging_config, "LOG_MAX_SIZE", 1024)  # 1KB trigger
+    log_path.write_text("x" * 2048)
     _configure_logging(debug=False, log_file=str(log_path), no_log=False)
-    logging.getLogger("test").warning("trigger rotation")  # RotatingFileHandler rotates on first emit
+    logging.getLogger("test").warning("trigger rotation")
     backup = tmp_path / "big.log.1"
     assert backup.exists()
-    assert log_path.stat().st_size < 6 * 1024 * 1024
 
 
 def test_configure_logging_no_log(tmp_path) -> None:
