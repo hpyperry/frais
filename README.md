@@ -4,9 +4,11 @@
 [![Coverage](https://img.shields.io/badge/coverage-79%25-green)](https://github.com/hpyperry/frais)
 
 
-Frais is a **traditional CLI tool enhanced with LLM** — not an AI agent. 
-You can use `--json` create your own GUI.
-Native MCP Server / Agent-mode is planned as future work.
+Frais is a **traditional CLI tool enhanced with LLM**, not an AI agent. It cannot orchestrate
+multi-step tasks, call external tools autonomously, or maintain conversational context.
+You can consume its `--json` output from an external LLM agent (Claude Code, Copilot, etc.)
+or wrap a GUI around it. Full Agent-mode / MCP Server support requires a significant
+architectural rewrite and is not available today.
 
 ## Quick start
 
@@ -21,19 +23,19 @@ LLM features require user-owned configuration in `~/.frais/config/config.toml`. 
 ## Architecture
 
 ```
-Agent LLM ──▶ frais doctor --json           (system readiness)
-              frais config show --json       (redacted config)
-              frais config test --json       (connection validation)
-              frais config path --json       (config file location)
-              frais plugins list --json      (plugin inventory)
-              frais ignore list --json       (exclusion list)
-              frais scan --json              (structured scan output)
-              frais summarize <id> --json    (single AI summary)
+External LLM ─→ frais doctor --json           (system readiness)
+  (Claude,      frais config show --json       (redacted config)
+   Copilot,     frais config test --json       (connection validation)
+   etc.)        frais config path --json       (config file location)
+                frais plugins list --json      (plugin inventory)
+                frais ignore list --json       (exclusion list)
+                frais scan --json              (structured scan output)
+                frais summarize <id> --json    (single AI summary)
 
-User     ──▶ frais advise                   (scan + summarize + Rich UI)
-              frais update                   (interactive execution)
-              frais config manage            (interactive setup)
-              frais plugins enable/disable   (plugin management)
+User       ──▶ frais advise                   (scan + summarize + Rich UI)
+                frais update                   (interactive execution)
+                frais config manage            (interactive setup)
+                frais plugins enable/disable   (plugin management)
 
 Internal:
   cli.py assembles Typer commands

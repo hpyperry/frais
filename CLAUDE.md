@@ -34,6 +34,14 @@ Frais is a macOS CLI that scans installed Applications, Homebrew packages, and n
 
 All scanning is plugin-based — the built-in `applications`, `homebrew`, and `npm` scanners are all `ScannerPlugin` implementations.
 
+Frais is **not an AI agent**. It is a deterministic command-line tool: each command does one
+thing and exits. The `--json` output format is designed so an external LLM agent can consume
+it, but Frais itself has no multi-step reasoning, no tool-calling loop, and no conversational
+state. Wrapping it in a GUI or an agent prompt is straightforward; turning it into a native
+MCP Server or autonomous agent requires a significant architectural rewrite (the plugin model
+is "plugin owns the full pipeline", which is incompatible with agent-style step-by-step
+orchestration).
+
 ## Commands
 
 ```bash
@@ -134,7 +142,7 @@ src/frais/
       plugin.py          # NpmPlugin + _make_candidate
 ```
 
-Design principle: all functionality is plugin-based. The CLI provides `plugins`, `config`, `ignore`, `doctor`. Agent-facing atomic commands: `scan` (structured output), `summarize <id>` (single summary), `update` (execute). `advise` is a convenience command = scan + summaries + display. Each plugin owns its entire scan pipeline internally — ApplicationsPlugin does discovery + LLM research in one call; Homebrew/npm do a single step. `applications/app_store.py` and `applications/research/` are private to the applications plugin. `--plugins` respects persisted enable/disable state; disabled or unknown plugins show a warning.
+Design principle: all functionality is plugin-based. The CLI provides `plugins`, `config`, `ignore`, `doctor`. Commands with `--json` output (`scan`, `summarize`) are designed for consumption by external LLM agents. `update` is interactive. `advise` is a convenience command = scan + summaries + display. Each plugin owns its entire scan pipeline internally — ApplicationsPlugin does discovery + LLM research in one call; Homebrew/npm do a single step. `applications/app_store.py` and `applications/research/` are private to the applications plugin. `--plugins` respects persisted enable/disable state; disabled or unknown plugins show a warning.
 
 ## Plugin interface
 
@@ -230,12 +238,12 @@ Plugins that don't need research (Homebrew, npm) skip the LLM pipeline entirely 
 3. `coordinator.run_summaries()` — `plugin.summarize()` for each candidate, concurrently.
 4. Display with `_print_advise_result()` — shows AI Analysis per candidate.
 
-**`scan` command** (agent tool):
+**`scan` command** (`--json` output for external LLM consumption):
 1. Same `_scan_core.run_scan_phase()` as advise step 2. `--json` skips progress bar.
 2. Saves cache for `summarize`/`update` to consume.
 3. Displays result (no summaries, no total time).
 
-**`summarize <id>`** (agent tool):
+**`summarize <id>`** (`--json` output for external LLM consumption):
 1. Loads cached scan result, finds candidate by item_id.
 2. Calls `plugin.summarize()`, writes `ai_summary` back to cache.
 3. Prints result.
