@@ -113,7 +113,7 @@ class HomebrewPlugin(ScannerPlugin):
         name = formula.get("name") or "unknown"
         current = _first(formula.get("installed_versions")) or formula.get("installed_version")
         latest = formula.get("current_version") or formula.get("latest_version")
-        logger.info("homebrew formula candidate name=%s current=%s latest=%s",
+        logger.debug("homebrew formula candidate name=%s current=%s latest=%s",
                     name, current or "unknown", latest or "unknown")
         info = _brew_info(name)
         depends_on = sorted(set(info.get("dependencies", []) + info.get("runtime_dependencies", [])))
@@ -144,7 +144,7 @@ class HomebrewPlugin(ScannerPlugin):
         name = cask.get("name") or cask.get("token") or "unknown"
         current = _first(cask.get("installed_versions")) or cask.get("installed_version")
         latest = cask.get("current_version") or cask.get("latest_version")
-        logger.info("homebrew cask candidate name=%s current=%s latest=%s",
+        logger.debug("homebrew cask candidate name=%s current=%s latest=%s",
                     name, current or "unknown", latest or "unknown")
         info = _brew_info(name, cask=True)
         item = SoftwareItem(

@@ -100,7 +100,7 @@ class NpmPlugin(ScannerPlugin):
     def _make_candidate(self, name: str, info: dict[str, Any]) -> UpdateCandidate:
         current = info.get("current")
         latest = info.get("latest") or info.get("wanted")
-        logger.info("npm candidate name=%s current=%s latest=%s", name, current or "unknown", latest or "unknown")
+        logger.debug("npm candidate name=%s current=%s latest=%s", name, current or "unknown", latest or "unknown")
         item = SoftwareItem(
             id=f"npm:{name}",
             name=name,

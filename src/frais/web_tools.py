@@ -31,7 +31,7 @@ def _get_fetch_client() -> httpx.Client:
 
 def web_search(query: str) -> list[dict[str, str]]:
     """Search the web and return a list of title/url/snippet mappings."""
-    logger.info("web_search query=%s", query)
+    logger.debug("web_search query=%s", query)
     try:
         results = []
         for result in DDGS().text(query, max_results=_SEARCH_MAX_RESULTS):
@@ -40,7 +40,7 @@ def web_search(query: str) -> list[dict[str, str]]:
                 "url": result.get("href", ""),
                 "snippet": result.get("body", ""),
             })
-        logger.info("web_search found %d results", len(results))
+        logger.debug("web_search found %d results", len(results))
         logger.debug("web_search results=%s", json.dumps(results, ensure_ascii=False)[:2000])
         return results
     except Exception as exc:
@@ -50,7 +50,7 @@ def web_search(query: str) -> list[dict[str, str]]:
 
 def web_fetch(url: str) -> str:
     """Fetch a URL and return extracted text content."""
-    logger.info("web_fetch url=%s", url)
+    logger.debug("web_fetch url=%s", url)
     resolved_url = _github_url_to_api(url) or url
     try:
         headers: dict[str, str] = {}
@@ -63,7 +63,7 @@ def web_fetch(url: str) -> str:
         text = _extract_text(response.text)
         if len(text) > _FETCH_MAX_CHARS:
             text = text[:_FETCH_MAX_CHARS] + "\n...<truncated>"
-        logger.info("web_fetch got %d chars from %s", len(text), resolved_url)
+        logger.debug("web_fetch got %d chars from %s", len(text), resolved_url)
         logger.debug("web_fetch content=%s", text[:2000])
         return text
     except Exception as exc:
