@@ -6,8 +6,9 @@
 
 Frais is a **traditional CLI tool enhanced with LLM**, not an AI agent. It cannot orchestrate
 multi-step tasks, call external tools autonomously, or maintain conversational context.
-You can consume its `--json` output from an external LLM agent (Claude Code, Copilot, etc.)
-or wrap a GUI around it. Full Agent-mode / MCP Server support requires a significant
+The `--json` output provides structured, machine-readable data that can be consumed
+by external tools — build a GUI, feed results to another program, or integrate with
+an LLM-based workflow. Full Agent-mode / MCP Server support requires a significant
 architectural rewrite and is not available today.
 
 ## Quick start
@@ -23,10 +24,10 @@ LLM features require user-owned configuration in `~/.frais/config/config.toml`. 
 ## Architecture
 
 ```
-External LLM ─→ frais doctor --json           (system readiness)
-  (Claude,      frais config show --json       (redacted config)
-   Copilot,     frais config test --json       (connection validation)
-   etc.)        frais config path --json       (config file location)
+External   ──▶ frais doctor --json           (system readiness)
+  tools /       frais config show --json       (redacted config)
+  GUI /         frais config test --json       (connection validation)
+  scripts       frais config path --json       (config file location)
                 frais plugins list --json      (plugin inventory)
                 frais ignore list --json       (exclusion list)
                 frais scan --json              (structured scan output)

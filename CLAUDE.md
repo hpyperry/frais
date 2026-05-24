@@ -35,12 +35,12 @@ Frais is a macOS CLI that scans installed Applications, Homebrew packages, and n
 All scanning is plugin-based — the built-in `applications`, `homebrew`, and `npm` scanners are all `ScannerPlugin` implementations.
 
 Frais is **not an AI agent**. It is a deterministic command-line tool: each command does one
-thing and exits. The `--json` output format is designed so an external LLM agent can consume
-it, but Frais itself has no multi-step reasoning, no tool-calling loop, and no conversational
-state. Wrapping it in a GUI or an agent prompt is straightforward; turning it into a native
-MCP Server or autonomous agent requires a significant architectural rewrite (the plugin model
-is "plugin owns the full pipeline", which is incompatible with agent-style step-by-step
-orchestration).
+thing and exits. The `--json` output provides structured data that external tools can consume —
+build a GUI, feed results to scripts, or integrate into larger workflows. Frais itself has no
+multi-step reasoning, no tool-calling loop, and no conversational state. Wrapping it in a GUI
+or a script is straightforward; turning it into a native MCP Server or autonomous agent
+requires a significant architectural rewrite (the plugin model is "plugin owns the full
+pipeline", which is incompatible with agent-style step-by-step orchestration).
 
 ## Commands
 
