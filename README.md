@@ -3,11 +3,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Coverage](https://img.shields.io/badge/coverage-79%25-green)](https://github.com/hpyperry/frais)
 
-macOS update checker CLI with LLM-powered version research. Pipeline: **scan** (plugin-based discovery; ApplicationsPlugin does internal LLM research) → **summarize** (AI-generated update advice) → **update** (plugin-provided execution). `advise` is the user-facing convenience command = scan + summaries + Rich display.
 
-Supports DeepSeek with user-configurable extended thinking control. Multi-protocol LLM client layer (OpenAI-compatible + Anthropic-native reserved).
-
-Frais is a **traditional CLI tool enhanced with LLM** — not an AI agent. Commands are deterministic: same input → same output. An external LLM agent (Claude Code, Copilot, etc.) can consume its `--json` output via the agent contract documented below. Native MCP Server / Agent-mode is planned as future work.
+Frais is a **traditional CLI tool enhanced with LLM** — not an AI agent. 
+You can use `--json` create your own GUI.
+Native MCP Server / Agent-mode is planned as future work.
 
 ## Quick start
 
