@@ -37,6 +37,7 @@ def run_json(command: list[str], ok_codes: tuple[int, ...] = (0,), timeout: int 
     if not result.stdout.strip():
         return {}
     try:
-        return json.loads(result.stdout)
+        data: dict[str, Any] = json.loads(result.stdout)
+        return data
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Invalid JSON from {' '.join(command)}") from exc

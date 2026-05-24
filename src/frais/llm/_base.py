@@ -55,7 +55,7 @@ class LLMRequestError(RuntimeError):
         self.response_text = response_text
 
     @classmethod
-    def from_response(cls, response: httpx.Response) -> "LLMRequestError":
+    def from_response(cls, response: httpx.Response) -> LLMRequestError:
         body = response.text.strip()
         if len(body) > 300:
             body = body[:300] + "...<truncated>"

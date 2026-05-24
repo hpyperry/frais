@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import subprocess
 from abc import ABC, abstractmethod
-from typing import Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from ..models import PluginScanResult, SystemProfile, UpdateCandidate
+
+if TYPE_CHECKING:
+    from ..llm import LLMClient
 
 
 class ScannerPlugin(ABC):
@@ -45,7 +49,7 @@ class ScannerPlugin(ABC):
             return True
         return False
 
-    def summarize(self, agent, candidate: UpdateCandidate) -> str | None:
+    def summarize(self, agent: LLMClient, candidate: UpdateCandidate) -> str | None:
         """Generate a human-readable summary. Default: uses LLM."""
         from ..commands.summarize import summarize_candidate
         candidate.ai_summary = summarize_candidate(agent, candidate)

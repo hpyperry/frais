@@ -3,12 +3,20 @@ from __future__ import annotations
 import json
 
 from frais.llm import OpenAICompatibleClient
-from frais.models import ResearchResult, SoftwareItem, SourceKind, UpdateCandidate
-from frais.plugins.applications import _research as research
-from frais.plugins.applications._research import (
-    _digits_only, _ensure_list, _extract_json, _is_newer, _normalize,
-    _parse_json_list, _parse_json_object, extract_version,
-    generate_search_queries, pick_urls, research_application_update,
+from frais.models import ResearchResult, SoftwareItem, SourceKind
+from frais.plugins.applications import research as research
+from frais.plugins.applications.research import (
+    _digits_only,
+    _ensure_list,
+    _extract_json,
+    _is_newer,
+    _normalize,
+    _parse_json_list,
+    _parse_json_object,
+    extract_version,
+    generate_search_queries,
+    pick_urls,
+    research_application_update,
 )
 
 
@@ -18,8 +26,8 @@ def _raise(exc):
 
 def _dummy_llm(chat_return: str = '["q"]'):
     """Create an LLM client with the test provider."""
-    from frais.store.config_store import ProviderConfig
     from frais.providers import ModelInfo, Provider
+    from frais.store.config_store import ProviderConfig
 
     p = Provider(id="test", name="Test", base_url="https://api.test.com",
                  models=[ModelInfo(id="test-model", name="Test Model")])
@@ -108,15 +116,15 @@ def test_extract_version_passes_disable_thinking(monkeypatch) -> None:
 
 
 def test_local_build_can_be_update_candidate(monkeypatch) -> None:
-    monkeypatch.setattr(research, "generate_search_queries", lambda llm, item: ["Tool macOS latest version"])
-    monkeypatch.setattr(research, "pick_urls", lambda llm, item, results: ["https://github.com/example/tool/releases"])
-    monkeypatch.setattr(research, "extract_version", lambda llm, item, content: ResearchResult(
+    monkeypatch.setattr(research.pipeline, "generate_search_queries", lambda llm, item: ["Tool macOS latest version"])
+    monkeypatch.setattr(research.pipeline, "pick_urls", lambda llm, item, results: ["https://github.com/example/tool/releases"])
+    monkeypatch.setattr(research.pipeline, "extract_version", lambda llm, item, content: ResearchResult(
         latest_version="0.4.0", confidence="high",
         evidence=["https://github.com/example/tool/releases/tag/v0.4.0"],
         release_notes="fixes",
     ))
-    monkeypatch.setattr(research, "web_search", lambda q: [{"title": "Tool", "url": "https://github.com/example/tool/releases", "snippet": ""}])
-    monkeypatch.setattr(research, "web_fetch_batch", lambda urls: {u: "Tag: v0.4.0" for u in urls})
+    monkeypatch.setattr(research.pipeline, "web_search", lambda q: [{"title": "Tool", "url": "https://github.com/example/tool/releases", "snippet": ""}])
+    monkeypatch.setattr(research.pipeline, "web_fetch_batch", lambda urls: dict.fromkeys(urls, "Tag: v0.4.0"))
 
     item = SoftwareItem(id="com.example.tool", name="Tool", kind="application", source=SourceKind.LOCAL_BUILD, current_version="0.3.0")
     candidate = research_application_update(_dummy_llm(), item)
@@ -148,7 +156,7 @@ def test_is_newer_handles_missing_versions() -> None:
 
 
 def test_research_app_store_returns_candidate_when_newer(monkeypatch) -> None:
-    monkeypatch.setattr(research, "check_app_store_version", lambda item: ("2.0", 12345))
+    monkeypatch.setattr(research.pipeline, "check_app_store_version", lambda item: ("2.0", 12345))
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APP_STORE, current_version="1.0")
     result = research_application_update(_dummy_llm(), item)
     assert result is not None
@@ -157,19 +165,19 @@ def test_research_app_store_returns_candidate_when_newer(monkeypatch) -> None:
 
 
 def test_research_app_store_returns_none_when_up_to_date(monkeypatch) -> None:
-    monkeypatch.setattr(research, "check_app_store_version", lambda item: ("1.0", None))
+    monkeypatch.setattr(research.pipeline, "check_app_store_version", lambda item: ("1.0", None))
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APP_STORE, current_version="1.0")
     result = research_application_update(_dummy_llm(), item)
     assert result is None
 
 
 def test_research_app_store_falls_through_when_no_itunes_result(monkeypatch) -> None:
-    monkeypatch.setattr(research, "check_app_store_version", lambda item: (None, None))
-    monkeypatch.setattr(research, "generate_search_queries", lambda llm, item: ["q"])
-    monkeypatch.setattr(research, "pick_urls", lambda llm, item, results: ["https://example.com"])
-    monkeypatch.setattr(research, "extract_version", lambda llm, item, content: ResearchResult(latest_version="0.4.0", confidence="high"))
-    monkeypatch.setattr(research, "web_search", lambda q: [{"title": "T", "url": "https://example.com", "snippet": ""}])
-    monkeypatch.setattr(research, "web_fetch_batch", lambda urls: {u: "v0.4.0" for u in urls})
+    monkeypatch.setattr(research.pipeline, "check_app_store_version", lambda item: (None, None))
+    monkeypatch.setattr(research.pipeline, "generate_search_queries", lambda llm, item: ["q"])
+    monkeypatch.setattr(research.pipeline, "pick_urls", lambda llm, item, results: ["https://example.com"])
+    monkeypatch.setattr(research.pipeline, "extract_version", lambda llm, item, content: ResearchResult(latest_version="0.4.0", confidence="high"))
+    monkeypatch.setattr(research.pipeline, "web_search", lambda q: [{"title": "T", "url": "https://example.com", "snippet": ""}])
+    monkeypatch.setattr(research.pipeline, "web_fetch_batch", lambda urls: dict.fromkeys(urls, "v0.4.0"))
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APP_STORE, current_version="0.3.0")
     result = research_application_update(_dummy_llm(), item)
     assert result is not None
@@ -180,43 +188,43 @@ def test_research_app_store_falls_through_when_no_itunes_result(monkeypatch) -> 
 
 
 def test_structured_research_returns_none_when_generate_queries_fails(monkeypatch) -> None:
-    monkeypatch.setattr(research, "generate_search_queries", lambda llm, item: _raise(RuntimeError("network error")))
+    monkeypatch.setattr(research.pipeline, "generate_search_queries", lambda llm, item: _raise(RuntimeError("network error")))
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
     result = research_application_update(_dummy_llm(), item)
     assert result is None
 
 
 def test_structured_research_returns_none_when_no_queries(monkeypatch) -> None:
-    monkeypatch.setattr(research, "generate_search_queries", lambda llm, item: [])
+    monkeypatch.setattr(research.pipeline, "generate_search_queries", lambda llm, item: [])
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
     result = research_application_update(_dummy_llm(), item)
     assert result is None
 
 
 def test_structured_research_returns_none_when_pick_urls_fails(monkeypatch) -> None:
-    monkeypatch.setattr(research, "generate_search_queries", lambda llm, item: ["q"])
-    monkeypatch.setattr(research, "pick_urls", lambda llm, item, results: _raise(RuntimeError("fail")))
-    monkeypatch.setattr(research, "web_search", lambda q: [{"title": "T", "url": "https://x.com", "snippet": ""}])
+    monkeypatch.setattr(research.pipeline, "generate_search_queries", lambda llm, item: ["q"])
+    monkeypatch.setattr(research.pipeline, "pick_urls", lambda llm, item, results: _raise(RuntimeError("fail")))
+    monkeypatch.setattr(research.pipeline, "web_search", lambda q: [{"title": "T", "url": "https://x.com", "snippet": ""}])
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
     result = research_application_update(_dummy_llm(), item)
     assert result is None
 
 
 def test_structured_research_returns_none_when_no_urls_picked(monkeypatch) -> None:
-    monkeypatch.setattr(research, "generate_search_queries", lambda llm, item: ["q"])
-    monkeypatch.setattr(research, "pick_urls", lambda llm, item, results: [])
-    monkeypatch.setattr(research, "web_search", lambda q: [{"title": "T", "url": "https://x.com", "snippet": ""}])
+    monkeypatch.setattr(research.pipeline, "generate_search_queries", lambda llm, item: ["q"])
+    monkeypatch.setattr(research.pipeline, "pick_urls", lambda llm, item, results: [])
+    monkeypatch.setattr(research.pipeline, "web_search", lambda q: [{"title": "T", "url": "https://x.com", "snippet": ""}])
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
     result = research_application_update(_dummy_llm(), item)
     assert result is None
 
 
 def test_structured_research_returns_none_when_extract_fails(monkeypatch) -> None:
-    monkeypatch.setattr(research, "generate_search_queries", lambda llm, item: ["q"])
-    monkeypatch.setattr(research, "pick_urls", lambda llm, item, results: ["https://x.com"])
-    monkeypatch.setattr(research, "extract_version", lambda llm, item, content: _raise(RuntimeError("fail")))
-    monkeypatch.setattr(research, "web_search", lambda q: [{"title": "T", "url": "https://x.com", "snippet": ""}])
-    monkeypatch.setattr(research, "web_fetch_batch", lambda urls: {u: "content" for u in urls})
+    monkeypatch.setattr(research.pipeline, "generate_search_queries", lambda llm, item: ["q"])
+    monkeypatch.setattr(research.pipeline, "pick_urls", lambda llm, item, results: ["https://x.com"])
+    monkeypatch.setattr(research.pipeline, "extract_version", lambda llm, item, content: _raise(RuntimeError("fail")))
+    monkeypatch.setattr(research.pipeline, "web_search", lambda q: [{"title": "T", "url": "https://x.com", "snippet": ""}])
+    monkeypatch.setattr(research.pipeline, "web_fetch_batch", lambda urls: dict.fromkeys(urls, "content"))
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
     result = research_application_update(_dummy_llm(), item)
     assert result is None

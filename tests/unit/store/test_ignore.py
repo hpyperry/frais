@@ -4,7 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from frais.store.ignore_store import add_ignored, init_ignored, load_ignored, remove_ignored, save_ignored
+from frais.store.ignore_store import (
+    add_ignored,
+    init_ignored,
+    load_ignored,
+    remove_ignored,
+    save_ignored,
+)
 
 
 def test_load_ignored_empty_when_no_file(tmp_path: Path) -> None:

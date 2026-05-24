@@ -18,7 +18,6 @@ def plugins_list(
     ] = False,
 ) -> None:
     """List all known plugins and their status."""
-    from ..plugins.registry import all_plugins
     from ..store.plugin_store import init_plugins_config, load_plugins_config
 
     init_plugins_config()

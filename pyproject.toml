@@ -25,9 +25,9 @@ build = [
 frais = "frais.cli:app"
 
 [project.entry-points."frais.plugins"]
-applications = "frais.plugins.applications:ApplicationsPlugin"
-homebrew = "frais.plugins.homebrew:HomebrewPlugin"
-npm = "frais.plugins.npm:NpmPlugin"
+applications = "frais.plugins.applications.plugin:ApplicationsPlugin"
+homebrew = "frais.plugins.homebrew.plugin:HomebrewPlugin"
+npm = "frais.plugins.npm.plugin:NpmPlugin"
 
 [build-system]
 requires = ["hatchling"]
@@ -39,5 +39,47 @@ pythonpath = ["src"]
 
 [dependency-groups]
 dev = [
+    "mypy>=2.1.0",
     "pytest-cov>=7.1.0",
+    "ruff>=0.15.14",
 ]
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+exclude = ["^tests/", "^src/frais/commands/config\\.py$"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "W",   # pycodestyle warnings
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ARG", # flake8-unused-arguments
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "ARG002",  # Unused method arguments (plugin interfaces)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["frais"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/frais/cli.py" = ["E402"]  # Deferred imports for Typer command registration
+"src/frais/commands/_signal.py" = ["ARG001", "SIM105"]  # POSIX signal handler contract
+"tests/*.py" = ["ARG001", "ARG005", "E501"]  # Monkeypatch lambdas and verbose test data
+"src/frais/commands/config.py" = ["B904", "ARG001", "SIM108"]  # Interactive configuration patterns
+"src/frais/commands/update.py" = ["B904"]  # raise Exit for cache errors
+"src/frais/commands/advise.py" = ["ARG001"]  # Summary phase signature
+"src/frais/llm/_base.py" = ["B904"]  # raise NotImplementedError pattern
+"src/frais/ui/scan_progress.py" = ["ARG001"]  # Plugin reference for consistency
+"src/frais/web_tools.py" = ["ARG001"]  # Function signature compatibility

@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from frais.store.config_store import load_config, require_config, save_config
 from frais.providers import PROVIDERS, get_provider
+from frais.store.config_store import load_config, require_config, save_config
 
 
 def test_load_config_returns_none_for_missing_file() -> None:

@@ -4,6 +4,7 @@ import os
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from ..providers import Provider, get_provider
 
@@ -23,7 +24,7 @@ class ProviderConfig:
         return bool(self.api_key and self.model)
 
 
-def _read_config_file(path: Path = CONFIG_PATH) -> dict:
+def _read_config_file(path: Path = CONFIG_PATH) -> dict[str, Any]:
     if not path.exists():
         return {}
     with path.open("rb") as handle:

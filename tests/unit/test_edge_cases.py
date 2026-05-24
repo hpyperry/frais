@@ -9,11 +9,16 @@ import pytest
 import typer
 
 from frais.models import (
-    DependencyImpact, PluginScanResult, ResearchResult, ScanResult,
-    SoftwareItem, SourceKind, SystemProfile, UpdateCandidate,
+    DependencyImpact,
+    PluginScanResult,
+    ResearchResult,
+    ScanResult,
+    SoftwareItem,
+    SourceKind,
+    SystemProfile,
+    UpdateCandidate,
 )
 from frais.plugins.base import ScannerPlugin
-
 
 # --- cli: doctor, config, plugins, ignore commands ---
 
@@ -208,7 +213,7 @@ def test_npm_scan_runtime_error(monkeypatch) -> None:
 
     plugin = NpmPlugin()
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/npm" if name == "npm" else None)
-    monkeypatch.setattr("frais.plugins.npm.run_json", lambda cmd, ok_codes=(0,): exec('raise RuntimeError("fail")'))
+    monkeypatch.setattr("frais.plugins.npm.plugin.run_json", lambda cmd, ok_codes=(0,): exec('raise RuntimeError("fail")'))
 
     result = plugin.scan(detect_system())
     assert "fail" in result.skipped[0]
@@ -262,11 +267,11 @@ def test_homebrew_scan_with_outdated(monkeypatch) -> None:
         }],
         "casks": [],
     }
-    monkeypatch.setattr("frais.plugins.homebrew.run_json",
+    monkeypatch.setattr("frais.plugins.homebrew.plugin.run_json",
         lambda cmd, ok_codes=(0,): outdated_json)
-    monkeypatch.setattr("frais.plugins.homebrew._brew_info",
+    monkeypatch.setattr("frais.plugins.homebrew.plugin._brew_info",
         lambda name, cask=False: {"dependencies": [], "homepage": "https://example.com"})
-    monkeypatch.setattr("frais.plugins.homebrew._brew_uses", lambda name: [])
+    monkeypatch.setattr("frais.plugins.homebrew.plugin._brew_uses", lambda name: [])
 
     result = plugin.scan(detect_system())
     assert len(result.candidates) == 1
@@ -351,6 +356,7 @@ def test_config_show_configured(monkeypatch) -> None:
 
 def test_scan_applications_with_real_app(tmp_path: Path) -> None:
     import plistlib
+
     from frais.plugins.applications import scan_applications
 
     app = tmp_path / "Test.app"
@@ -396,7 +402,7 @@ def test_npm_scan_all_with_outdated(monkeypatch) -> None:
             return {"dependencies": {"test-pkg": {"version": "1.0.0"}}}
         return {}
 
-    monkeypatch.setattr("frais.plugins.npm.run_json", fake_run_json)
+    monkeypatch.setattr("frais.plugins.npm.plugin.run_json", fake_run_json)
     result = plugin.scan_all(detect_system())
     assert len(result.candidates) == 1
 
@@ -405,8 +411,9 @@ def test_npm_scan_all_with_outdated(monkeypatch) -> None:
 
 
 def test_brew_uses_empty(monkeypatch) -> None:
-    from frais.plugins.homebrew import _brew_uses
     import subprocess as sp
+
+    from frais.plugins.homebrew.plugin import _brew_uses
 
     result_mock = type("R", (), {"returncode": 1, "stdout": ""})()
     monkeypatch.setattr(sp, "run", lambda *a, **kw: result_mock)
@@ -414,8 +421,9 @@ def test_brew_uses_empty(monkeypatch) -> None:
 
 
 def test_brew_uses_returns_packages(monkeypatch) -> None:
-    from frais.plugins.homebrew import _brew_uses
     import subprocess as sp
+
+    from frais.plugins.homebrew.plugin import _brew_uses
 
     result_mock = type("R", (), {"returncode": 0, "stdout": "pkg-a pkg-b\n"})()
     monkeypatch.setattr(sp, "run", lambda *a, **kw: result_mock)
@@ -426,17 +434,17 @@ def test_brew_uses_returns_packages(monkeypatch) -> None:
 
 
 def test_first_with_list() -> None:
-    from frais.plugins.homebrew import _first
+    from frais.plugins.homebrew.plugin import _first
     assert _first(["a", "b"]) == "a"
 
 
 def test_first_with_empty_list() -> None:
-    from frais.plugins.homebrew import _first
+    from frais.plugins.homebrew.plugin import _first
     assert _first([]) is None
 
 
 def test_first_with_scalar() -> None:
-    from frais.plugins.homebrew import _first
+    from frais.plugins.homebrew.plugin import _first
     assert _first("a") == "a"
 
 
@@ -444,17 +452,17 @@ def test_first_with_scalar() -> None:
 
 
 def test_installed_version_from_installed_list() -> None:
-    from frais.plugins.homebrew import _installed_version
+    from frais.plugins.homebrew.plugin import _installed_version
     assert _installed_version({"installed": [{"version": "2.0"}]}) == "2.0"
 
 
 def test_installed_version_from_linked_keg() -> None:
-    from frais.plugins.homebrew import _installed_version
+    from frais.plugins.homebrew.plugin import _installed_version
     assert _installed_version({"linked_keg": "1.0"}) == "1.0"
 
 
 def test_installed_version_none() -> None:
-    from frais.plugins.homebrew import _installed_version
+    from frais.plugins.homebrew.plugin import _installed_version
     assert _installed_version({}) is None
 
 
@@ -462,12 +470,12 @@ def test_installed_version_none() -> None:
 
 
 def test_cask_current_version_linked() -> None:
-    from frais.plugins.homebrew import _cask_current_version
+    from frais.plugins.homebrew.plugin import _cask_current_version
     assert _cask_current_version({"linked_keg": "3.0"}) == "3.0"
 
 
 def test_cask_current_version_fallback() -> None:
-    from frais.plugins.homebrew import _cask_current_version
+    from frais.plugins.homebrew.plugin import _cask_current_version
     assert _cask_current_version({"version": "4.0"}) == "4.0"
 
 
@@ -496,7 +504,7 @@ def test_npm_scan_empty_outdated(monkeypatch) -> None:
 
     plugin = NpmPlugin()
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/npm" if name == "npm" else None)
-    monkeypatch.setattr("frais.plugins.npm.run_json", lambda cmd, ok_codes=(0,): {})
+    monkeypatch.setattr("frais.plugins.npm.plugin.run_json", lambda cmd, ok_codes=(0,): {})
 
     result = plugin.scan(detect_system())
     assert result.items == []
@@ -520,9 +528,9 @@ def test_homebrew_cask_candidate(monkeypatch) -> None:
             "installed_versions": ["120.0"], "current_version": "121.0",
         }],
     }
-    monkeypatch.setattr("frais.plugins.homebrew.run_json",
+    monkeypatch.setattr("frais.plugins.homebrew.plugin.run_json",
         lambda cmd, ok_codes=(0,): outdated)
-    monkeypatch.setattr("frais.plugins.homebrew._brew_info",
+    monkeypatch.setattr("frais.plugins.homebrew.plugin._brew_info",
         lambda name, cask=False: {"homepage": "https://firefox.com"})
 
     result = plugin.scan(detect_system())
@@ -553,7 +561,7 @@ def test_homebrew_scan_all_with_data(monkeypatch) -> None:
             return outdated
         return installed
 
-    monkeypatch.setattr("frais.plugins.homebrew.run_json", fake_run_json)
+    monkeypatch.setattr("frais.plugins.homebrew.plugin.run_json", fake_run_json)
     result = plugin.scan_all(detect_system())
     assert len(result.items) == 2
 
@@ -562,9 +570,9 @@ def test_homebrew_scan_all_with_data(monkeypatch) -> None:
 
 
 def test_brew_info_cask_with_data(monkeypatch) -> None:
-    from frais.plugins.homebrew import _brew_info
+    from frais.plugins.homebrew.plugin import _brew_info
 
-    monkeypatch.setattr("frais.plugins.homebrew.run_json",
+    monkeypatch.setattr("frais.plugins.homebrew.plugin.run_json",
         lambda cmd, ok_codes=(0,): {"casks": [{"homepage": "https://test.com"}]})
     result = _brew_info("firefox", cask=True)
     assert result == {"homepage": "https://test.com"}
@@ -574,9 +582,9 @@ def test_brew_info_cask_with_data(monkeypatch) -> None:
 
 
 def test_brew_info_empty_result(monkeypatch) -> None:
-    from frais.plugins.homebrew import _brew_info
+    from frais.plugins.homebrew.plugin import _brew_info
 
-    monkeypatch.setattr("frais.plugins.homebrew.run_json",
+    monkeypatch.setattr("frais.plugins.homebrew.plugin.run_json",
         lambda cmd, ok_codes=(0,): {"formulae": []})
     result = _brew_info("nonexistent")
     assert result == {}
@@ -642,7 +650,7 @@ def test_homebrew_scan_runtime_error(monkeypatch) -> None:
 
     plugin = HomebrewPlugin()
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/brew" if name == "brew" else None)
-    monkeypatch.setattr("frais.plugins.homebrew.run_json",
+    monkeypatch.setattr("frais.plugins.homebrew.plugin.run_json",
         lambda cmd, ok_codes=(0,): exec('raise RuntimeError("brew crash")'))
 
     result = plugin.scan(detect_system())
@@ -655,7 +663,7 @@ def test_homebrew_scan_all_runtime_error(monkeypatch) -> None:
 
     plugin = HomebrewPlugin()
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/brew" if name == "brew" else None)
-    monkeypatch.setattr("frais.plugins.homebrew.run_json",
+    monkeypatch.setattr("frais.plugins.homebrew.plugin.run_json",
         lambda cmd, ok_codes=(0,): exec('raise RuntimeError("brew crash")'))
 
     result = plugin.scan_all(detect_system())
@@ -717,7 +725,7 @@ def test_select_plugins_default_persisted_disabled(monkeypatch) -> None:
 
 
 def test_is_newer_invalid_version() -> None:
-    from frais.plugins.applications._research import _is_newer
+    from frais.plugins.applications.research import _is_newer
     # Same digits-only fallback results in no difference
     assert _is_newer("build-2024.1", "build-2024.1") is False
 
@@ -726,7 +734,7 @@ def test_is_newer_invalid_version() -> None:
 
 
 def test_digits_only_empty() -> None:
-    from frais.plugins.applications._research import _digits_only
+    from frais.plugins.applications.research import _digits_only
     assert _digits_only("abc") == ""
 
 
@@ -746,8 +754,8 @@ def test_web_fetch_github_error(monkeypatch) -> None:
 
 def test_llm_client_init_error() -> None:
     from frais.llm import OpenAICompatibleClient
-    from frais.store.config_store import ProviderConfig
     from frais.providers import ModelInfo
+    from frais.store.config_store import ProviderConfig
 
     fake_models = [ModelInfo(id="test", name="Test")]
     fake_provider = type("P", (), {"id": "test", "chat_url": "https://test", "models": fake_models})()
@@ -805,7 +813,7 @@ def test_run_json_ok_codes_no_match(monkeypatch) -> None:
 
 
 def test_load_config_unknown_provider(monkeypatch) -> None:
-    from frais.store.config_store import load_config, CONFIG_PATH
+    from frais.store.config_store import load_config
 
     monkeypatch.setattr("frais.store.config_store._read_config_file",
         lambda path: {"llm": {"provider": "nonexistent", "model": "m", "api_key": "k"}})
@@ -837,9 +845,9 @@ def test_npm_which_path(monkeypatch) -> None:
 
 
 def test_brew_info_failure(monkeypatch) -> None:
-    from frais.plugins.homebrew import _brew_info
+    from frais.plugins.homebrew.plugin import _brew_info
 
-    monkeypatch.setattr("frais.plugins.homebrew.run_json",
+    monkeypatch.setattr("frais.plugins.homebrew.plugin.run_json",
         lambda cmd, ok_codes=(0,): exec('raise RuntimeError("fail")'))
     result = _brew_info("nonexistent")
     assert result == {}
@@ -854,7 +862,7 @@ def test_npm_scan_all_runtime_error(monkeypatch) -> None:
 
     plugin = NpmPlugin()
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/npm" if name == "npm" else None)
-    monkeypatch.setattr("frais.plugins.npm.run_json",
+    monkeypatch.setattr("frais.plugins.npm.plugin.run_json",
         lambda cmd, ok_codes=(0,): exec('raise RuntimeError("fail")'))
 
     result = plugin.scan_all(detect_system())

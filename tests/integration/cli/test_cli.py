@@ -2,21 +2,26 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 from pathlib import Path
 
 import httpx
-import typer
-
 import pytest
+import typer
 
 from frais.cli import _ADVICE_CACHE, _configure_logging
 from frais.commands import _split_plugins
 from frais.commands.advise import _print_advise_result
 from frais.commands.update import update
 from frais.coordinator import select_plugins
-from frais.plugins.applications._store import resolve_app_store_command
-from frais.models import PluginScanResult, ScanResult, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate
+from frais.models import (
+    PluginScanResult,
+    ScanResult,
+    SoftwareItem,
+    SourceKind,
+    SystemProfile,
+    UpdateCandidate,
+)
+from frais.plugins.applications.app_store import resolve_app_store_command
 
 
 def test_print_advise_result_shows_ignored_count(capsys) -> None:
@@ -116,9 +121,9 @@ def test_update_manual_opens_app_on_confirm(monkeypatch, tmp_path: Path) -> None
     monkeypatch.setattr("frais.commands.update.ADVICE_CACHE", cache)
 
     ran = []
-    monkeypatch.setattr("frais.plugins.applications.subprocess.run", lambda cmd, **kw: ran.append(cmd))
+    monkeypatch.setattr("frais.plugins.applications.plugin.subprocess.run", lambda cmd, **kw: ran.append(cmd))
     monkeypatch.setattr("frais.commands.update.typer.confirm", lambda *a, **kw: True)
-    monkeypatch.setattr("frais.plugins.applications.typer.confirm", lambda *a, **kw: True)
+    monkeypatch.setattr("frais.plugins.applications.plugin.typer.confirm", lambda *a, **kw: True)
 
     update(only=None)
 
@@ -674,7 +679,6 @@ def test_plugins_disable_json_unknown(monkeypatch, capsys) -> None:
 
 
 def test_summarize_json_no_cache(monkeypatch, capsys, tmp_path: Path) -> None:
-    from frais.cli import _ADVICE_CACHE
     from frais.commands.summarize import summarize
 
     cache = tmp_path / "nonexistent.json"
@@ -693,7 +697,6 @@ def test_summarize_json_no_cache(monkeypatch, capsys, tmp_path: Path) -> None:
 
 
 def test_summarize_json_candidate_not_found(monkeypatch, capsys, tmp_path: Path) -> None:
-    from frais.cli import _ADVICE_CACHE
     from frais.commands.summarize import summarize
 
     cache = tmp_path / "cache.json"
@@ -713,7 +716,6 @@ def test_summarize_json_candidate_not_found(monkeypatch, capsys, tmp_path: Path)
 
 def test_scan_json_bad_plugins(monkeypatch, capsys) -> None:
     from frais.commands.scan import scan
-
     from frais.models import SystemProfile
     monkeypatch.setattr("frais.system.detect_system", lambda: SystemProfile(
         os_name="macOS", os_version="15.0", arch="arm64", applications_paths=["/Applications"],

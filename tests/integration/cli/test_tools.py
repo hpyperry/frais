@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import httpx
-import pytest
 
-from frais.web_tools import _extract_text, _format_github_api, _github_url_to_api, web_fetch, web_fetch_batch, web_search
-
+from frais.web_tools import (
+    _extract_text,
+    _format_github_api,
+    _github_url_to_api,
+    web_fetch,
+    web_fetch_batch,
+    web_search,
+)
 
 # --- web_search ---
 

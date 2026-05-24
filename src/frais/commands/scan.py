@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import signal
 from typing import Annotated
 
@@ -9,13 +8,36 @@ import typer
 from rich.console import Console
 
 from ..paths import ADVICE_CACHE
+from ..plugins.base import ScannerPlugin
 from . import _split_plugins
 from ._output import exit_with_error, print_json_success
 from ._scan_core import run_scan_phase
+from ._signal import install_interrupt_handler
 from .advise import _print_advise_result
 
 logger = logging.getLogger(__name__)
 console = Console()
+
+
+def _resolve_scan_plugins(
+    explicit: str | None,
+    json_output: bool = False,
+) -> dict[str, ScannerPlugin]:
+    """Select and validate plugins for scan, exiting on no match."""
+    from ..coordinator import select_plugins as _coord_select
+
+    _explicit = _split_plugins(explicit)
+    active = _coord_select(explicit=_explicit)
+    if _explicit:
+        unknown = set(_explicit) - set(active)
+        if not active:
+            exit_with_error(f"No available plugins matched: {', '.join(sorted(unknown))}", json_output,
+                            reason="no_plugins_matched",
+                            hint="Run `frais plugins list --json` to see available plugins.",
+                            requested=sorted(unknown))
+        if unknown and not json_output:
+            console.print(f"[yellow]Unavailable plugins: {', '.join(sorted(unknown))}[/yellow]")
+    return active
 
 
 def scan(
@@ -47,39 +69,16 @@ def scan(
       frais scan --plugins applications --json
       frais scan --all
     """
-    from ..coordinator import select_plugins as _coord_select
-    from ..plugins.registry import all_plugins
     from ..system import detect_system
 
     system = detect_system()
-    _explicit = _split_plugins(plugins)
-    active = _coord_select(explicit=_explicit)
-    if _explicit:
-        unknown = set(_explicit) - set(active)
-        if not active:
-            exit_with_error(f"No available plugins matched: {', '.join(sorted(unknown))}", json_output,
-                            reason="no_plugins_matched",
-                            hint="Run `frais plugins list --json` to see available plugins.",
-                            requested=sorted(unknown))
-        if unknown and not json_output:
-            console.print(f"[yellow]Unavailable plugins: {', '.join(sorted(unknown))}[/yellow]")
+    active = _resolve_scan_plugins(plugins, json_output)
 
     if not json_output:
         console.print()
         console.print(f"Scanning with: {', '.join(active)}")
 
-    def _on_interrupt(signum, frame):
-        try:
-            os.write(1, b"\033[?25h\n")
-        except OSError:
-            pass
-        try:
-            os.killpg(os.getpgrp(), signal.SIGTERM)
-        except OSError:
-            pass
-        os._exit(130)
-
-    orig_handler = signal.signal(signal.SIGINT, _on_interrupt)
+    orig_handler = install_interrupt_handler()
     try:
         phase_result = run_scan_phase(
             active, system, show_all=show_all,

@@ -5,13 +5,17 @@ import pytest
 
 from frais.commands.summarize import summarize_candidate
 from frais.llm import (
-    AnthropicClient, DeepSeekAnthropicClient, DeepSeekOpenAIClient,
-    LLMClient, LLMRequestError, OpenAICompatibleClient, get_client,
+    AnthropicClient,
+    DeepSeekAnthropicClient,
+    DeepSeekOpenAIClient,
+    LLMClient,
+    LLMRequestError,
+    OpenAICompatibleClient,
+    get_client,
 )
-from frais.store.config_store import ProviderConfig
 from frais.models import SoftwareItem, SourceKind, UpdateCandidate
 from frais.providers import PROVIDERS, ModelInfo, Provider, get_provider
-
+from frais.store.config_store import ProviderConfig
 
 # --- helpers ---
 

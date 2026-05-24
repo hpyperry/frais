@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import json
 
-import typer
-
 import pytest
+import typer
 
 from frais.commands._output import exit_with_error, print_json_success
 

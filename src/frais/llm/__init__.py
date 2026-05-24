@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from ..store.config_store import ProviderConfig
-from ._base import LLMClient, LLMRequestError
-from ._openai_compatible import OpenAICompatibleClient
-from ._deepseek import DeepSeekAnthropicClient, DeepSeekOpenAIClient
 from ._anthropic import AnthropicClient
+from ._base import LLMClient, LLMRequestError
+from ._deepseek import DeepSeekAnthropicClient, DeepSeekOpenAIClient
+from ._openai_compatible import OpenAICompatibleClient
 
 # Note: adding a provider to providers.PROVIDERS requires a corresponding
 # entry here so get_client() can resolve it. The two registries must stay in sync.

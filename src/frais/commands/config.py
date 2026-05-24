@@ -348,7 +348,7 @@ def config_test(
     Example:
       frais config test
     """
-    from ..llm import get_client, LLMRequestError
+    from ..llm import LLMRequestError, get_client
 
     try:
         config = require_config()

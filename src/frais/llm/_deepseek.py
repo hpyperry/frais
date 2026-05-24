@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ._openai_compatible import OpenAICompatibleClient
 from ._anthropic import AnthropicClient
+from ._openai_compatible import OpenAICompatibleClient
 
 
 class DeepSeekOpenAIClient(OpenAICompatibleClient):

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 
 from .llm import LLMClient
 from .models import PluginScanResult, ScanResult, SystemProfile, UpdateCandidate
@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 
 def select_plugins(explicit: list[str] | None = None) -> dict[str, ScannerPlugin]:
     """Return enabled plugins filtered by CLI flags and persisted config."""
-    from .store.plugin_store import load_plugins_config
     from .plugins.registry import all_plugins
+    from .store.plugin_store import load_plugins_config
 
     available = all_plugins()
     if explicit:
@@ -30,15 +30,15 @@ def select_plugins(explicit: list[str] | None = None) -> dict[str, ScannerPlugin
             result[name] = available[name]
         return result
 
+    plugin_result: dict[str, ScannerPlugin] = {}
     persisted = load_plugins_config()
-    result: dict[str, ScannerPlugin] = {}
     for name, plugin in available.items():
         if name in persisted:
             if persisted[name]:
-                result[name] = plugin
+                plugin_result[name] = plugin
         elif plugin.enabled_by_default:
-            result[name] = plugin
-    return result
+            plugin_result[name] = plugin
+    return plugin_result
 
 
 def run_scan(plugins: dict[str, ScannerPlugin],
@@ -56,7 +56,7 @@ def run_scan(plugins: dict[str, ScannerPlugin],
     result = ScanResult(system=system)
 
     with ThreadPoolExecutor(max_workers=max(1, len(plugins))) as pool:
-        futures: dict = {}
+        future_to_name: dict[Future[PluginScanResult], str] = {}
         for name, plugin in plugins.items():
             scan_fn = plugin.scan_all if show_all else plugin.scan
 
@@ -64,11 +64,11 @@ def run_scan(plugins: dict[str, ScannerPlugin],
                 if on_plugin_progress:
                     on_plugin_progress(pname, step, done, total)
 
-            futures[pool.submit(scan_fn, system, on_progress=_progress_wrapper,
-                                max_workers=jobs)] = name
+            future_to_name[pool.submit(scan_fn, system, on_progress=_progress_wrapper,
+                                       max_workers=jobs)] = name
 
-        for future in as_completed(futures):
-            name = futures[future]
+        for future in as_completed(future_to_name):
+            name = future_to_name[future]
             try:
                 pr = future.result()
             except Exception as exc:

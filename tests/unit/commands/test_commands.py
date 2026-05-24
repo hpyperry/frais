@@ -10,9 +10,13 @@ from frais.commands._scan_core import _save_cache, run_scan_phase
 from frais.commands.summarize import summarize
 from frais.commands.update import update
 from frais.models import (
-    PluginScanResult, ScanResult, SoftwareItem, SourceKind, SystemProfile, UpdateCandidate,
+    PluginScanResult,
+    ScanResult,
+    SoftwareItem,
+    SourceKind,
+    SystemProfile,
+    UpdateCandidate,
 )
-
 
 # --- _save_cache ---
 

@@ -3,14 +3,12 @@ from __future__ import annotations
 from frais.models import (
     DependencyImpact,
     PluginScanResult,
-    ResearchResult,
     ScanResult,
     SoftwareItem,
     SourceKind,
     SystemProfile,
     UpdateCandidate,
 )
-
 
 # --- SoftwareItem round-trip ---
 

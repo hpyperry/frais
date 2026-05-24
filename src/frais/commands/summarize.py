@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 from rich.console import Console
@@ -54,10 +54,73 @@ def build_summary_prompt(candidate: UpdateCandidate) -> str:
     )
 
 
-def summarize_candidate(llm: "LLMClient", candidate: UpdateCandidate) -> str:
+def summarize_candidate(llm: LLMClient, candidate: UpdateCandidate) -> str:
     """Generate a Chinese-language update recommendation for a candidate."""
     prompt = build_summary_prompt(candidate)
     return llm.chat("", prompt, max_tokens=500)
+
+
+def _load_cached_scan_or_exit(json_output: bool) -> Any:
+    """Load the advice cache file, or exit with error."""
+    if not ADVICE_CACHE.exists():
+        exit_with_error("No scan cache found.", json_output,
+                        reason="no_cache",
+                        hint="Run `frais scan --json` or `frais advise --json` first to generate a scan cache.")
+    try:
+        return json.loads(ADVICE_CACHE.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        exit_with_error(f"Failed to read scan cache: {exc}", json_output,
+                        reason="cache_read_error",
+                        hint="The scan cache file is corrupted. Run `frais scan --json` to rebuild it.")
+
+
+def _find_candidate_in_cache(
+    data: Any, item_id: str
+) -> tuple[UpdateCandidate | None, str | None]:
+    """Look up a candidate by ID in the cache. Returns (candidate, plugin_name)."""
+    plugin_results: dict[str, Any] = data.get("plugin_results", {})
+    for pname, pr in plugin_results.items():
+        for raw in pr.get("candidates", []):
+            if raw.get("item", {}).get("id") == item_id:
+                try:
+                    candidate = UpdateCandidate.from_dict(raw)
+                except (KeyError, TypeError, ValueError):
+                    continue
+                return candidate, str(pname)
+    return None, None
+
+
+def _get_llm_client_or_exit(json_output: bool) -> LLMClient:
+    """Get a configured LLM client, or exit with error."""
+    from ..llm import get_client
+
+    try:
+        config = require_config()
+        return get_client(config)
+    except ValueError as exc:
+        exit_with_error(str(exc), json_output, exit_code=2,
+                        reason="config_missing",
+                        hint="Run `frais config manage` to set up your provider and API key.")
+
+
+def _update_cache_summary(data: Any, item_id: str, summary: str | None) -> None:
+    """Write AI summary back to the cache file (atomic write)."""
+    try:
+        plugin_results: dict[str, Any] = data.get("plugin_results", {})
+        for _pname, pr in plugin_results.items():
+            for raw in pr.get("candidates", []):
+                if raw.get("item", {}).get("id") == item_id:
+                    raw["ai_summary"] = summary
+                    ADVICE_CACHE.parent.mkdir(parents=True, exist_ok=True)
+                    tmp_path = ADVICE_CACHE.with_suffix(".tmp")
+                    tmp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+                    tmp_path.replace(ADVICE_CACHE)
+                    break
+            else:
+                continue
+            break
+    except OSError as exc:
+        logger.warning("failed to update scan cache: %s", exc)
 
 
 def summarize(
@@ -79,49 +142,18 @@ def summarize(
       frais summarize com.google.Chrome
       frais summarize brew:node --json
     """
-    if not ADVICE_CACHE.exists():
-        exit_with_error("No scan cache found.", json_output,
-                        reason="no_cache",
-                        hint="Run `frais scan --json` or `frais advise --json` first to generate a scan cache.")
+    data = _load_cached_scan_or_exit(json_output)
 
-    try:
-        data = json.loads(ADVICE_CACHE.read_text())
-    except (json.JSONDecodeError, OSError) as exc:
-        exit_with_error(f"Failed to read scan cache: {exc}", json_output,
-                        reason="cache_read_error",
-                        hint="The scan cache file is corrupted. Run `frais scan --json` to rebuild it.")
-
-    from ..llm import get_client
-    from ..plugins.registry import all_plugins
-
-    candidate: UpdateCandidate | None = None
-    plugin_name: str | None = None
-    if "plugin_results" in data:
-        for pname, pr in data["plugin_results"].items():
-            for raw in pr.get("candidates", []):
-                if raw.get("item", {}).get("id") == item_id:
-                    try:
-                        candidate = UpdateCandidate.from_dict(raw)
-                    except (KeyError, TypeError, ValueError):
-                        continue
-                    plugin_name = pname
-                    break
-            if candidate:
-                break
-
+    candidate, plugin_name = _find_candidate_in_cache(data, item_id)
     if candidate is None:
         exit_with_error(f"No candidate found for: {item_id}", json_output,
                         reason="candidate_not_found",
                         hint="Run `frais scan --json` to see available candidate IDs.",
                         item_id=item_id)
 
-    try:
-        config = require_config()
-        llm = get_client(config)
-    except ValueError as exc:
-        exit_with_error(str(exc), json_output, exit_code=2,
-                        reason="config_missing",
-                        hint="Run `frais config manage` to set up your provider and API key.")
+    from ..plugins.registry import all_plugins
+
+    llm = _get_llm_client_or_exit(json_output)
 
     plugin = all_plugins().get(plugin_name or "")
     if plugin is None:
@@ -133,21 +165,7 @@ def summarize(
     summary = plugin.summarize(llm, candidate)
     llm.close()
 
-    try:
-        for pname, pr in data.get("plugin_results", {}).items():
-            for raw in pr.get("candidates", []):
-                if raw.get("item", {}).get("id") == item_id:
-                    raw["ai_summary"] = summary
-                    ADVICE_CACHE.parent.mkdir(parents=True, exist_ok=True)
-                    tmp_path = ADVICE_CACHE.with_suffix(".tmp")
-                    tmp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
-                    tmp_path.replace(ADVICE_CACHE)
-                    break
-            else:
-                continue
-            break
-    except OSError as exc:
-        logger.warning("failed to update scan cache: %s", exc)
+    _update_cache_summary(data, item_id, summary)
 
     if json_output:
         print_json_success(item_id=item_id, ai_summary=summary)
