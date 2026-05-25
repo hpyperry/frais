@@ -29,7 +29,7 @@ PROVIDERS: list[Provider] = [
             ModelInfo(id="deepseek-v4-pro", name="DeepSeek V4 Pro", supports_thinking=True),
             ModelInfo(id="deepseek-chat", name="DeepSeek Chat (deprecated)", supports_thinking=False),
         ],
-        protocols=["openai"],
+        protocols=["openai", "anthropic"],
     ),
 ]
 

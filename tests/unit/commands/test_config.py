@@ -143,3 +143,5 @@ def test_all_registered_providers_loadable() -> None:
         found = get_provider(p.id)
         assert found is not None, f"provider {p.id} not found"
         assert found is p
+
+

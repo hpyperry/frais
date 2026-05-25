@@ -89,8 +89,7 @@ src/frais/
     __init__.py          #   _CLIENT_MAP registry + get_client() factory
     _base.py             #   LLMClient ABC + LLMRequestError
     _openai_compatible.py  # OpenAICompatibleClient base (Bearer auth, /v1/chat/completions)
-    _deepseek.py         #   DeepSeekOpenAIClient + DeepSeekAnthropicClient (stub)
-    _anthropic.py        #   AnthropicClient stub (reserved for future)
+    _deepseek.py         #   DeepSeekOpenAIClient + DeepSeekAnthropicClient
   coordinator.py        # Orchestration: select_plugins, run_scan, run_summaries
                         #   Shared by advise, scan, summarize commands
   web_tools.py          # Web tools: web_search (DDGS), web_fetch, web_fetch_batch

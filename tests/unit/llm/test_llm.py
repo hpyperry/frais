@@ -131,7 +131,20 @@ def test_get_client_raises_for_unsupported_protocol() -> None:
         api_key="sk-test",
     )
     with pytest.raises(ValueError, match="does not support protocol"):
-        get_client(config, protocol="anthropic")
+        get_client(config, protocol="grpc")
+
+
+def test_get_client_returns_deepseek_anthropic_client() -> None:
+    from frais.llm._deepseek import DeepSeekAnthropicClient
+
+    config = ProviderConfig(
+        provider=get_provider("deepseek"),
+        model="deepseek-v4-flash",
+        api_key="sk-test",
+    )
+    client = get_client(config, protocol="anthropic")
+    assert isinstance(client, DeepSeekAnthropicClient)
+    client.close()
 
 
 # --- LLMClient ABC tests ---
@@ -312,6 +325,213 @@ def test_thinking_skipped_for_unsupported_model(monkeypatch) -> None:
     client.chat("", "hello")
     client.close()
     assert "extra_body" not in captured
+
+
+# --- DeepSeekAnthropicClient tests ---
+
+
+class TestDeepSeekAnthropicClientInit:
+    def test_raises_when_config_not_ready(self) -> None:
+        from frais.llm._deepseek import DeepSeekAnthropicClient
+
+        config = _test_config(api_key="")
+        with pytest.raises(ValueError, match="incomplete"):
+            DeepSeekAnthropicClient(config)
+
+    def test_uses_deepseek_anthropic_base_url(self, monkeypatch) -> None:
+        from frais.llm._deepseek import DeepSeekAnthropicClient
+
+        captured: dict = {}
+
+        def fake_init(self, **kwargs):
+            captured["kwargs"] = kwargs
+
+        monkeypatch.setattr("anthropic.Anthropic.__init__", fake_init)
+        monkeypatch.setattr("anthropic.Anthropic.close", lambda s: None)
+        client = DeepSeekAnthropicClient(_test_config())
+        client.close()
+        assert captured["kwargs"].get("base_url") == "https://api.deepseek.com/anthropic"
+
+
+class TestDeepSeekAnthropicChat:
+    def test_extracts_result_from_create(self, monkeypatch) -> None:
+        from frais.llm._deepseek import DeepSeekAnthropicClient
+
+        monkeypatch.setattr(DeepSeekAnthropicClient, "_create", lambda s, **kw: "hello")
+        config = _test_config()
+        client = DeepSeekAnthropicClient(config)
+        result = client.chat("system", "user")
+        assert result == "hello"
+        client.close()
+
+    def test_system_as_top_level_param(self, monkeypatch) -> None:
+        from frais.llm._deepseek import DeepSeekAnthropicClient
+
+        captured: dict = {}
+
+        def fake_create(self, **kwargs):
+            captured.update(kwargs)
+            return "ok"
+
+        monkeypatch.setattr(DeepSeekAnthropicClient, "_create", fake_create)
+        config = _test_config()
+        client = DeepSeekAnthropicClient(config)
+        client.chat("system prompt", "user message")
+        client.close()
+        assert captured.get("system") == "system prompt"
+        assert captured["messages"] == [{"role": "user", "content": "user message"}]
+
+    def test_excludes_system_when_empty(self, monkeypatch) -> None:
+        from frais.llm._deepseek import DeepSeekAnthropicClient
+
+        captured: dict = {}
+
+        def fake_create(self, **kwargs):
+            captured.update(kwargs)
+            return "ok"
+
+        monkeypatch.setattr(DeepSeekAnthropicClient, "_create", fake_create)
+        config = _test_config()
+        client = DeepSeekAnthropicClient(config)
+        client.chat("", "hello")
+        client.close()
+        assert "system" not in captured
+        assert len(captured["messages"]) == 1
+
+    def test_defaults_max_tokens_to_4096(self, monkeypatch) -> None:
+        from frais.llm._deepseek import DeepSeekAnthropicClient
+
+        captured: dict = {}
+
+        def fake_create(self, **kwargs):
+            captured.update(kwargs)
+            return "ok"
+
+        monkeypatch.setattr(DeepSeekAnthropicClient, "_create", fake_create)
+        config = _test_config()
+        client = DeepSeekAnthropicClient(config)
+        client.chat("", "hello")
+        client.close()
+        assert captured.get("max_tokens") == 4096
+
+    def test_uses_explicit_max_tokens(self, monkeypatch) -> None:
+        from frais.llm._deepseek import DeepSeekAnthropicClient
+
+        captured: dict = {}
+
+        def fake_create(self, **kwargs):
+            captured.update(kwargs)
+            return "ok"
+
+        monkeypatch.setattr(DeepSeekAnthropicClient, "_create", fake_create)
+        config = _test_config()
+        client = DeepSeekAnthropicClient(config)
+        client.chat("", "hello", max_tokens=100)
+        client.close()
+        assert captured.get("max_tokens") == 100
+
+
+class TestDeepSeekAnthropicThinking:
+    def test_thinking_enabled_by_default(self, monkeypatch) -> None:
+        from frais.llm._deepseek import DeepSeekAnthropicClient
+
+        captured: dict = {}
+
+        def fake_create(self, **kwargs):
+            captured.update(kwargs)
+            return "ok"
+
+        monkeypatch.setattr(DeepSeekAnthropicClient, "_create", fake_create)
+        config = _config_with_thinking()
+        client = DeepSeekAnthropicClient(config)
+        client.chat("", "hello")
+        client.close()
+        assert captured.get("thinking") == {"type": "enabled", "budget_tokens": 1024}
+
+    def test_disable_thinking_injects_disabled(self, monkeypatch) -> None:
+        from frais.llm._deepseek import DeepSeekAnthropicClient
+
+        captured: dict = {}
+
+        def fake_create(self, **kwargs):
+            captured.update(kwargs)
+            return "ok"
+
+        monkeypatch.setattr(DeepSeekAnthropicClient, "_create", fake_create)
+        config = _config_with_thinking()
+        client = DeepSeekAnthropicClient(config)
+        client.chat("", "hello", disable_thinking=True)
+        client.close()
+        assert captured.get("thinking") == {"type": "disabled", "budget_tokens": 1024}
+
+    def test_thinking_skipped_for_unsupported_model(self, monkeypatch) -> None:
+        from frais.llm._deepseek import DeepSeekAnthropicClient
+
+        captured: dict = {}
+
+        def fake_create(self, **kwargs):
+            captured.update(kwargs)
+            return "ok"
+
+        monkeypatch.setattr(DeepSeekAnthropicClient, "_create", fake_create)
+        config = _config_with_thinking(model_supports=False)
+        client = DeepSeekAnthropicClient(config)
+        client.chat("", "hello")
+        client.close()
+        assert "thinking" not in captured
+
+
+class TestDeepSeekAnthropicErrors:
+    def test_raises_on_api_status_error(self, monkeypatch) -> None:
+        from frais.llm._deepseek import DeepSeekAnthropicClient
+
+        def fake_create(self, **kwargs):
+            raise LLMRequestError("LLM request failed with HTTP 500.", status_code=500)
+
+        monkeypatch.setattr(DeepSeekAnthropicClient, "_create", fake_create)
+        config = _test_config()
+        client = DeepSeekAnthropicClient(config)
+        with pytest.raises(LLMRequestError) as exc_info:
+            client.chat("", "hello")
+        assert exc_info.value.status_code == 500
+        client.close()
+
+    def test_raises_on_connection_error(self, monkeypatch) -> None:
+        from frais.llm._deepseek import DeepSeekAnthropicClient
+
+        def fake_create(self, **kwargs):
+            raise LLMRequestError("LLM connection failed: timeout")
+
+        monkeypatch.setattr(DeepSeekAnthropicClient, "_create", fake_create)
+        config = _test_config()
+        client = DeepSeekAnthropicClient(config)
+        with pytest.raises(LLMRequestError, match="LLM connection failed"):
+            client.chat("", "hello")
+        client.close()
+
+    def test_raises_on_empty_content(self, monkeypatch) -> None:
+        from frais.llm._deepseek import DeepSeekAnthropicClient
+
+        def fake_create(self, **kwargs):
+            raise LLMRequestError("LLM returned empty content.", status_code=200)
+
+        monkeypatch.setattr(DeepSeekAnthropicClient, "_create", fake_create)
+        config = _test_config()
+        client = DeepSeekAnthropicClient(config)
+        with pytest.raises(LLMRequestError, match="empty content"):
+            client.chat("", "hello")
+        client.close()
+
+
+class TestDeepSeekAnthropicTestConnection:
+    def test_returns_ok(self, monkeypatch) -> None:
+        from frais.llm._deepseek import DeepSeekAnthropicClient
+
+        monkeypatch.setattr(DeepSeekAnthropicClient, "_create", lambda s, **kw: "ok")
+        config = _test_config()
+        client = DeepSeekAnthropicClient(config)
+        assert client.test_connection() == "ok"
+        client.close()
 
 
 # --- LLMRequestError tests ---

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from ..store.config_store import ProviderConfig
 from ._base import LLMClient, LLMRequestError
-from ._deepseek import DeepSeekOpenAIClient
+from ._deepseek import DeepSeekAnthropicClient, DeepSeekOpenAIClient
 from ._openai_compatible import OpenAICompatibleClient
 
 # Note: adding a provider to providers.PROVIDERS requires a corresponding
 # entry here so get_client() can resolve it. The two registries must stay in sync.
 _CLIENT_MAP: dict[tuple[str, str], type[LLMClient]] = {
     ("deepseek", "openai"): DeepSeekOpenAIClient,
+    ("deepseek", "anthropic"): DeepSeekAnthropicClient,
 }
 
 
@@ -41,6 +42,7 @@ def get_client(config: ProviderConfig, protocol: str = "openai") -> LLMClient:
 
 
 __all__ = [
+    "DeepSeekAnthropicClient",
     "DeepSeekOpenAIClient",
     "LLMClient",
     "LLMRequestError",
