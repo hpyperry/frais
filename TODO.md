@@ -9,16 +9,20 @@
   - anthropic: 已支持（含 web_search）
 - 小米Mimo：
   - openai: 已支持
-  - anthropic: 暂不接入
-
+  - anthropic: 未接入 ❌
+- 千问
+  - openai: 规划中 ⌛️
+  - anthropic: 规划中 ⌛️
 ## provider对应websearch server-side 支持
 - deepseek
-  - openai: 不支持
+  - openai: 不支持 ❌
   - anthropic: 已支持 ✅
 - 小米Mimo
   - openai: 已支持 ✅
-  - anthropic: 不支持
-
+  - anthropic: 不支持 ❌
+- 千问
+  - openai: 规划中 ⌛️
+  - anthropic: 规划中 ⌛️
 # 遗留问题
 
 ## bug
