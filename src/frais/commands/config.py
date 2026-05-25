@@ -55,25 +55,48 @@ def _config_manage_flow() -> None:
     else:
         choice = "everything"
 
-    protocol = "openai"
-    url: str = ""
-
-    if choice in ("provider", "everything"):
-        provider, model = _pick_provider_and_model(current)
-    else:  # "key"
+    if choice == "key":
         provider = current.provider
         model = _find_model(provider, current.model) or provider.models[0]
         protocol = getattr(current, "protocol", "openai")
         url = getattr(current, "url", "")
-
-    if choice in ("provider", "everything"):
-        protocol = _pick_protocol(provider, current)
-        url = _ask_url(provider, protocol, current)
-
-    if choice in ("key", "everything"):
         api_key = _ask_api_key(provider, current)
-    else:
-        api_key = current.api_key
+        console.print()
+        _test_and_save(provider, model, api_key, protocol, url)
+        return
+
+    # "provider" or "everything": wizard with back support
+    provider, model = None, None
+    protocol = "openai"
+    url = ""
+    api_key = current.api_key if choice == "provider" else ""
+
+    step = 0  # 0=provider, 1=protocol, 2=url, 3=key, 4=done
+    while step < 4:
+        if step == 0:
+            result = _pick_provider_and_model(current)
+            if result is None:
+                raise _ConfigCancelled()
+            provider, model = result
+            step = 1
+        elif step == 1:
+            result = _pick_protocol(provider, current)
+            if result == "back":
+                step = 0
+                continue
+            protocol = result
+            step = 2
+        elif step == 2:
+            result = _ask_url(provider, protocol, current)
+            if result == "back":
+                step = 1
+                continue
+            url = result
+            step = 3
+        elif step == 3:
+            if choice == "everything":
+                api_key = _ask_api_key(provider, current)
+            step = 4
 
     console.print()
     _test_and_save(provider, model, api_key, protocol, url)
@@ -126,66 +149,74 @@ def _ask_what_to_modify() -> str:
 
 
 def _pick_provider_and_model(current):
-    """Walk through provider and model selection. Returns (provider, model)."""
+    """Walk through provider and model selection. Returns (provider, model) or None on back."""
     from ..providers import PROVIDERS
 
     current_provider_id = current.provider.id if current else None
 
-    console.print()
-    console.print("[bold]Select an LLM provider (Ctrl+C to cancel):[/bold]")
-    if current_provider_id:
-        console.print(f"  [dim]Current: {current.provider.name}[/dim]")
-    console.print()
-    for i, p in enumerate(PROVIDERS, 1):
-        marker = " [dim](current)[/dim]" if p.id == current_provider_id else ""
-        console.print(f"  {i}. {p.name}  [dim]({len(p.models)} models)[/dim]{marker}")
-    console.print()
+    while True:
+        console.print()
+        console.print("[bold]Select an LLM provider (Ctrl+C to cancel):[/bold]")
+        if current_provider_id:
+            console.print(f"  [dim]Current: {current.provider.name}[/dim]")
+        console.print("  [dim]0. Back[/dim]")
+        for i, p in enumerate(PROVIDERS, 1):
+            marker = " [dim](current)[/dim]" if p.id == current_provider_id else ""
+            console.print(f"  {i}. {p.name}  [dim]({len(p.models)} models)[/dim]{marker}")
+        console.print()
 
-    idx = _safe_ask_number(
-        "Enter provider number",
-        [str(i) for i in range(1, len(PROVIDERS) + 1)],
-    )
-    provider = PROVIDERS[idx - 1]
-    console.print(f"  [green]{provider.name}[/green] selected.")
-    console.print()
+        idx = _safe_ask_number(
+            "Enter provider number",
+            [str(i) for i in range(0, len(PROVIDERS) + 1)],
+        )
+        if idx == 0:
+            return None
+        provider = PROVIDERS[idx - 1]
+        console.print(f"  [green]{provider.name}[/green] selected.")
+        console.print()
 
-    current_model_id = current.model if current and current.provider.id == provider.id else None
+        current_model_id = current.model if current and current.provider.id == provider.id else None
 
-    console.print(f"[bold]Select a model for {provider.name} (Ctrl+C to cancel):[/bold]")
-    if current_model_id:
-        current_model_name = next((m.name for m in provider.models if m.id == current_model_id), current_model_id)
-        console.print(f"  [dim]Current: {current_model_name}[/dim]")
-    console.print()
-    for i, m in enumerate(provider.models, 1):
-        cur = " [dim](current)[/dim]" if m.id == current_model_id else ""
-        console.print(f"  {i}. {m.name}{cur}")
-    console.print()
+        console.print(f"[bold]Select a model for {provider.name} (Ctrl+C to cancel):[/bold]")
+        if current_model_id:
+            current_model_name = next((m.name for m in provider.models if m.id == current_model_id), current_model_id)
+            console.print(f"  [dim]Current: {current_model_name}[/dim]")
+        console.print("  [dim]0. Back[/dim]")
+        for i, m in enumerate(provider.models, 1):
+            cur = " [dim](current)[/dim]" if m.id == current_model_id else ""
+            console.print(f"  {i}. {m.name}{cur}")
+        console.print()
 
-    model_idx = _safe_ask_number(
-        "Enter model number",
-        [str(i) for i in range(1, len(provider.models) + 1)],
-    )
-    model = provider.models[model_idx - 1]
-    console.print(f"  [green]{model.name}[/green] selected.")
-
-    return provider, model
+        model_idx = _safe_ask_number(
+            "Enter model number",
+            [str(i) for i in range(0, len(provider.models) + 1)],
+        )
+        if model_idx == 0:
+            continue  # back to provider selection
+        model = provider.models[model_idx - 1]
+        console.print(f"  [green]{model.name}[/green] selected.")
+        return provider, model
 
 
 def _pick_protocol(provider, current) -> str:
-    """Show protocol selection. Auto-selects when only one is available."""
+    """Show protocol selection. Auto-selects when only one is available. Returns 'back' to go back."""
     current_protocol = getattr(current, "protocol", "openai") if current else "openai"
 
     console.print()
     if len(provider.protocols) == 1:
         proto = provider.protocols[0]
         console.print(f"[bold]Protocol for {provider.name}:[/bold] [cyan]{proto}[/cyan]")
+        console.print("  [dim]0. Back[/dim]")
         console.print()
+        idx = _safe_ask_number("Enter choice", ["0", "1"])
+        if idx == 0:
+            return "back"
         return proto
 
     console.print(f"[bold]Select protocol for {provider.name} (Ctrl+C to cancel):[/bold]")
     if current:
         console.print(f"  [dim]Current: {current_protocol}[/dim]")
-    console.print()
+    console.print("  [dim]0. Back[/dim]")
     for i, proto in enumerate(provider.protocols, 1):
         cur = " [dim](current)[/dim]" if proto == current_protocol else ""
         console.print(f"  {i}. {proto}{cur}")
@@ -193,8 +224,10 @@ def _pick_protocol(provider, current) -> str:
 
     idx = _safe_ask_number(
         "Enter protocol number",
-        [str(i) for i in range(1, len(provider.protocols) + 1)],
+        [str(i) for i in range(0, len(provider.protocols) + 1)],
     )
+    if idx == 0:
+        return "back"
     chosen = provider.protocols[idx - 1]
     console.print(f"  [green]{chosen}[/green] selected.")
     return chosen
@@ -213,13 +246,15 @@ def _ask_url(provider, protocol: str, current) -> str:
     console.print(f"  [dim]Default: {default_url}[/dim]")
     if current_url != default_url:
         console.print(f"  [dim]Current: {current_url}[/dim]")
-    console.print("  [dim](leave empty to keep current, type '-' to reset to default)[/dim]")
+    console.print("  [dim](leave empty to keep current, '-' = reset to default, 'back' = previous step)[/dim]")
 
     try:
         url = typer.prompt("URL", default=current_url, show_default=False).strip()
     except (KeyboardInterrupt, EOFError):
         raise _ConfigCancelled()
 
+    if url == "back":
+        return "back"
     if url == "-":
         console.print(f"  [dim]Reset to default ({default_url})[/dim]")
         return default_url
