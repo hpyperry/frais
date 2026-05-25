@@ -16,7 +16,7 @@
   - openai: 不支持
   - anthropic: 已支持 ✅
 - 小米Mimo
-  - openai: 待接入（有 API 示例）
+  - openai: 已支持 ✅
   - anthropic: 不支持
 
 # 遗留问题
@@ -27,7 +27,7 @@
 ## 优化
 - cli输出/json输出，需要根据plugin分组 ✅
 - applications插件的research流程，耗时问题
-  - 优先：Provider的webSearch（DeepSeek Anthropic ✅，MiMo 待接入）
+  - 优先：Provider的webSearch ✅（DeepSeek Anthropic + MiMo OpenAI 均已支持）
   - fallback: DDGS
 
 ## 功能
