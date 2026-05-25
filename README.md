@@ -42,12 +42,12 @@ Internal:
   cli.py assembles Typer commands
   commands/ ──▶ coordinator.py ──▶ plugins/
   store/ handles config, plugin state, ignore list, and scan cache
-  web_tools.py handles search/fetch for application research
+  web_tools.py handles search (DDGS + provider web_search strategy) and fetch for application research
 ```
 
 **Scan layer** — each plugin discovers installed software via its own `scan()` / `scan_all()` methods. Homebrew and NPM plugins can directly identify outdated packages from their package managers.
 
-**Research layer** (plugin-private) — `ApplicationsPlugin.scan()` internally runs a structured 3-step LLM pipeline: generate search queries → pick best URLs → extract version. App Store apps use the iTunes API directly (~1s). Both the iTunes fast path (`applications/app_store.py`) and the LLM pipeline (`applications/research/`) are private to the applications plugin. Summaries are generated via `plugin.summarize()` per-candidate.
+**Research layer** (plugin-private) — `ApplicationsPlugin.scan()` internally runs a structured 3-step LLM pipeline: generate search queries → pick best URLs → extract version. Web search uses `web_search_strategy()` which calls the provider's server-side search when available (DeepSeek Anthropic), falling back to DDGS otherwise. App Store apps skip this entirely and use the iTunes API directly (~1s). Both the iTunes fast path (`applications/app_store.py`) and the LLM pipeline (`applications/research/`) are private to the applications plugin. Summaries are generated via `plugin.summarize()` per-candidate.
 
 **Update layer** — each plugin provides its own `update()` method. Homebrew runs `brew upgrade`, NPM runs `npm install -g`, and Applications resolve App Store deep links or prompt to open the `.app` bundle.
 
