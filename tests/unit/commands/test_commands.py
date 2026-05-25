@@ -252,4 +252,4 @@ class _fake_llm_config:
     api_key = "sk-test"
     api_key_source = None
     protocol = "openai"
-    base_url_override = None
+    url = ""

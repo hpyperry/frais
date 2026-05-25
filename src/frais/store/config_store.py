@@ -18,7 +18,7 @@ class ProviderConfig:
     api_key: str
     api_key_source: str | None = None
     protocol: str = "openai"
-    base_url_override: str | None = None
+    url: str = ""  # current protocol endpoint URL
 
     @property
     def is_ready(self) -> bool:
@@ -45,7 +45,7 @@ def load_config(path: Path = CONFIG_PATH) -> ProviderConfig | None:
 
     model = file_data.get("model", "")
     protocol = file_data.get("protocol", "openai")
-    base_url = file_data.get("base_url") or None
+    url = file_data.get("url", "")
     env_key = os.getenv("FRAIS_LLM_API_KEY") or os.getenv("MIMO_API_KEY") or os.getenv("OPENAI_API_KEY")
     file_key = file_data.get("api_key")
     api_key = env_key or file_key or ""
@@ -66,7 +66,7 @@ def load_config(path: Path = CONFIG_PATH) -> ProviderConfig | None:
         api_key=api_key,
         api_key_source=api_key_source,
         protocol=protocol,
-        base_url_override=base_url,
+        url=url,
     )
 
 
@@ -86,19 +86,17 @@ def _toml_escape(value: str) -> str:
 
 
 def save_config(provider_id: str, model: str, api_key: str,
-                protocol: str = "openai", base_url: str | None = None,
+                protocol: str = "openai", url: str = "",
                 path: Path = CONFIG_PATH) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [
-        "[llm]",
-        f'provider = "{_toml_escape(provider_id)}"',
-        f'model = "{_toml_escape(model)}"',
-        f'api_key = "{_toml_escape(api_key)}"',
-        f'protocol = "{_toml_escape(protocol)}"',
-    ]
-    if base_url:
-        lines.append(f'base_url = "{_toml_escape(base_url)}"')
-    content = "\n".join(lines) + "\n"
+    content = (
+        "[llm]\n"
+        f'provider = "{_toml_escape(provider_id)}"\n'
+        f'model = "{_toml_escape(model)}"\n'
+        f'api_key = "{_toml_escape(api_key)}"\n'
+        f'protocol = "{_toml_escape(protocol)}"\n'
+        f'url = "{_toml_escape(url)}"\n'
+    )
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(content, encoding="utf-8")
     tmp.replace(path)

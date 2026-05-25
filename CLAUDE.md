@@ -81,7 +81,7 @@ src/frais/
                         #   PluginScanResult, ScanResult, ResearchResult, etc.
   providers.py          # Provider/ModelInfo dataclasses; DeepSeek provider definition
   store/                # Persistent storage layer
-    config_store.py      #   ProviderConfig + config.toml CRUD (protocol, base_url), env var overrides
+    config_store.py      #   ProviderConfig + config.toml CRUD (protocol, url), env var overrides
     plugin_store.py      #   Plugin state: reads/writes plugins.toml
     ignore_store.py      #   Ignore list: ignore.txt CRUD
     scan_cache.py        #   Atomic last_advice.json cache writes
@@ -319,7 +319,7 @@ Every error response includes a `reason` field the LLM can branch on:
     "provider": "deepseek",             // Provider id string
     "model": "deepseek-v4-flash",       // Model id string
     "protocol": "openai",               // API protocol
-    "base_url": "https://api.deepseek.com",  // Effective base URL
+    "url": "https://api.deepseek.com/anthropic",  // Endpoint URL for current protocol
     "key_suffix": "***abcd"             // Last 4 chars of API key, masked
   }
 }

@@ -497,7 +497,7 @@ def test_doctor_json_output_with_llm(monkeypatch, capsys) -> None:
         "model": "deepseek-v4-flash",
         "api_key": "sk-12345678abcd",
         "protocol": "openai",
-        "base_url_override": None,
+        "url": "https://api.deepseek.com",
     })()
     monkeypatch.setattr("frais.commands.doctor.load_config", lambda: fake_config)
 

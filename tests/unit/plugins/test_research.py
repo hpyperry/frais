@@ -29,9 +29,10 @@ def _dummy_llm(chat_return: str = '["q"]'):
     from frais.providers import ModelInfo, Provider
     from frais.store.config_store import ProviderConfig
 
-    p = Provider(id="test", name="Test", base_url="https://api.test.com",
+    p = Provider(id="test", name="Test",
                  models=[ModelInfo(id="test-model", name="Test Model")],
-                 protocols=["openai"], web_search_protocols=[])
+                 protocols=["openai"], web_search_protocols=[],
+                 protocol_urls={"openai": "https://api.test.com"})
     config = ProviderConfig(provider=p, model="test-model", api_key="sk-test")
     return OpenAICompatibleClient(config)
 

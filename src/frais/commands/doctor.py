@@ -52,8 +52,7 @@ def doctor(
         table.add_row("LLM provider", llm_cfg.provider.name)
         table.add_row("LLM model", llm_cfg.model)
         table.add_row("LLM protocol", llm_cfg.protocol)
-        table.add_row("LLM base URL",
-                      llm_cfg.base_url_override or f"{llm_cfg.provider.base_url} (default)")
+        table.add_row("LLM URL", llm_cfg.url)
         table.add_row("LLM key", _mask_key(llm_cfg.api_key))
     else:
         table.add_row("LLM", "not configured (run `frais config manage`)")
@@ -81,7 +80,7 @@ def _llm_json() -> dict[str, str | bool] | None:
         "provider": llm_cfg.provider.name,
         "model": llm_cfg.model,
         "protocol": llm_cfg.protocol,
-        "base_url": llm_cfg.base_url_override or llm_cfg.provider.base_url,
+        "url": llm_cfg.url,
         "key_suffix": _mask_key(llm_cfg.api_key),
     }
 

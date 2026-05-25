@@ -11,21 +11,18 @@ from ._openai_compatible import OpenAICompatibleClient
 
 logger = logging.getLogger(__name__)
 
-DEEPSEEK_ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic"
-
 
 class DeepSeekAnthropicClient(LLMClient):
     """DeepSeek provider using Anthropic Messages protocol."""
 
     def __init__(self, config: ProviderConfig) -> None:
         super().__init__(config)
-        base_url = config.base_url_override or DEEPSEEK_ANTHROPIC_BASE_URL
         self._client = anthropic.Anthropic(
             api_key=config.api_key,
-            base_url=base_url,
+            base_url=config.url,
             timeout=300.0,
         )
-        self._base_url = base_url
+        self._base_url = config.url
 
     def close(self) -> None:
         self._client.close()

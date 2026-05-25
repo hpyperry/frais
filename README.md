@@ -226,7 +226,7 @@ provider = "deepseek"
 model = "deepseek-v4-flash"
 api_key = "sk-..."
 protocol = "openai"
-# base_url = ""   # optional, only if using a custom endpoint
+url = "https://api.deepseek.com"
 ```
 
 Supported providers: `deepseek`, `mimo` (Xiaomi MiMo). Run `frais config manage` to configure your API key interactively.
@@ -246,7 +246,7 @@ API key resolution order: `FRAIS_LLM_API_KEY` env var → `MIMO_API_KEY` env var
   "provider": "deepseek",                // Provider id
   "model": "deepseek-v4-flash",          // Model id
   "protocol": "openai",                  // API protocol: openai | anthropic
-  "base_url": "https://api.deepseek.com", // Effective base URL (custom or default)
+  "url": "https://api.deepseek.com/anthropic", // Endpoint URL for current protocol
   "key_suffix": "***abcd",               // Masked key suffix (null if no key)
   "key_source": "config"                 // Where the key comes from: config | env:FRAIS_LLM_API_KEY | env:MIMO_API_KEY | env:OPENAI_API_KEY
 }

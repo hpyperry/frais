@@ -23,7 +23,7 @@ def _test_provider(**kw) -> Provider:
     defaults = {
         "id": "test",
         "name": "Test",
-        "base_url": "https://api.test.com",
+        "protocol_urls": {"openai": "https://api.test.com"},
         "models": [ModelInfo(id="test-model", name="Test Model")],
         "protocols": ["openai"],
         "web_search_protocols": [],
@@ -68,12 +68,6 @@ class _FakeResponse:
 # --- provider tests ---
 
 
-def test_provider_base_url() -> None:
-    provider = get_provider("deepseek")
-    assert provider is not None
-    assert provider.base_url == "https://api.deepseek.com"
-
-
 def test_get_provider_returns_none_for_unknown() -> None:
     assert get_provider("nonexistent") is None
 
@@ -83,9 +77,11 @@ def test_all_providers_have_models() -> None:
         assert len(p.models) > 0, f"{p.id} has no models"
 
 
-def test_all_providers_have_base_url() -> None:
+def test_all_providers_have_protocol_urls() -> None:
     for p in PROVIDERS:
-        assert p.base_url.startswith("https://"), f"{p.id} base_url: {p.base_url}"
+        assert len(p.protocol_urls) > 0, f"{p.id} has no protocol_urls"
+        for proto in p.protocols:
+            assert proto in p.protocol_urls, f"{p.id} missing url for {proto}"
 
 
 def test_providers_protocols_match_client_map() -> None:
@@ -162,8 +158,8 @@ def test_get_client_reads_protocol_from_config() -> None:
     client.close()
 
 
-def test_get_client_base_url_override(monkeypatch) -> None:
-    """Client uses custom base_url when provided."""
+def test_get_client_url(monkeypatch) -> None:
+    """Client uses url from config."""
     monkeypatch.setattr("anthropic.Anthropic.__init__", lambda s, **kw: None)
     monkeypatch.setattr("anthropic.Anthropic.close", lambda s: None)
     from frais.llm._deepseek import DeepSeekAnthropicClient
@@ -173,7 +169,7 @@ def test_get_client_base_url_override(monkeypatch) -> None:
         model="deepseek-v4-flash",
         api_key="sk-test",
         protocol="anthropic",
-        base_url_override="https://my-proxy.example.com",
+        url="https://my-proxy.example.com",
     )
     client = get_client(config)
     assert client._base_url == "https://my-proxy.example.com"
@@ -258,10 +254,10 @@ class TestOpenAICompatibleClientInit:
         assert client.config.model == "test-model"
         client.close()
 
-    def test_uses_provider_base_url(self) -> None:
-        config = _test_config()
+    def test_uses_config_url(self) -> None:
+        config = _test_config(url="https://api.test.com/v1")
         client = OpenAICompatibleClient(config)
-        assert client._client.base_url == "https://api.test.com"
+        assert str(client._client.base_url).rstrip("/") == "https://api.test.com/v1"
         client.close()
 
 
@@ -429,7 +425,7 @@ class TestDeepSeekAnthropicClientInit:
         with pytest.raises(ValueError, match="incomplete"):
             DeepSeekAnthropicClient(config)
 
-    def test_uses_deepseek_anthropic_base_url(self, monkeypatch) -> None:
+    def test_uses_anthropic_url_from_config(self, monkeypatch) -> None:
         from frais.llm._deepseek import DeepSeekAnthropicClient
 
         captured: dict = {}
@@ -439,7 +435,7 @@ class TestDeepSeekAnthropicClientInit:
 
         monkeypatch.setattr("anthropic.Anthropic.__init__", fake_init)
         monkeypatch.setattr("anthropic.Anthropic.close", lambda s: None)
-        client = DeepSeekAnthropicClient(_test_config())
+        client = DeepSeekAnthropicClient(_test_config(url="https://api.deepseek.com/anthropic"))
         client.close()
         assert captured["kwargs"].get("base_url") == "https://api.deepseek.com/anthropic"
 

@@ -11,7 +11,7 @@ def _test_provider(**kw) -> Provider:
     defaults = {
         "id": "test",
         "name": "Test",
-        "base_url": "https://api.test.com/v1",
+        "protocol_urls": {"openai": "https://api.test.com/v1"},
         "models": [ModelInfo(id="test-model", name="Test Model")],
         "protocols": ["openai"],
         "web_search_protocols": [],
@@ -58,8 +58,8 @@ class TestMiMoClientInit:
         with pytest.raises(ValueError, match="incomplete"):
             MiMoClient(config)
 
-    def test_uses_provider_base_url(self) -> None:
-        config = _test_config()
+    def test_uses_url_from_config(self) -> None:
+        config = _test_config(url="https://api.test.com/v1")
         client = MiMoClient(config)
         assert str(client._client.base_url) == "https://api.test.com/v1/"
         client.close()

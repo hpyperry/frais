@@ -56,7 +56,7 @@ def _config_manage_flow() -> None:
         choice = "everything"
 
     protocol = "openai"
-    base_url: str | None = None
+    url: str = ""
 
     if choice in ("provider", "everything"):
         provider, model = _pick_provider_and_model(current)
@@ -64,11 +64,11 @@ def _config_manage_flow() -> None:
         provider = current.provider
         model = _find_model(provider, current.model) or provider.models[0]
         protocol = getattr(current, "protocol", "openai")
-        base_url = getattr(current, "base_url_override", None)
+        url = getattr(current, "url", "")
 
     if choice in ("provider", "everything"):
         protocol = _pick_protocol(provider, current)
-        base_url = _ask_base_url(provider, current)
+        url = _ask_url(provider, protocol, current)
 
     if choice in ("key", "everything"):
         api_key = _ask_api_key(provider, current)
@@ -76,7 +76,7 @@ def _config_manage_flow() -> None:
         api_key = current.api_key
 
     console.print()
-    _test_and_save(provider, model, api_key, protocol, base_url)
+    _test_and_save(provider, model, api_key, protocol, url)
 
 
 def _safe_ask_number(prompt: str, choices: list[str]) -> int:
@@ -105,11 +105,7 @@ def _show_current_config(current) -> None:
     console.print(f"  Model:    [cyan]{current.model}[/cyan]")
     protocol = getattr(current, "protocol", "openai")
     console.print(f"  Protocol: [cyan]{protocol}[/cyan]")
-    base_url = getattr(current, "base_url_override", None)
-    if base_url:
-        console.print(f"  Base URL: [cyan]{base_url}[/cyan]")
-    else:
-        console.print(f"  Base URL: [dim]{current.provider.base_url} (default)[/dim]")
+    console.print(f"  URL:      [cyan]{current.url}[/cyan]")
     masked = "***" + current.api_key[-4:] if len(current.api_key) >= 4 else "***"
     console.print(f"  API key:  [dim]{masked}[/dim]")
     console.print()
@@ -204,34 +200,31 @@ def _pick_protocol(provider, current) -> str:
     return chosen
 
 
-def _ask_base_url(provider, current) -> str | None:
-    """Ask user for a custom base URL. Empty = keep current, '-' = reset to default."""
-    current_url = getattr(current, "base_url_override", None) if current else None
+def _ask_url(provider, protocol: str, current) -> str:
+    """Ask user for the endpoint URL. Empty = keep current, '-' = reset to default."""
+    from ..providers import get_protocol_url
+
+    current_url = (current.url if current and current.provider.id == provider.id
+                   else get_protocol_url(provider, protocol))
+    default_url = get_protocol_url(provider, protocol)
 
     console.print()
-    console.print(f"[bold]Base URL for {provider.name}[/bold]")
-    default_label = provider.base_url
-    if current_url:
+    console.print(f"[bold]Endpoint URL for {provider.name} ({protocol})[/bold]")
+    console.print(f"  [dim]Default: {default_url}[/dim]")
+    if current_url != default_url:
         console.print(f"  [dim]Current: {current_url}[/dim]")
-    console.print(f"  [dim]Default: {default_label}[/dim]")
     console.print("  [dim](leave empty to keep current, type '-' to reset to default)[/dim]")
 
     try:
-        url = typer.prompt("Custom base URL", default="", show_default=False).strip()
+        url = typer.prompt("URL", default=current_url, show_default=False).strip()
     except (KeyboardInterrupt, EOFError):
         raise _ConfigCancelled()
 
     if url == "-":
-        console.print(f"  [dim]Reset to default ({default_label})[/dim]")
-        return None
-    if url:
-        console.print(f"  [green]{url}[/green]")
-        return url
-    if current_url:
-        console.print(f"  [dim]Keeping current ({current_url})[/dim]")
-        return current_url
-    console.print(f"  [dim]Using default ({default_label})[/dim]")
-    return None
+        console.print(f"  [dim]Reset to default ({default_url})[/dim]")
+        return default_url
+    console.print(f"  [green]{url}[/green]")
+    return url
 
 
 def _ask_api_key(provider, current) -> str:
@@ -263,7 +256,7 @@ def _ask_api_key(provider, current) -> str:
 
 
 def _test_and_save(provider, model, api_key, protocol: str = "openai",
-                   base_url: str | None = None) -> None:
+                   url: str = "") -> None:
     """Test the connection and save the config."""
     import httpx
 
@@ -278,7 +271,7 @@ def _test_and_save(provider, model, api_key, protocol: str = "openai",
             model=model.id,
             api_key=api_key,
             protocol=protocol,
-            base_url_override=base_url,
+            url=url,
         )
         test_client = get_client(test_config)
         test_text = test_client.test_connection()
@@ -297,7 +290,7 @@ def _test_and_save(provider, model, api_key, protocol: str = "openai",
         if not confirmed:
             raise _ConfigCancelled()
 
-    save_config(provider.id, model.id, api_key, protocol=protocol, base_url=base_url)
+    save_config(provider.id, model.id, api_key, protocol=protocol, url=url)
     console.print()
     console.print(f"[green]Config saved to {CONFIG_PATH}[/green]")
 
@@ -331,7 +324,7 @@ def config_show(
             provider=llm.provider.id,
             model=llm.model,
             protocol=llm.protocol,
-            base_url=llm.base_url_override or llm.provider.base_url,
+            url=llm.url,
             key_suffix=key_suffix if llm.api_key else None,
             key_source=llm.api_key_source,
         )
@@ -341,7 +334,7 @@ def config_show(
     table.add_row("Provider", llm.provider.name)
     table.add_row("Model", llm.model)
     table.add_row("Protocol", llm.protocol)
-    table.add_row("Base URL", llm.base_url_override or f"{llm.provider.base_url} (default)")
+    table.add_row("URL", llm.url)
     if llm.api_key:
         masked = "***" + llm.api_key[-4:] if len(llm.api_key) >= 4 else "***"
         table.add_row("API key", masked)
@@ -403,12 +396,12 @@ def config_test(
         print_json_success(
             provider=config.provider.name,
             model=config.model,
-            url=config.provider.base_url,
+            url=config.url,
             response=text.strip(),
         )
         return
 
     console.print(f"Provider: {config.provider.name}")
     console.print(f"Model: {config.model}")
-    console.print(f"Base URL: {config.provider.base_url}")
+    console.print(f"URL: {config.url}")
     console.print(f"LLM test response: {text.strip()}")
