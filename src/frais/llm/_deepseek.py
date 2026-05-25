@@ -101,6 +101,10 @@ class DeepSeekAnthropicClient(LLMClient):
 
     def web_search(self, query: str) -> list[dict[str, str]]:
         """Execute a web search via the Anthropic protocol's web_search_20250305 tool."""
+        if not query.strip():
+            return []
+
+        logger.debug("anthropic web_search query=%s", query)
         tool_schema = {
             "type": "web_search_20250305",
             "name": "web_search",
@@ -129,6 +133,10 @@ class DeepSeekAnthropicClient(LLMClient):
                             "url": getattr(item, "url", "") or "",
                             "snippet": "",
                         })
+        if results:
+            logger.debug("anthropic web_search found %d results query=%s", len(results), query)
+        else:
+            logger.info("anthropic web_search returned no results for %s, will fallback to DDGS", query)
         return results
 
 

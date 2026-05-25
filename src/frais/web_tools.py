@@ -133,9 +133,17 @@ def web_search_strategy(llm: object, query: str) -> list[dict[str, str]]:
     Calls llm.web_search() — if the client supports server-side web search
     it returns results; otherwise falls back to DDGS.
     """
-    search_fn = getattr(llm, "web_search", None)
-    if search_fn is not None:
-        results = search_fn(query)
-        if results:
-            return results  # type: ignore[no-any-return]
+    if llm is not None:
+        search_fn = getattr(llm, "web_search", None)
+        if search_fn is not None:
+            try:
+                results = search_fn(query)
+            except Exception:
+                logger.warning("provider web_search raised exception, falling back to DDGS", exc_info=True)
+                results = []
+            if results:
+                logger.debug("web_search using provider backend, query=%s results=%d", query, len(results))
+                return results  # type: ignore[no-any-return]
+            logger.debug("provider web_search returned empty for %s, falling back to DDGS", query)
+    logger.debug("web_search using DDGS backend, query=%s", query)
     return web_search(query)

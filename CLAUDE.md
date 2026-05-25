@@ -93,7 +93,7 @@ src/frais/
     _mimo.py             #   MiMoClient (Xiaomi MiMo, max_completion_tokens)
   coordinator.py        # Orchestration: select_plugins, run_scan, run_summaries
                         #   Shared by advise, scan, summarize commands
-  web_tools.py          # Web tools: web_search (DDGS), web_fetch, web_fetch_batch
+  web_tools.py          # Web tools: web_search (DDGS), web_search_strategy (provider→DDGS fallback), web_fetch, web_fetch_batch
   system.py             # macOS detection
   paths.py              # Shared runtime paths for logs and scan cache
   logging_config.py     # Logging setup and file truncation
@@ -222,7 +222,7 @@ The LLM 3-step research pipeline lives in `plugins/applications/research/` — a
 
 Each non-App Store app goes through a structured 3-step pipeline:
 
-1. **Generate queries**: LLM produces 2-3 search queries for the app. We execute all queries via `web_search` in parallel.
+1. **Generate queries**: LLM produces 2-3 search queries for the app. We execute all queries via `web_search_strategy` in parallel — uses provider server-side search when available (DeepSeek Anthropic), falls back to DDGS otherwise.
 2. **Pick URLs**: LLM analyzes deduplicated search results and picks the top 3 most promising URLs.
 3. **Extract version**: We fetch all 3 URLs via `web_fetch_batch`. LLM parses the content and returns version info.
 
