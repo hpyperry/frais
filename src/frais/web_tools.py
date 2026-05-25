@@ -125,3 +125,17 @@ def _extract_text(html: str) -> str:
     text = re.sub(r"<[^>]+>", " ", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
+
+
+def web_search_strategy(config: object, query: str) -> list[dict[str, str]]:
+    """Select web search backend based on (provider, protocol).
+
+    When the configured provider+protocol supports server-side web search,
+    use it; otherwise fall back to DDGS.
+    """
+    from .coordinator import supports_web_search
+
+    if supports_web_search(config):
+        # TODO: integrate provider server-side web search
+        pass  # pragma: no cover — not yet implemented
+    return web_search(query)

@@ -22,9 +22,10 @@ class OpenAICompatibleClient(LLMClient):
 
     def __init__(self, config: ProviderConfig) -> None:
         super().__init__(config)
+        base_url = config.base_url_override or config.provider.base_url
         self._client = openai.OpenAI(
             api_key=config.api_key,
-            base_url=config.provider.base_url,
+            base_url=base_url,
             timeout=300.0,
         )
 

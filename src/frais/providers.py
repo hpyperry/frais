@@ -17,6 +17,7 @@ class Provider:
     base_url: str
     models: list[ModelInfo]
     protocols: list[str]
+    web_search_protocols: list[str]  # protocols that support server-side web search
 
 
 PROVIDERS: list[Provider] = [
@@ -30,6 +31,18 @@ PROVIDERS: list[Provider] = [
             ModelInfo(id="deepseek-chat", name="DeepSeek Chat (deprecated)", supports_thinking=False),
         ],
         protocols=["openai", "anthropic"],
+        web_search_protocols=["anthropic"],
+    ),
+    Provider(
+        id="mimo",
+        name="Xiaomi MiMo",
+        base_url="https://api.xiaomimimo.com/v1",
+        models=[
+            ModelInfo(id="mimo-v2.5-pro", name="MiMo V2.5 Pro", supports_thinking=True),
+            ModelInfo(id="mimo-v2-flash", name="MiMo V2 Flash", supports_thinking=False),
+        ],
+        protocols=["openai"],
+        web_search_protocols=["openai"],
     ),
 ]
 

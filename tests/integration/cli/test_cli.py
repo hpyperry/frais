@@ -490,12 +490,14 @@ def test_doctor_json_output_with_llm(monkeypatch, capsys) -> None:
         applications_paths=["/Applications"],
     ))
     monkeypatch.setattr("frais.plugins.registry.all_plugins", lambda: {})
-    fake_provider = type("P", (), {"name": "DeepSeek", "id": "deepseek"})()
+    fake_provider = type("P", (), {"name": "DeepSeek", "id": "deepseek", "base_url": "https://api.deepseek.com"})()
     fake_config = type("C", (), {
         "is_ready": True,
         "provider": fake_provider,
         "model": "deepseek-v4-flash",
         "api_key": "sk-12345678abcd",
+        "protocol": "openai",
+        "base_url_override": None,
     })()
     monkeypatch.setattr("frais.commands.doctor.load_config", lambda: fake_config)
 

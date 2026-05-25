@@ -81,7 +81,7 @@ src/frais/
                         #   PluginScanResult, ScanResult, ResearchResult, etc.
   providers.py          # Provider/ModelInfo dataclasses; DeepSeek provider definition
   store/                # Persistent storage layer
-    config_store.py      #   ProviderConfig + config.toml CRUD, env var overrides
+    config_store.py      #   ProviderConfig + config.toml CRUD (protocol, base_url), env var overrides
     plugin_store.py      #   Plugin state: reads/writes plugins.toml
     ignore_store.py      #   Ignore list: ignore.txt CRUD
     scan_cache.py        #   Atomic last_advice.json cache writes
@@ -90,6 +90,7 @@ src/frais/
     _base.py             #   LLMClient ABC + LLMRequestError
     _openai_compatible.py  # OpenAICompatibleClient base (Bearer auth, /v1/chat/completions)
     _deepseek.py         #   DeepSeekOpenAIClient + DeepSeekAnthropicClient
+    _mimo.py             #   MiMoClient (Xiaomi MiMo, max_completion_tokens)
   coordinator.py        # Orchestration: select_plugins, run_scan, run_summaries
                         #   Shared by advise, scan, summarize commands
   web_tools.py          # Web tools: web_search (DDGS), web_fetch, web_fetch_batch
@@ -314,10 +315,12 @@ Every error response includes a `reason` field the LLM can branch on:
     }
   },
   "llm": null | {
-    "configured": true|false,     // Whether config is ready to use
-    "provider": "deepseek",       // Provider id string
-    "model": "deepseek-v4-flash", // Model id string
-    "key_suffix": "***abcd"       // Last 4 chars of API key, masked
+    "configured": true|false,           // Whether config is ready to use
+    "provider": "deepseek",             // Provider id string
+    "model": "deepseek-v4-flash",       // Model id string
+    "protocol": "openai",               // API protocol
+    "base_url": "https://api.deepseek.com",  // Effective base URL
+    "key_suffix": "***abcd"             // Last 4 chars of API key, masked
   }
 }
 ```
@@ -583,7 +586,11 @@ Workflow:
 - **Progress bar**: `_scan_core.run_scan_phase()` renders a Rich `Progress` bar with one task row per plugin. Each row shows the plugin's current `scan_steps` label with live `TimeElapsedColumn`. Progress is driven by `on_progress(step, done, total)`. After scans, a dedicated task row shows Summaries progress. Total time = max(scan times) + summarize time.
 - **Ignore list**: `~/.frais/config/ignore.txt` stores app IDs to skip during `advise`. Auto-created on first access via `init_ignored()`. Managed via `frais ignore add/remove/list`. Filtered after scan, before research.
 - **Plugin discovery**: `registry.py` uses `importlib.metadata.entry_points(group="frais.plugins")` to discover all plugins at runtime. Built-in plugins (applications, homebrew, npm) are always present. Failed loads are logged, not fatal.
-- **Lazy imports**: The applications plugin defers heavy imports (`scan_applications`, `research_application_update`) into its `scan()` method body. This prevents `all_plugins()` — called by lightweight commands like `plugins list` and `doctor` — from pulling in the LLM client, DDGS, and lxml import chain.
+- **Lazy imports (hard rule)**: Heavy dependencies (`openai`, `anthropic`, `ddgs`, `lxml`) must never be imported at module level by commands that don't need them. Three mechanisms enforce this:
+  1. **CLI entry point**: `cli.py` registers heavy commands (`advise`, `scan`, `summarize`, `update`) via `_register_heavy_commands()` called from `main_entry()`, not at module level. Lightweight commands (`doctor`, `config`, `plugins`, `ignore`) are imported and registered at module level; they must not trigger heavy imports.
+  2. **Cross-command imports**: When a lightweight command uses a symbol from a heavy module (e.g., `scan` imports `_print_advise_result` from `advise.py`), the import must be deferred into the function body, not at module level.
+  3. **Plugin layer**: The applications plugin defers heavy imports (`scan_applications`, `research_application_update`) into `scan()`, preventing `all_plugins()` from pulling in the LLM/DeeDeeGo/lxml chain.
+  To verify: `python -X importtime -c "from frais.cli import main_entry" 2>&1 | grep -cE 'openai|anthropic|ddgs|lxml'` must return 0.
 - **Plugin persistence**: `store/plugin_store.py` manages `~/.frais/config/plugins.toml`. First run auto-creates the file with all discovered plugins set to their defaults. `plugins enable/disable` persist state. `select_plugins()` precedence: `--plugins` (explicit) overrides persisted config; default path uses `enabled_by_default` when not persisted.
 - **Ctrl+C handling**: `advise` and `scan` use `commands/_signal.install_interrupt_handler()` — a shared SIGINT handler. It uses `os.write(1, b"\033[?25h\n")` (wrapped in `try/except OSError`) to directly write the cursor-show ANSI escape to the stdout fd — bypassing Rich's internal segment buffer, which can swallow escapes when a nested `with self.console:` context is held (e.g. by Progress's auto-refresh thread). Then `os._exit(130)`. Original handler is restored via `try/finally`. Signal handler (not KeyboardInterrupt) is needed because ThreadPoolExecutor.__exit__ blocks on worker threads. The handler must only call async-signal-safe functions (`os.write`, `os._exit`) — no logging, no Rich API calls, no string formatting.
 - **Atomic writes**: Config and state files (`config.toml`, `ignore.txt`, `plugins.toml`, `last_advice.json`) are written to a `.tmp` sibling then atomically renamed via `Path.replace()` to prevent truncated/corrupt reads on concurrent access or crash.

@@ -109,3 +109,12 @@ def run_summaries(llm: LLMClient,
                 logger.warning("summary failed: %s", exc, exc_info=True)
             if on_progress:
                 on_progress()
+
+
+def supports_web_search(config: object) -> bool:
+    """Check whether the configured (provider, protocol) supports server-side web search."""
+    from .store.config_store import ProviderConfig
+
+    if not isinstance(config, ProviderConfig):
+        return False
+    return config.protocol in config.provider.web_search_protocols

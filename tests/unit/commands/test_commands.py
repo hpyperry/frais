@@ -246,7 +246,10 @@ class _fake_llm_config:
         "base_url": "https://api.deepseek.com",
         "models": [type("M", (), {"id": "deepseek-v4-flash", "supports_thinking": True})()],
         "protocols": ["openai"],
+        "web_search_protocols": [],
     })()
     model = "deepseek-v4-flash"
     api_key = "sk-test"
     api_key_source = None
+    protocol = "openai"
+    base_url_override = None

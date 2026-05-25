@@ -19,12 +19,13 @@ class DeepSeekAnthropicClient(LLMClient):
 
     def __init__(self, config: ProviderConfig) -> None:
         super().__init__(config)
+        base_url = config.base_url_override or DEEPSEEK_ANTHROPIC_BASE_URL
         self._client = anthropic.Anthropic(
             api_key=config.api_key,
-            base_url=DEEPSEEK_ANTHROPIC_BASE_URL,
+            base_url=base_url,
             timeout=300.0,
         )
-        self._base_url = DEEPSEEK_ANTHROPIC_BASE_URL
+        self._base_url = base_url
 
     def close(self) -> None:
         self._client.close()

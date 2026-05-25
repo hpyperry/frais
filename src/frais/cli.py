@@ -183,16 +183,35 @@ ignore_app.command("list")(ignore_list)
 ignore_app.command("add")(ignore_add)
 ignore_app.command("remove")(ignore_remove)
 
-from .commands.advise import advise
-from .commands.scan import scan
-from .commands.summarize import summarize
-from .commands.update import update
+_heavy_commands_registered = False
 
-app.command(name="advise")(advise)
-app.command(name="scan")(scan)
-app.command(name="summarize")(summarize)
-app.command(name="update")(update)
+
+def _register_heavy_commands() -> None:
+    """Deferred registration of commands that pull in heavy dependencies.
+
+    Avoids importing openai, anthropic, ddgs, and lxml during lightweight
+    commands like ``frais config manage`` or ``frais doctor``.
+    """
+    global _heavy_commands_registered
+    if _heavy_commands_registered:
+        return
+    from .commands.advise import advise
+    from .commands.scan import scan
+    from .commands.summarize import summarize
+    from .commands.update import update
+
+    app.command(name="advise")(advise)
+    app.command(name="scan")(scan)
+    app.command(name="summarize")(summarize)
+    app.command(name="update")(update)
+    _heavy_commands_registered = True
+
+
+def main_entry() -> None:
+    """CLI entry point. Registers heavy commands then launches the app."""
+    _register_heavy_commands()
+    app()
 
 
 if __name__ == "__main__":
-    app()
+    main_entry()

@@ -31,7 +31,7 @@ def _dummy_llm(chat_return: str = '["q"]'):
 
     p = Provider(id="test", name="Test", base_url="https://api.test.com",
                  models=[ModelInfo(id="test-model", name="Test Model")],
-                 protocols=["openai"])
+                 protocols=["openai"], web_search_protocols=[])
     config = ProviderConfig(provider=p, model="test-model", api_key="sk-test")
     return OpenAICompatibleClient(config)
 

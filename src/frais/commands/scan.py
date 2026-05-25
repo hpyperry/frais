@@ -12,7 +12,6 @@ from . import _split_plugins
 from ._output import exit_with_error, print_json_success
 from ._scan_core import run_scan_phase
 from ._signal import install_interrupt_handler
-from .advise import _print_advise_result
 
 console = Console()
 
@@ -89,6 +88,8 @@ def scan(
     if json_output:
         print_json_success(**result.to_dict())
     else:
+        from .advise import _print_advise_result
+
         ignored_count = phase_result.ignored_count
         scan_elapsed = phase_result.scan_elapsed
         max_scan_time = max(scan_elapsed.values()) if scan_elapsed else 0.0

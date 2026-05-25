@@ -24,7 +24,7 @@ build = [
 ]
 
 [project.scripts]
-frais = "frais.cli:app"
+frais = "frais.cli:main_entry"
 
 [project.entry-points."frais.plugins"]
 applications = "frais.plugins.applications.plugin:ApplicationsPlugin"

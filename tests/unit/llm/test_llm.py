@@ -26,6 +26,7 @@ def _test_provider(**kw) -> Provider:
         "base_url": "https://api.test.com",
         "models": [ModelInfo(id="test-model", name="Test Model")],
         "protocols": ["openai"],
+        "web_search_protocols": [],
     }
     return Provider(**(defaults | kw))
 
@@ -145,6 +146,92 @@ def test_get_client_returns_deepseek_anthropic_client() -> None:
     client = get_client(config, protocol="anthropic")
     assert isinstance(client, DeepSeekAnthropicClient)
     client.close()
+
+
+def test_get_client_reads_protocol_from_config() -> None:
+    from frais.llm._deepseek import DeepSeekAnthropicClient
+
+    config = ProviderConfig(
+        provider=get_provider("deepseek"),
+        model="deepseek-v4-flash",
+        api_key="sk-test",
+        protocol="anthropic",
+    )
+    client = get_client(config)
+    assert isinstance(client, DeepSeekAnthropicClient)
+    client.close()
+
+
+def test_get_client_base_url_override(monkeypatch) -> None:
+    """Client uses custom base_url when provided."""
+    monkeypatch.setattr("anthropic.Anthropic.__init__", lambda s, **kw: None)
+    monkeypatch.setattr("anthropic.Anthropic.close", lambda s: None)
+    from frais.llm._deepseek import DeepSeekAnthropicClient
+
+    config = ProviderConfig(
+        provider=get_provider("deepseek"),
+        model="deepseek-v4-flash",
+        api_key="sk-test",
+        protocol="anthropic",
+        base_url_override="https://my-proxy.example.com",
+    )
+    client = get_client(config)
+    assert client._base_url == "https://my-proxy.example.com"
+    client.close()
+
+
+def test_supports_web_search() -> None:
+    from frais.coordinator import supports_web_search
+
+    config = ProviderConfig(
+        provider=get_provider("deepseek"),
+        model="deepseek-v4-flash",
+        api_key="sk-test",
+        protocol="openai",
+    )
+    assert not supports_web_search(config)
+
+    config2 = ProviderConfig(
+        provider=get_provider("deepseek"),
+        model="deepseek-v4-flash",
+        api_key="sk-test",
+        protocol="anthropic",
+    )
+    assert supports_web_search(config2)
+
+
+def test_supports_web_search_mimo() -> None:
+    from frais.coordinator import supports_web_search
+
+    config = ProviderConfig(
+        provider=get_provider("mimo"),
+        model="mimo-v2.5-pro",
+        api_key="sk-test",
+        protocol="openai",
+    )
+    assert supports_web_search(config)
+
+
+def test_web_search_strategy_falls_back_to_ddgs(monkeypatch) -> None:
+    from frais.web_tools import web_search_strategy
+    from frais.store.config_store import ProviderConfig
+
+    config = ProviderConfig(
+        provider=get_provider("deepseek"),
+        model="deepseek-v4-flash",
+        api_key="sk-test",
+        protocol="openai",
+    )
+    called = []
+
+    def fake_search(q):
+        called.append(q)
+        return [{"title": "t", "url": "u", "snippet": "s"}]
+
+    monkeypatch.setattr("frais.web_tools.web_search", fake_search)
+    result = web_search_strategy(config, "test query")
+    assert called == ["test query"]
+    assert result == [{"title": "t", "url": "u", "snippet": "s"}]
 
 
 # --- LLMClient ABC tests ---

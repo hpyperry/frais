@@ -225,11 +225,13 @@ Example config (`~/.frais/config/config.toml`):
 provider = "deepseek"
 model = "deepseek-v4-flash"
 api_key = "sk-..."
+protocol = "openai"
+# base_url = ""   # optional, only if using a custom endpoint
 ```
 
-Supported provider: `deepseek`. Run `frais config manage` to configure your API key interactively.
+Supported providers: `deepseek`, `mimo` (Xiaomi MiMo). Run `frais config manage` to configure your API key interactively.
 
-API key resolution order: `FRAIS_LLM_API_KEY` env var → `OPENAI_API_KEY` env var (openai only) → config file.
+API key resolution order: `FRAIS_LLM_API_KEY` env var → `MIMO_API_KEY` env var → `OPENAI_API_KEY` env var → config file.
 
 **`config show --json`:**
 
@@ -241,10 +243,12 @@ API key resolution order: `FRAIS_LLM_API_KEY` env var → `OPENAI_API_KEY` env v
 {
   "ok": true,
   "configured": true,
-  "provider": "deepseek",        // Provider id
-  "model": "deepseek-v4-flash",  // Model id
-  "key_suffix": "***abcd",       // Masked key suffix (null if no key)
-  "key_source": "config"         // Where the key comes from: config | env:FRAIS_LLM_API_KEY | env:OPENAI_API_KEY
+  "provider": "deepseek",                // Provider id
+  "model": "deepseek-v4-flash",          // Model id
+  "protocol": "openai",                  // API protocol: openai | anthropic
+  "base_url": "https://api.deepseek.com", // Effective base URL (custom or default)
+  "key_suffix": "***abcd",               // Masked key suffix (null if no key)
+  "key_source": "config"                 // Where the key comes from: config | env:FRAIS_LLM_API_KEY | env:MIMO_API_KEY | env:OPENAI_API_KEY
 }
 ```
 

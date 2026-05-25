@@ -145,3 +145,62 @@ def test_all_registered_providers_loadable() -> None:
         assert found is p
 
 
+def test_save_and_load_config_with_protocol(tmp_path: Path) -> None:
+    config = tmp_path / "config.toml"
+    save_config("deepseek", "deepseek-v4-flash", "sk-test",
+                protocol="anthropic", path=config)
+
+    text = config.read_text(encoding="utf-8")
+    assert 'protocol = "anthropic"' in text
+
+    loaded = load_config(config)
+    assert loaded is not None
+    assert loaded.protocol == "anthropic"
+
+
+def test_load_config_defaults_protocol_to_openai(tmp_path: Path) -> None:
+    config = tmp_path / "config.toml"
+    config.write_text(
+        """
+[llm]
+provider = "deepseek"
+model = "deepseek-v4-flash"
+api_key = "sk-test"
+""",
+        encoding="utf-8",
+    )
+    loaded = load_config(config)
+    assert loaded is not None
+    assert loaded.protocol == "openai"
+
+
+def test_save_and_load_config_with_base_url(tmp_path: Path) -> None:
+    config = tmp_path / "config.toml"
+    save_config("deepseek", "deepseek-v4-flash", "sk-test",
+                protocol="openai", base_url="https://my-proxy.example.com", path=config)
+
+    text = config.read_text(encoding="utf-8")
+    assert 'base_url = "https://my-proxy.example.com"' in text
+
+    loaded = load_config(config)
+    assert loaded is not None
+    assert loaded.base_url_override == "https://my-proxy.example.com"
+
+
+def test_load_config_no_base_url_is_none(tmp_path: Path) -> None:
+    config = tmp_path / "config.toml"
+    config.write_text(
+        """
+[llm]
+provider = "deepseek"
+model = "deepseek-v4-flash"
+api_key = "sk-test"
+protocol = "openai"
+""",
+        encoding="utf-8",
+    )
+    loaded = load_config(config)
+    assert loaded is not None
+    assert loaded.base_url_override is None
+
+

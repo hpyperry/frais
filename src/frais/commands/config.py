@@ -55,11 +55,20 @@ def _config_manage_flow() -> None:
     else:
         choice = "everything"
 
+    protocol = "openai"
+    base_url: str | None = None
+
     if choice in ("provider", "everything"):
         provider, model = _pick_provider_and_model(current)
     else:  # "key"
         provider = current.provider
         model = _find_model(provider, current.model) or provider.models[0]
+        protocol = getattr(current, "protocol", "openai")
+        base_url = getattr(current, "base_url_override", None)
+
+    if choice in ("provider", "everything"):
+        protocol = _pick_protocol(provider, current)
+        base_url = _ask_base_url(provider, current)
 
     if choice in ("key", "everything"):
         api_key = _ask_api_key(provider, current)
@@ -67,7 +76,7 @@ def _config_manage_flow() -> None:
         api_key = current.api_key
 
     console.print()
-    _test_and_save(provider, model, api_key)
+    _test_and_save(provider, model, api_key, protocol, base_url)
 
 
 def _safe_ask_number(prompt: str, choices: list[str]) -> int:
@@ -94,6 +103,13 @@ def _show_current_config(current) -> None:
     console.print("[bold]Current configuration:[/bold]")
     console.print(f"  Provider: [cyan]{current.provider.name}[/cyan]")
     console.print(f"  Model:    [cyan]{current.model}[/cyan]")
+    protocol = getattr(current, "protocol", "openai")
+    console.print(f"  Protocol: [cyan]{protocol}[/cyan]")
+    base_url = getattr(current, "base_url_override", None)
+    if base_url:
+        console.print(f"  Base URL: [cyan]{base_url}[/cyan]")
+    else:
+        console.print(f"  Base URL: [dim]{current.provider.base_url} (default)[/dim]")
     masked = "***" + current.api_key[-4:] if len(current.api_key) >= 4 else "***"
     console.print(f"  API key:  [dim]{masked}[/dim]")
     console.print()
@@ -106,7 +122,7 @@ def _ask_what_to_modify() -> str:
     console.print("  1. Provider & Model")
     console.print("  2. API Key")
     console.print("  3. Everything (full reconfiguration)")
-    console.print("  4. Cancel (Esc / Ctrl+C)")
+    console.print("  4. Cancel (Ctrl+C)")
     console.print()
 
     idx = _safe_ask_number("Enter choice", ["1", "2", "3", "4"])
@@ -159,6 +175,65 @@ def _pick_provider_and_model(current):
     return provider, model
 
 
+def _pick_protocol(provider, current) -> str:
+    """Show protocol selection. Auto-selects when only one is available."""
+    current_protocol = getattr(current, "protocol", "openai") if current else "openai"
+
+    console.print()
+    if len(provider.protocols) == 1:
+        proto = provider.protocols[0]
+        console.print(f"[bold]Protocol for {provider.name}:[/bold] [cyan]{proto}[/cyan]")
+        console.print()
+        return proto
+
+    console.print(f"[bold]Select protocol for {provider.name} (Ctrl+C to cancel):[/bold]")
+    if current:
+        console.print(f"  [dim]Current: {current_protocol}[/dim]")
+    console.print()
+    for i, proto in enumerate(provider.protocols, 1):
+        cur = " [dim](current)[/dim]" if proto == current_protocol else ""
+        console.print(f"  {i}. {proto}{cur}")
+    console.print()
+
+    idx = _safe_ask_number(
+        "Enter protocol number",
+        [str(i) for i in range(1, len(provider.protocols) + 1)],
+    )
+    chosen = provider.protocols[idx - 1]
+    console.print(f"  [green]{chosen}[/green] selected.")
+    return chosen
+
+
+def _ask_base_url(provider, current) -> str | None:
+    """Ask user for a custom base URL. Empty = keep current, '-' = reset to default."""
+    current_url = getattr(current, "base_url_override", None) if current else None
+
+    console.print()
+    console.print(f"[bold]Base URL for {provider.name}[/bold]")
+    default_label = provider.base_url
+    if current_url:
+        console.print(f"  [dim]Current: {current_url}[/dim]")
+    console.print(f"  [dim]Default: {default_label}[/dim]")
+    console.print("  [dim](leave empty to keep current, type '-' to reset to default)[/dim]")
+
+    try:
+        url = typer.prompt("Custom base URL", default="", show_default=False).strip()
+    except (KeyboardInterrupt, EOFError):
+        raise _ConfigCancelled()
+
+    if url == "-":
+        console.print(f"  [dim]Reset to default ({default_label})[/dim]")
+        return None
+    if url:
+        console.print(f"  [green]{url}[/green]")
+        return url
+    if current_url:
+        console.print(f"  [dim]Keeping current ({current_url})[/dim]")
+        return current_url
+    console.print(f"  [dim]Using default ({default_label})[/dim]")
+    return None
+
+
 def _ask_api_key(provider, current) -> str:
     """Prompt for a new API key. Empty input keeps the existing key."""
     from getpass import getpass
@@ -187,7 +262,8 @@ def _ask_api_key(provider, current) -> str:
     return api_key
 
 
-def _test_and_save(provider, model, api_key) -> None:
+def _test_and_save(provider, model, api_key, protocol: str = "openai",
+                   base_url: str | None = None) -> None:
     """Test the connection and save the config."""
     import httpx
 
@@ -201,6 +277,8 @@ def _test_and_save(provider, model, api_key) -> None:
             provider=provider,
             model=model.id,
             api_key=api_key,
+            protocol=protocol,
+            base_url_override=base_url,
         )
         test_client = get_client(test_config)
         test_text = test_client.test_connection()
@@ -219,7 +297,7 @@ def _test_and_save(provider, model, api_key) -> None:
         if not confirmed:
             raise _ConfigCancelled()
 
-    save_config(provider.id, model.id, api_key)
+    save_config(provider.id, model.id, api_key, protocol=protocol, base_url=base_url)
     console.print()
     console.print(f"[green]Config saved to {CONFIG_PATH}[/green]")
 
@@ -252,6 +330,8 @@ def config_show(
             configured=True,
             provider=llm.provider.id,
             model=llm.model,
+            protocol=llm.protocol,
+            base_url=llm.base_url_override or llm.provider.base_url,
             key_suffix=key_suffix if llm.api_key else None,
             key_source=llm.api_key_source,
         )
@@ -260,6 +340,8 @@ def config_show(
     table = Table("Key", "Value")
     table.add_row("Provider", llm.provider.name)
     table.add_row("Model", llm.model)
+    table.add_row("Protocol", llm.protocol)
+    table.add_row("Base URL", llm.base_url_override or f"{llm.provider.base_url} (default)")
     if llm.api_key:
         masked = "***" + llm.api_key[-4:] if len(llm.api_key) >= 4 else "***"
         table.add_row("API key", masked)
