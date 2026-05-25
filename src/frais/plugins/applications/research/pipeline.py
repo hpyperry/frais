@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from ....llm import LLMClient
 from ....models import ResearchResult, SoftwareItem, UpdateCandidate
-from ....web_tools import web_fetch_batch, web_search
+from ....web_tools import web_fetch_batch, web_search_strategy
 from ..app_store import check_app_store_version
 from .candidate_factory import _make_candidate
 from .json_parser import _ensure_list, _parse_json_list, _parse_json_object
@@ -116,7 +116,7 @@ def _llm_structured_research(llm: LLMClient, item: SoftwareItem) -> ResearchResu
     # Execute all searches in parallel
     all_results: list[dict[str, str]] = []
     with ThreadPoolExecutor(max_workers=len(queries)) as pool:
-        futures = [pool.submit(web_search, q) for q in queries]
+        futures = [pool.submit(web_search_strategy, llm, q) for q in queries]
         for future in as_completed(futures):
             try:
                 all_results.extend(future.result())

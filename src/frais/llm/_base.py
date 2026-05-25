@@ -31,6 +31,14 @@ class LLMClient(ABC):
         """Close the underlying HTTP client and release connections."""
         ...
 
+    def web_search(self, query: str) -> list[dict[str, str]]:
+        """Execute a web search. Default: not supported, returns empty list.
+
+        Providers that support server-side web search override this method.
+        The return format matches DDGS: [{"title", "url", "snippet"}, ...].
+        """
+        return []
+
     def test_connection(self) -> str:
         """Send a minimal request to verify the provider is reachable."""
         try:

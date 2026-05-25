@@ -127,15 +127,15 @@ def _extract_text(html: str) -> str:
     return text.strip()
 
 
-def web_search_strategy(config: object, query: str) -> list[dict[str, str]]:
-    """Select web search backend based on (provider, protocol).
+def web_search_strategy(llm: object, query: str) -> list[dict[str, str]]:
+    """Select web search backend based on LLM client capabilities.
 
-    When the configured provider+protocol supports server-side web search,
-    use it; otherwise fall back to DDGS.
+    Calls llm.web_search() — if the client supports server-side web search
+    it returns results; otherwise falls back to DDGS.
     """
-    from .coordinator import supports_web_search
-
-    if supports_web_search(config):
-        # TODO: integrate provider server-side web search
-        pass  # pragma: no cover — not yet implemented
+    search_fn = getattr(llm, "web_search", None)
+    if search_fn is not None:
+        results = search_fn(query)
+        if results:
+            return results  # type: ignore[no-any-return]
     return web_search(query)

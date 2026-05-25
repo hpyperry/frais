@@ -94,7 +94,7 @@ def test_local_build_can_be_update_candidate(monkeypatch) -> None:
         evidence=["https://github.com/example/tool/releases/tag/v0.4.0"],
         release_notes="fixes",
     ))
-    monkeypatch.setattr(research.pipeline, "web_search", lambda q: [{"title": "Tool", "url": "https://github.com/example/tool/releases", "snippet": ""}])
+    monkeypatch.setattr(research.pipeline, "web_search_strategy", lambda llm, q: [{"title": "Tool", "url": "https://github.com/example/tool/releases", "snippet": ""}])
     monkeypatch.setattr(research.pipeline, "web_fetch_batch", lambda urls: dict.fromkeys(urls, "Tag: v0.4.0"))
 
     item = SoftwareItem(id="com.example.tool", name="Tool", kind="application", source=SourceKind.LOCAL_BUILD, current_version="0.3.0")
@@ -147,7 +147,7 @@ def test_research_app_store_falls_through_when_no_itunes_result(monkeypatch) -> 
     monkeypatch.setattr(research.pipeline, "generate_search_queries", lambda llm, item: ["q"])
     monkeypatch.setattr(research.pipeline, "pick_urls", lambda llm, item, results: ["https://example.com"])
     monkeypatch.setattr(research.pipeline, "extract_version", lambda llm, item, content: ResearchResult(latest_version="0.4.0", confidence="high"))
-    monkeypatch.setattr(research.pipeline, "web_search", lambda q: [{"title": "T", "url": "https://example.com", "snippet": ""}])
+    monkeypatch.setattr(research.pipeline, "web_search_strategy", lambda llm, q: [{"title": "T", "url": "https://example.com", "snippet": ""}])
     monkeypatch.setattr(research.pipeline, "web_fetch_batch", lambda urls: dict.fromkeys(urls, "v0.4.0"))
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APP_STORE, current_version="0.3.0")
     result = research_application_update(_dummy_llm(), item)
@@ -175,7 +175,7 @@ def test_structured_research_returns_none_when_no_queries(monkeypatch) -> None:
 def test_structured_research_returns_none_when_pick_urls_fails(monkeypatch) -> None:
     monkeypatch.setattr(research.pipeline, "generate_search_queries", lambda llm, item: ["q"])
     monkeypatch.setattr(research.pipeline, "pick_urls", lambda llm, item, results: _raise(RuntimeError("fail")))
-    monkeypatch.setattr(research.pipeline, "web_search", lambda q: [{"title": "T", "url": "https://x.com", "snippet": ""}])
+    monkeypatch.setattr(research.pipeline, "web_search_strategy", lambda llm, q: [{"title": "T", "url": "https://x.com", "snippet": ""}])
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
     result = research_application_update(_dummy_llm(), item)
     assert result is None
@@ -184,7 +184,7 @@ def test_structured_research_returns_none_when_pick_urls_fails(monkeypatch) -> N
 def test_structured_research_returns_none_when_no_urls_picked(monkeypatch) -> None:
     monkeypatch.setattr(research.pipeline, "generate_search_queries", lambda llm, item: ["q"])
     monkeypatch.setattr(research.pipeline, "pick_urls", lambda llm, item, results: [])
-    monkeypatch.setattr(research.pipeline, "web_search", lambda q: [{"title": "T", "url": "https://x.com", "snippet": ""}])
+    monkeypatch.setattr(research.pipeline, "web_search_strategy", lambda llm, q: [{"title": "T", "url": "https://x.com", "snippet": ""}])
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
     result = research_application_update(_dummy_llm(), item)
     assert result is None
@@ -194,7 +194,7 @@ def test_structured_research_returns_none_when_extract_fails(monkeypatch) -> Non
     monkeypatch.setattr(research.pipeline, "generate_search_queries", lambda llm, item: ["q"])
     monkeypatch.setattr(research.pipeline, "pick_urls", lambda llm, item, results: ["https://x.com"])
     monkeypatch.setattr(research.pipeline, "extract_version", lambda llm, item, content: _raise(RuntimeError("fail")))
-    monkeypatch.setattr(research.pipeline, "web_search", lambda q: [{"title": "T", "url": "https://x.com", "snippet": ""}])
+    monkeypatch.setattr(research.pipeline, "web_search_strategy", lambda llm, q: [{"title": "T", "url": "https://x.com", "snippet": ""}])
     monkeypatch.setattr(research.pipeline, "web_fetch_batch", lambda urls: dict.fromkeys(urls, "content"))
     item = SoftwareItem(id="com.example.app", name="App", kind="application", source=SourceKind.APPLICATION, current_version="1.0")
     result = research_application_update(_dummy_llm(), item)

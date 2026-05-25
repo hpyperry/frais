@@ -111,10 +111,3 @@ def run_summaries(llm: LLMClient,
                 on_progress()
 
 
-def supports_web_search(config: object) -> bool:
-    """Check whether the configured (provider, protocol) supports server-side web search."""
-    from .store.config_store import ProviderConfig
-
-    if not isinstance(config, ProviderConfig):
-        return False
-    return config.protocol in config.provider.web_search_protocols

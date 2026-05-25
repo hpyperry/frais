@@ -99,6 +99,38 @@ class DeepSeekAnthropicClient(LLMClient):
 
         return text
 
+    def web_search(self, query: str) -> list[dict[str, str]]:
+        """Execute a web search via the Anthropic protocol's web_search_20250305 tool."""
+        tool_schema = {
+            "type": "web_search_20250305",
+            "name": "web_search",
+            "max_uses": 4,
+        }
+        try:
+            response = self._client.messages.create(
+                model=self.config.model,
+                max_tokens=4096,
+                system="You are a web search assistant. Use the web_search tool to find relevant results.",
+                messages=[{"role": "user", "content": f"Search the web for: {query}"}],
+                tools=[tool_schema],  # type: ignore[list-item]
+            )
+        except Exception as exc:
+            logger.warning("anthropic web_search failed for %s: %s", query[:80], exc)
+            return []
+
+        results: list[dict[str, str]] = []
+        for block in response.content:
+            if getattr(block, "type", None) == "web_search_tool_result":
+                content = getattr(block, "content", [])
+                if isinstance(content, list):
+                    for item in content:
+                        results.append({
+                            "title": getattr(item, "title", "") or "",
+                            "url": getattr(item, "url", "") or "",
+                            "snippet": "",
+                        })
+        return results
+
 
 class DeepSeekOpenAIClient(OpenAICompatibleClient):
     """DeepSeek provider using OpenAI-compatible protocol."""

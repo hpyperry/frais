@@ -180,48 +180,12 @@ def test_get_client_base_url_override(monkeypatch) -> None:
     client.close()
 
 
-def test_supports_web_search() -> None:
-    from frais.coordinator import supports_web_search
-
-    config = ProviderConfig(
-        provider=get_provider("deepseek"),
-        model="deepseek-v4-flash",
-        api_key="sk-test",
-        protocol="openai",
-    )
-    assert not supports_web_search(config)
-
-    config2 = ProviderConfig(
-        provider=get_provider("deepseek"),
-        model="deepseek-v4-flash",
-        api_key="sk-test",
-        protocol="anthropic",
-    )
-    assert supports_web_search(config2)
-
-
-def test_supports_web_search_mimo() -> None:
-    from frais.coordinator import supports_web_search
-
-    config = ProviderConfig(
-        provider=get_provider("mimo"),
-        model="mimo-v2.5-pro",
-        api_key="sk-test",
-        protocol="openai",
-    )
-    assert supports_web_search(config)
-
-
 def test_web_search_strategy_falls_back_to_ddgs(monkeypatch) -> None:
     from frais.web_tools import web_search_strategy
-    from frais.store.config_store import ProviderConfig
 
-    config = ProviderConfig(
-        provider=get_provider("deepseek"),
-        model="deepseek-v4-flash",
-        api_key="sk-test",
-        protocol="openai",
-    )
+    # LLM client with default web_search() that returns []
+    fake_llm = type("L", (), {"web_search": lambda self, q: []})()
+
     called = []
 
     def fake_search(q):
@@ -229,9 +193,49 @@ def test_web_search_strategy_falls_back_to_ddgs(monkeypatch) -> None:
         return [{"title": "t", "url": "u", "snippet": "s"}]
 
     monkeypatch.setattr("frais.web_tools.web_search", fake_search)
-    result = web_search_strategy(config, "test query")
+    result = web_search_strategy(fake_llm, "test query")
     assert called == ["test query"]
     assert result == [{"title": "t", "url": "u", "snippet": "s"}]
+
+
+def test_web_search_strategy_uses_provider(monkeypatch) -> None:
+    from frais.web_tools import web_search_strategy
+
+    provider_results = [{"title": "p", "url": "https://p.com", "snippet": ""}]
+    fake_llm = type("L", (), {"web_search": lambda self, q: provider_results})()
+
+    called = []
+
+    def fake_search(q):
+        called.append(q)
+        return []
+
+    monkeypatch.setattr("frais.web_tools.web_search", fake_search)
+    result = web_search_strategy(fake_llm, "query")
+    assert result == provider_results
+    assert called == []  # DDGS not called
+
+
+def test_web_search_default_returns_empty() -> None:
+    """LLMClient default web_search() returns [] for clients that don't override it."""
+    from frais.llm._mimo import MiMoClient
+
+    config = _test_config()
+    client = MiMoClient(config)
+    assert client.web_search("test") == []
+    client.close()
+
+
+def test_deepseek_openai_web_search_returns_empty() -> None:
+    """DeepSeekOpenAIClient inherits default web_search() → returns []."""
+    config = ProviderConfig(
+        provider=get_provider("deepseek"),
+        model="deepseek-v4-flash",
+        api_key="sk-test",
+    )
+    client = DeepSeekOpenAIClient(config)
+    assert client.web_search("test") == []
+    client.close()
 
 
 # --- LLMClient ABC tests ---
