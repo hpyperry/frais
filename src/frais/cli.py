@@ -207,9 +207,16 @@ def _register_heavy_commands() -> None:
     _heavy_commands_registered = True
 
 
+_HEAVY_COMMANDS = frozenset({"advise", "scan", "summarize", "update"})
+
+
 def main_entry() -> None:
-    """CLI entry point. Registers heavy commands then launches the app."""
-    _register_heavy_commands()
+    """CLI entry point. Only registers heavy commands when needed."""
+    import sys
+
+    args = sys.argv[1:]
+    if any(a in _HEAVY_COMMANDS for a in args):
+        _register_heavy_commands()
     app()
 
 
