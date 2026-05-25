@@ -216,7 +216,7 @@ frais config test         # send a minimal LLM request to validate
 frais config test --json
 ```
 
-`manage` detects an existing config and lets you choose what to modify — provider & model, API key, or full reconfiguration. Press Ctrl+C at any step to cancel without saving. `show` never prints the full API key — only a 4-character suffix. `test` sends a single chat-completions request to verify credentials.
+`manage` detects an existing config and lets you choose what to modify — provider & model, API key, or full reconfiguration. Each step supports going back (0 at numbered prompts, `back` at the URL prompt). Press Ctrl+C at any step to cancel without saving. `show` never prints the full API key — only a 4-character suffix. `test` sends a single chat-completions request to verify credentials.
 
 Example config (`~/.frais/config/config.toml`):
 
