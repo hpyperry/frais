@@ -21,7 +21,7 @@ from ..llm import LLMClient, get_client
 from ..models import ScanResult, SystemProfile
 from ..paths import ADVICE_CACHE
 from ..plugins.base import ScannerPlugin
-from ..store.config_store import ProviderConfig, require_config
+from ..store.config_store import require_config
 from ..store.scan_cache import save_scan_cache
 from . import _split_plugins
 from ._output import exit_with_error, print_json_success
@@ -32,16 +32,14 @@ logger = logging.getLogger(__name__)
 console = Console()
 
 
-def _load_llm_config_or_exit(json_output: bool, jobs: int) -> tuple[ProviderConfig, LLMClient]:
-    """Load provider config and create LLM client, or exit with error."""
+def _try_get_llm_client(jobs: int) -> tuple[LLMClient | None, str | None]:
+    """Try to create an LLM client. Returns (client, warning)."""
     try:
         config = require_config()
-    except ValueError as exc:
-        exit_with_error(str(exc), json_output, exit_code=2,
-                        reason="config_missing",
-                        hint="Run `frais config manage` to set up your provider and API key.")
+    except ValueError:
+        return None, "LLM not configured — AI summaries skipped. Run `frais config manage` to set up."
     logger.info("advise using provider=%s model=%s jobs=%d", config.provider.name, config.model, jobs)
-    return config, get_client(config)
+    return get_client(config), None
 
 
 def _resolve_active_plugins(
@@ -132,6 +130,7 @@ def _output_and_cache(
     summarize_elapsed: float,
     json_output: bool,
     show_all: bool,
+    warning: str | None = None,
 ) -> None:
     """Save cache and print results (JSON or Rich)."""
     max_scan_time = max(scan_elapsed.values()) if scan_elapsed else 0.0
@@ -139,12 +138,17 @@ def _output_and_cache(
     save_scan_cache(result, ADVICE_CACHE)
 
     if json_output:
-        print_json_success(**result.to_dict())
+        kwargs = result.to_dict()
+        if warning:
+            kwargs["warnings"] = [warning]
+        print_json_success(**kwargs)
     else:
         if scan_elapsed or summarize_elapsed:
             total_time = max_scan_time + summarize_elapsed
             console.print(f"  [dim]Total: {total_time:.1f}s[/dim]")
         _print_advise_result(result, ignored_count, show_all=show_all)
+        if warning:
+            console.print(f"  [yellow]{warning}[/yellow]")
 
 
 def _group_candidates_by_plugin(result: ScanResult, plugins: dict) -> dict[str, list]:
@@ -251,7 +255,7 @@ def advise(
       frais advise --json
       frais advise -j 5
     """
-    config, llm = _load_llm_config_or_exit(json_output, jobs)
+    llm, config_warning = _try_get_llm_client(jobs)
     active_plugins, _explicit_set, system = _resolve_active_plugins(plugins, json_output)
 
     orig_handler = install_interrupt_handler()
@@ -266,11 +270,14 @@ def advise(
         result = phase_result.scan_result
         scan_elapsed = phase_result.scan_elapsed
 
-        summarize_elapsed = _run_summary_phase(
-            llm, result, active_plugins, jobs, json_output)
+        if llm is not None:
+            summarize_elapsed = _run_summary_phase(
+                llm, result, active_plugins, jobs, json_output)
+        else:
+            summarize_elapsed = 0.0
 
         _output_and_cache(result, phase_result.ignored_count,
                           scan_elapsed, summarize_elapsed,
-                          json_output, show_all)
+                          json_output, show_all, config_warning)
     finally:
         signal.signal(signal.SIGINT, orig_handler)
