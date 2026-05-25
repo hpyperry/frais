@@ -76,7 +76,24 @@ def _config_manage_flow() -> None:
         if step == 0:
             result = _pick_provider_and_model(current)
             if result is None:
-                raise _ConfigCancelled()
+                if current:
+                    # Back to "What to modify" menu
+                    _show_current_config(current)
+                    choice = _ask_what_to_modify()
+                    if choice == "cancel":
+                        raise _ConfigCancelled()
+                    if choice == "key":
+                        provider = current.provider
+                        model = _find_model(provider, current.model) or provider.models[0]
+                        protocol = getattr(current, "protocol", "openai")
+                        url = getattr(current, "url", "")
+                        api_key = _ask_api_key(provider, current)
+                        console.print()
+                        _test_and_save(provider, model, api_key, protocol, url)
+                        return
+                    # choice is "provider" or "everything" — continue wizard
+                    api_key = current.api_key if choice == "provider" else ""
+                continue
             provider, model = result
             step = 1
         elif step == 1:
