@@ -147,6 +147,15 @@ def _output_and_cache(
         _print_advise_result(result, ignored_count, show_all=show_all)
 
 
+def _group_candidates_by_plugin(result: ScanResult, plugins: dict) -> dict[str, list]:
+    """Group candidates by their owning plugin name."""
+    groups: dict[str, list] = {}
+    for pname, pr in result.plugin_results.items():
+        if pr.candidates:
+            groups[pname] = list(pr.candidates)
+    return groups
+
+
 def _print_advise_result(result: ScanResult, ignored_count: int = 0,
                          show_all: bool = False) -> None:
     from ..plugins.registry import all_plugins
@@ -171,28 +180,32 @@ def _print_advise_result(result: ScanResult, ignored_count: int = 0,
             console.print(f"  [dim]Skipped ({name}): {skipped}[/dim]")
 
     if result.all_candidates:
-        console.print(Rule(f"[bold]Updates available[/] ({len(result.all_candidates)})", style="green"))
-        for candidate in result.all_candidates:
-            console.print()
-            console.print(f"  [bold white]{candidate.item.id}[/bold white]")
-            parts = []
-            if candidate.item.name and candidate.item.name != candidate.item.id:
-                parts.append(candidate.item.name)
-            parts.append(candidate.item.source.value)
-            console.print(f"  [dim]{' | '.join(parts)}[/dim]")
-            console.print(
-                f"  [bold]{candidate.item.current_version or '?'}[/bold] → "
-                f"[bold green]{candidate.latest_version or '?'}[/bold green]"
-            )
-            if candidate.ai_summary:
-                import re
-
-                from rich.markdown import Markdown
-                summary = re.sub(r'\*{4,}', '**', candidate.ai_summary)
+        candidates_by_plugin = _group_candidates_by_plugin(result, plugins)
+        for pname, candidates in candidates_by_plugin.items():
+            plugin = plugins.get(pname)
+            color = plugin.display_color if plugin else "green"
+            console.print(Rule(f"[bold]{pname}[/] — {len(candidates)} update(s)", style=color))
+            for candidate in candidates:
                 console.print()
-                console.print("  [dim]Analysis[/dim]")
-                console.print(Markdown(summary))
-            console.print()
+                console.print(f"  [bold white]{candidate.item.id}[/bold white]")
+                parts = []
+                if candidate.item.name and candidate.item.name != candidate.item.id:
+                    parts.append(candidate.item.name)
+                parts.append(candidate.item.source.value)
+                console.print(f"  [dim]{' | '.join(parts)}[/dim]")
+                console.print(
+                    f"  [bold]{candidate.item.current_version or '?'}[/bold] → "
+                    f"[bold green]{candidate.latest_version or '?'}[/bold green]"
+                )
+                if candidate.ai_summary:
+                    import re
+
+                    from rich.markdown import Markdown
+                    summary = re.sub(r'\*{4,}', '**', candidate.ai_summary)
+                    console.print()
+                    console.print("  [dim]Analysis[/dim]")
+                    console.print(Markdown(summary))
+                console.print()
 
     if ignored_count:
         console.print(f"  [dim]{ignored_count} app(s) ignored (use `frais ignore list` to review)[/dim]")

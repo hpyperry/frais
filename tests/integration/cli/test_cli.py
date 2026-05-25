@@ -400,7 +400,7 @@ def test_print_advise_result_shows_updates_section(capsys) -> None:
     _print_advise_result(result, ignored_count=0)
 
     captured = capsys.readouterr()
-    assert "Updates available" in captured.out
+    assert "applications — 1 update(s)" in captured.out
     assert "2.0" in captured.out
 
 
