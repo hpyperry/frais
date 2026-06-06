@@ -61,8 +61,8 @@ uv run pytest
 uv run pytest tests/test_cli.py
 uv run pytest tests/test_homebrew.py
 
-# Build macOS binary (onedir mode for fast startup, requires pyinstaller)
-uv run --extra build python scripts/build_binary.py
+# Build macOS binary (onedir mode, requires pyinstaller)
+uv run --extra build --frozen python scripts/build_binary.py
 
 # Test the built binary
 dist/frais/frais doctor
