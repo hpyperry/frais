@@ -7,6 +7,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from .. import __version__
 from ..store.config_store import load_config
 from ._output import print_json_success
 
@@ -37,10 +38,11 @@ def doctor(
     if json_output:
         plugins_data = _plugins_json()
         llm_data = _llm_json() if llm_cfg else None
-        print_json_success(system=system.to_dict(), plugins=plugins_data, llm=llm_data)
+        print_json_success(version=__version__, system=system.to_dict(), plugins=plugins_data, llm=llm_data)
         return
 
     table = Table("Key", "Value")
+    table.add_row("Version", __version__)
     table.add_row("OS", f"{system.os_name} {system.os_version}")
     table.add_row("Arch", system.arch)
     table.add_row("Applications", ", ".join(system.applications_paths))

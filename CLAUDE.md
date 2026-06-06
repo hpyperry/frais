@@ -302,6 +302,7 @@ Every error response includes a `reason` field the LLM can branch on:
 ```json
 {
   "ok": true,
+  "version": "0.1.0",            // Frais version
   "system": {
     "os_name": "macOS",           // OS display name
     "os_version": "26.5",         // OS version string
@@ -503,7 +504,7 @@ Each `--json` command is a deterministic function: same state → same output. A
 
 | Command | Precondition | Key success fields | Error reasons | Next command |
 |---------|-------------|-------------------|---------------|--------------|
-| `doctor --json` | none | `system`, `plugins.<name>.available`, `llm.configured` | (none — always succeeds) | `config manage` if `!llm.configured` |
+| `doctor --json` | none | `version`, `system`, `plugins.<name>.available`, `llm.configured` | (none — always succeeds) | `config manage` if `!llm.configured` |
 | `config show --json` | none | `configured`, `provider`, `key_source` | (none) | `config test` to verify |
 | `config test --json` | config exists | `provider`, `model`, `url`, `response` | `config_missing`, `connection_error` | `scan` or `advise` |
 | `config path --json` | none | `path` | (none) | — (informational) |
