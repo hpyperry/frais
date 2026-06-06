@@ -61,15 +61,15 @@ uv run pytest
 uv run pytest tests/test_cli.py
 uv run pytest tests/test_homebrew.py
 
-# Build macOS binary (onedir mode, requires pyinstaller)
+# Build + install macOS binary (onedir mode, requires pyinstaller)
+bash scripts/install_frais.sh
+
+# Build only (without installing):
 uv run --extra build --frozen python scripts/build_binary.py
 
 # Test the built binary
 dist/frais/frais doctor
 dist/frais/frais plugins list
-
-# Distribute: zip the frais/ directory + frais.sh, user runs:
-bash frais.sh doctor    # first run installs to ~/.frais/bin/, subsequent runs are instant
 ```
 
 ## Architecture
