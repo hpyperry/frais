@@ -7,6 +7,8 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from . import __version__
+from .commands._output import print_json_success
 from .commands.config import config_manage, config_path, config_show, config_test
 from .commands.doctor import doctor
 from .commands.ignore import ignore_add, ignore_list, ignore_remove
@@ -118,8 +120,15 @@ def main(
             help="Disable file logging entirely.",
         ),
     ] = False,
+    show_version: Annotated[
+        bool,
+        typer.Option("--version", "-v", help="Show version and exit."),
+    ] = False,
 ) -> None:
     """Configure logging before running a command."""
+    if show_version:
+        console.print(f"frais {__version__}")
+        raise typer.Exit(0)
     if platform.system() != "Darwin":
         console.print("[red]Frais only supports macOS.[/red]")
         raise typer.Exit(1)
@@ -183,6 +192,33 @@ ignore_app.command("list")(ignore_list)
 ignore_app.command("add")(ignore_add)
 ignore_app.command("remove")(ignore_remove)
 
+# Lightweight stubs for heavy commands — show name + help in `frais --help`
+# without importing anthropic / pydantic / openai / ddgs / lxml.
+# _register_heavy_commands() replaces these with real implementations
+# when a heavy command is actually invoked.
+
+
+def _advise_stub() -> None:
+    """Scan and generate LLM-powered update advice."""
+
+
+def _scan_stub() -> None:
+    """Scan installed software for available updates."""
+
+
+def _summarize_stub() -> None:
+    """Generate an AI summary for a single candidate."""
+
+
+def _update_stub() -> None:
+    """Interactively review and execute updates with AI advice."""
+
+
+app.command(name="advise")(_advise_stub)
+app.command(name="scan")(_scan_stub)
+app.command(name="summarize")(_summarize_stub)
+app.command(name="update")(_update_stub)
+
 _heavy_commands_registered = False
 
 
@@ -215,6 +251,20 @@ def main_entry() -> None:
     import sys
 
     args = sys.argv[1:]
+
+    # Handle --version / -v before Typer because no_args_is_help=True
+    # intercepts callback options when no subcommand is given.
+    if "--version" in args or "-v" in args:
+        if "--json" in args:
+            print_json_success(version=__version__)
+        else:
+            console.print(f"frais {__version__}")
+        sys.exit(0)
+
+    # Register heavy commands only when a heavy command is explicitly requested.
+    # We do NOT register for bare --help or no-args because importing
+    # anthropic/pydantic in the PyInstaller binary takes seconds and causes
+    # an apparent hang.  Lightweight stubs show all 8 commands in --help.
     if any(a in _HEAVY_COMMANDS for a in args):
         _register_heavy_commands()
     app()

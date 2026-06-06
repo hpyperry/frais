@@ -744,3 +744,102 @@ def test_config_test_json_no_config(monkeypatch, capsys) -> None:
     assert data["ok"] is False
     assert data["reason"] == "config_missing"
     assert "No LLM provider" in data["error"]
+
+
+# --- version flag ---
+
+
+def test_version_flag(capsys) -> None:
+    """frais --version prints version string and exits 0."""
+    from frais.cli import main_entry
+
+    import sys
+    original_argv = sys.argv
+    try:
+        sys.argv = ["frais", "--version"]
+        main_entry()
+    except SystemExit as exc:
+        assert exc.code == 0
+    finally:
+        sys.argv = original_argv
+
+    captured = capsys.readouterr()
+    assert "frais 0.1.0" in captured.out
+
+
+def test_version_short_flag(capsys) -> None:
+    """frais -v prints version string and exits 0."""
+    from frais.cli import main_entry
+
+    import sys
+    original_argv = sys.argv
+    try:
+        sys.argv = ["frais", "-v"]
+        main_entry()
+    except SystemExit as exc:
+        assert exc.code == 0
+    finally:
+        sys.argv = original_argv
+
+    captured = capsys.readouterr()
+    assert "frais 0.1.0" in captured.out
+
+
+def test_version_json_output(capsys) -> None:
+    """frais --version --json prints structured JSON."""
+    from frais import __version__
+    from frais.cli import main_entry
+
+    import sys
+    original_argv = sys.argv
+    try:
+        sys.argv = ["frais", "--version", "--json"]
+        main_entry()
+    except SystemExit as exc:
+        assert exc.code == 0
+    finally:
+        sys.argv = original_argv
+
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["ok"] is True
+    assert data["version"] == __version__
+
+
+def test_version_short_json_output(capsys) -> None:
+    """frais -v --json prints structured JSON."""
+    from frais import __version__
+    from frais.cli import main_entry
+
+    import sys
+    original_argv = sys.argv
+    try:
+        sys.argv = ["frais", "-v", "--json"]
+        main_entry()
+    except SystemExit as exc:
+        assert exc.code == 0
+    finally:
+        sys.argv = original_argv
+
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["ok"] is True
+    assert data["version"] == __version__
+
+
+def test_version_takes_priority_over_subcommand(capsys) -> None:
+    """frais doctor --version exits with version, ignores subcommand."""
+    from frais.cli import main_entry
+
+    import sys
+    original_argv = sys.argv
+    try:
+        sys.argv = ["frais", "doctor", "--version"]
+        main_entry()
+    except SystemExit as exc:
+        assert exc.code == 0
+    finally:
+        sys.argv = original_argv
+
+    captured = capsys.readouterr()
+    assert "frais 0.1.0" in captured.out
