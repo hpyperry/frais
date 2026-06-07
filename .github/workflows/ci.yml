@@ -67,6 +67,6 @@ jobs:
           cd target/${{ matrix.target }}/release
           tar czf frais-${{ github.ref_name }}-${{ matrix.target }}.tar.gz frais
       - name: Upload to Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: target/${{ matrix.target }}/release/frais-*.tar.gz
