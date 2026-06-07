@@ -199,8 +199,6 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
         );
         super::output::print_json_success(extra);
     } else {
-        use console::style;
-
         // Blank line before output — matches Python
         println!();
 
@@ -208,12 +206,12 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
         // "[bold cyan]OS:[/] macOS 14.5  [bold cyan]Arch:[/] arm64  [bold cyan]Plugins:[/] ..."
         println!(
             "  {} {} {}  {} {}  {} {}",
-            style("OS:").cyan().bold(),
+            super::output::label("OS:"),
             filtered_result.system.os_name,
             filtered_result.system.os_version,
-            style("Arch:").cyan().bold(),
+            super::output::label("Arch:"),
             filtered_result.system.arch,
-            style("Plugins:").cyan().bold(),
+            super::output::label("Plugins:"),
             selected.join(", "),
         );
         println!();
@@ -246,17 +244,17 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
             for c in candidates {
                 println!();
                 // Item ID — bold white, 2-space indent
-                println!("  {}", style(&c.item.id).white().bold());
+                println!("  {}", super::output::id(&c.item.id));
 
                 // Name | source — dim, 2-space indent
                 let source_str = c.item.source.as_str();
                 if c.item.name != c.item.id {
                     println!(
                         "  {}",
-                        style(format!("{} | {}", c.item.name, source_str)).dim()
+                        super::output::dim(&format!("{} | {}", c.item.name, source_str))
                     );
                 } else {
-                    println!("  {}", style(source_str).dim());
+                    println!("  {}", super::output::dim(source_str));
                 }
 
                 // Version — [bold]current[/] → [bold green]latest[/]
@@ -264,14 +262,14 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
                 let latest = c.latest_version.as_deref().unwrap_or("?");
                 println!(
                     "  {} → {}",
-                    style(current).bold(),
-                    style(latest).green().bold(),
+                    super::output::bold(current),
+                    super::output::green_bold(latest),
                 );
 
                 // AI summary — matches Python's Analysis section with rich.markdown.Markdown
                 if let Some(ref summary) = c.ai_summary {
                     println!();
-                    println!("  {}", style("Analysis").dim());
+                    println!("  {}", super::output::dim("Analysis"));
                     // Render markdown in terminal — matches Python's console.print(Markdown(summary))
                     let skin = termimad::MadSkin::default();
                     // Indent each line by 2 spaces to match Python's output
@@ -294,11 +292,10 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
         if ignored_count > 0 {
             println!(
                 "  {}",
-                style(format!(
+                super::output::dim(&format!(
                     "{} app(s) ignored (use `frais ignore list` to review)",
                     ignored_count
                 ))
-                .dim()
             );
         }
         println!();
@@ -306,14 +303,13 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
 
     // --- Total time (matches Python's _output_and_cache) ---
     if !args.json {
-        use console::style;
         let max_scan = scan_progress
             .as_ref()
             .map(|sp| sp.max_scan_time())
             .unwrap_or(0.0);
         let total = max_scan + summarize_elapsed;
         if total > 0.0 {
-            eprintln!("  {}", style(format!("Total: {:.1}s", total)).dim());
+            eprintln!("  {}", super::output::dim(&format!("Total: {:.1}s", total)));
         }
     }
 

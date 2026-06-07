@@ -47,13 +47,26 @@ pub fn run(args: DoctorArgs) -> Result<(), String> {
 
         super::output::print_json_success(extra);
     } else {
-        println!("Frais v{}", env!("CARGO_PKG_VERSION"));
-        println!("  OS:      {} {}", system.os_name, system.os_version);
-        println!("  Arch:    {}", system.arch);
+        println!(
+            "{} v{}",
+            super::output::bold("Frais"),
+            super::output::bold(env!("CARGO_PKG_VERSION"))
+        );
+        println!(
+            "  {} {} {}",
+            super::output::label("OS:"),
+            system.os_name,
+            system.os_version
+        );
+        println!("  {} {}", super::output::label("Arch:"), system.arch);
         println!();
-        println!("Plugins:");
+        println!("{}", super::output::label("Plugins:"));
         for (_name, plugin) in &plugins {
-            let status = if plugin.is_available() { "✓" } else { "✗" };
+            let status = if plugin.is_available() {
+                super::output::check_mark()
+            } else {
+                super::output::cross_mark()
+            };
             println!("  {} {}", status, plugin.name());
         }
 
@@ -61,10 +74,18 @@ pub fn run(args: DoctorArgs) -> Result<(), String> {
             let provider_name = crate::providers::get_provider(&c.provider)
                 .map(|p| p.name)
                 .unwrap_or_else(|| c.provider.clone());
-            println!("\nLLM: {} / {} ({})", provider_name, c.model, c.protocol);
-            println!("  Key: {}", mask_key(&c.api_key));
+            println!();
+            println!(
+                "{} {} {} ({})",
+                super::output::label("LLM:"),
+                provider_name,
+                c.model,
+                c.protocol
+            );
+            println!("  {} {}", super::output::label("Key:"), mask_key(&c.api_key));
         } else {
-            println!("\nLLM: not configured");
+            println!();
+            println!("{} {}", super::output::label("LLM:"), super::output::dim("not configured"));
         }
     }
 

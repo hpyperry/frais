@@ -125,20 +125,18 @@ pub fn run(args: ScanArgs) -> Result<(), String> {
         );
         super::output::print_json_success(extra);
     } else {
-        use console::style;
-
         // Blank line before output — matches Python
         println!();
 
         // System header — matches Python's _print_advise_header()
         println!(
             "  {} {} {}  {} {}  {} {}",
-            style("OS:").cyan().bold(),
+            super::output::label("OS:"),
             filtered_result.system.os_name,
             filtered_result.system.os_version,
-            style("Arch:").cyan().bold(),
+            super::output::label("Arch:"),
             filtered_result.system.arch,
-            style("Plugins:").cyan().bold(),
+            super::output::label("Plugins:"),
             selected.join(", "),
         );
         println!();
@@ -168,17 +166,17 @@ pub fn run(args: ScanArgs) -> Result<(), String> {
             for c in &result.candidates {
                 println!();
                 // Item ID — bold white
-                println!("  {}", style(&c.item.id).white().bold());
+                println!("  {}", super::output::id(&c.item.id));
 
                 // Name | source — dim
                 let source_str = c.item.source.as_str();
                 if c.item.name != c.item.id {
                     println!(
                         "  {}",
-                        style(format!("{} | {}", c.item.name, source_str)).dim()
+                        super::output::dim(&format!("{} | {}", c.item.name, source_str))
                     );
                 } else {
-                    println!("  {}", style(source_str).dim());
+                    println!("  {}", super::output::dim(source_str));
                 }
 
                 // Version — [bold]current[/] → [bold green]latest[/]
@@ -186,14 +184,14 @@ pub fn run(args: ScanArgs) -> Result<(), String> {
                 let latest = c.latest_version.as_deref().unwrap_or("?");
                 println!(
                     "  {} → {}",
-                    style(current).bold(),
-                    style(latest).green().bold(),
+                    super::output::bold(current),
+                    super::output::green_bold(latest),
                 );
 
                 // AI summary if present (scan may have cached summaries)
                 if let Some(ref summary) = c.ai_summary {
                     println!();
-                    println!("  {}", style("Analysis").dim());
+                    println!("  {}", super::output::dim("Analysis"));
                     for line in summary.lines() {
                         println!("  {}", line);
                     }
@@ -210,11 +208,10 @@ pub fn run(args: ScanArgs) -> Result<(), String> {
         if ignored_count > 0 {
             println!(
                 "  {}",
-                style(format!(
+                super::output::dim(&format!(
                     "{} app(s) ignored (use `frais ignore list` to review)",
                     ignored_count
                 ))
-                .dim()
             );
         }
 
@@ -224,7 +221,7 @@ pub fn run(args: ScanArgs) -> Result<(), String> {
             .map(|sp| sp.max_scan_time())
             .unwrap_or(0.0);
         if total > 0.0 {
-            eprintln!("  {}", style(format!("Total: {:.1}s", total)).dim());
+            eprintln!("  {}", super::output::dim(&format!("Total: {:.1}s", total)));
         }
         println!();
     }

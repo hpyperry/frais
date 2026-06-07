@@ -2,6 +2,59 @@
 use std::collections::BTreeMap;
 use std::process;
 
+// Shared CLI styling helpers — all commands use these for consistent visual vocabulary.
+// Matches the style patterns established by scan/advise.
+
+/// Cyan bold label (e.g. "OS:", "Provider:", "Item:").
+pub fn label(text: impl AsRef<str>) -> console::StyledObject<String> {
+    console::style(text.as_ref().to_string()).cyan().bold()
+}
+
+/// Green text for success states (e.g. "enabled", "Connection OK").
+pub fn success(text: impl AsRef<str>) -> console::StyledObject<String> {
+    console::style(text.as_ref().to_string()).green()
+}
+
+/// Yellow text for warnings.
+pub fn warning(text: impl AsRef<str>) -> console::StyledObject<String> {
+    console::style(text.as_ref().to_string()).yellow()
+}
+
+/// Dimmed text for secondary information.
+pub fn dim(text: impl AsRef<str>) -> console::StyledObject<String> {
+    console::style(text.as_ref().to_string()).dim()
+}
+
+/// Bold text.
+pub fn bold(text: impl AsRef<str>) -> console::StyledObject<String> {
+    console::style(text.as_ref().to_string()).bold()
+}
+
+/// Green bold text for emphasis (e.g. latest version).
+pub fn green_bold(text: impl AsRef<str>) -> console::StyledObject<String> {
+    console::style(text.as_ref().to_string()).green().bold()
+}
+
+/// White bold text for item IDs.
+pub fn id(text: impl AsRef<str>) -> console::StyledObject<String> {
+    console::style(text.as_ref().to_string()).white().bold()
+}
+
+/// Red text for errors.
+pub fn error_styled(text: impl AsRef<str>) -> console::StyledObject<String> {
+    console::style(text.as_ref().to_string()).red()
+}
+
+/// Green checkmark ✓ for available/enabled.
+pub fn check_mark() -> console::StyledObject<&'static str> {
+    console::style("\u{2713}").green()
+}
+
+/// Yellow cross ✗ for unavailable/disabled.
+pub fn cross_mark() -> console::StyledObject<&'static str> {
+    console::style("\u{2717}").yellow()
+}
+
 /// Build a JSON string with guaranteed key order.
 /// serde_json::to_string_pretty on BTreeMap sorts alphabetically,
 /// but the LLM Agent Contract requires "ok" to always be the first key.

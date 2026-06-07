@@ -15,9 +15,13 @@ pub fn list(args: JsonFlag) -> Result<(), String> {
         super::output::print_json_success(extra);
     } else {
         if ignored.is_empty() {
-            println!("No ignored apps.");
+            println!("  {}", super::output::dim("No ignored apps."));
         } else {
-            println!("Ignored apps ({}):", ignored.len());
+            println!(
+                "{} {}",
+                super::output::label("Ignored:"),
+                super::output::dim(format!("{} app(s)", ignored.len()))
+            );
             for id in &ignored {
                 println!("  {}", id);
             }
@@ -42,9 +46,9 @@ pub fn add(args: IgnoreAction) -> Result<(), String> {
         super::output::print_json_success(extra);
     } else {
         if added {
-            println!("Added: {}", args.app_id);
+            println!("{}", super::output::success(format!("Added: {}", args.app_id)));
         } else {
-            println!("Already ignored: {}", args.app_id);
+            println!("{}", super::output::dim(format!("Already ignored: {}", args.app_id)));
         }
     }
     Ok(())
@@ -66,9 +70,9 @@ pub fn remove(args: IgnoreAction) -> Result<(), String> {
         super::output::print_json_success(extra);
     } else {
         if removed {
-            println!("Removed: {}", args.app_id);
+            println!("{}", super::output::success(format!("Removed: {}", args.app_id)));
         } else {
-            println!("Not in ignore list: {}", args.app_id);
+            println!("{}", super::output::warning(format!("Not in ignore list: {}", args.app_id)));
         }
     }
     Ok(())

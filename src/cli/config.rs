@@ -33,24 +33,29 @@ pub fn show(args: JsonFlag) -> Result<(), String> {
                 let provider_name = c.get_provider()
                     .map(|p| p.name)
                     .unwrap_or_else(|| c.provider.clone());
-                println!("Provider: {}", provider_name);
-                println!("Model:    {}", c.model);
-                println!("Protocol: {}", c.protocol);
+                println!("  {} {}", super::output::label("Provider:"), provider_name);
+                println!("  {} {}", super::output::label("Model:"), c.model);
+                println!("  {} {}", super::output::label("Protocol:"), c.protocol);
                 if !c.url.is_empty() {
-                    println!("URL:      {}", c.url);
+                    println!("  {} {}", super::output::label("URL:"), c.url);
                 }
                 let masked = if c.api_key.len() >= 4 {
                     format!("***{}", &c.api_key[c.api_key.len()-4..])
                 } else {
                     "***".into()
                 };
-                println!("Key:      {} (via {})",
+                println!(
+                    "  {} {} {}",
+                    super::output::label("Key:"),
                     masked,
-                    c.api_key_source.as_deref().unwrap_or("unknown"),
+                    super::output::dim(format!("(via {})", c.api_key_source.as_deref().unwrap_or("unknown")))
                 );
             }
             None => {
-                println!("Not configured. Run `frais config manage` to set up.");
+                println!(
+                    "  {} Run `frais config manage` to set up.",
+                    super::output::dim("Not configured.")
+                );
             }
         }
     }
@@ -621,7 +626,7 @@ pub fn path(args: JsonFlag) -> Result<(), String> {
         extra.insert("path".into(), p.to_string_lossy().to_string().into());
         super::output::print_json_success(extra);
     } else {
-        println!("{}", p.display());
+        println!("  {} {}", super::output::label("Config path:"), p.display());
     }
     Ok(())
 }
@@ -674,10 +679,14 @@ pub fn test(args: JsonFlag) -> Result<(), String> {
                 let provider_name = crate::providers::get_provider(&config.provider)
                     .map(|p| p.name)
                     .unwrap_or_else(|| config.provider.clone());
-                println!("Provider: {}", provider_name);
-                println!("Model: {}", config.model);
-                println!("URL: {}", config.url);
-                println!("LLM test response: {}", response.trim());
+                println!("  {} {}", super::output::label("Provider:"), provider_name);
+                println!("  {} {}", super::output::label("Model:"), config.model);
+                println!("  {} {}", super::output::label("URL:"), config.url);
+                println!(
+                    "  {} {}",
+                    super::output::label("Response:"),
+                    super::output::success(response.trim())
+                );
             }
         }
         Err(e) => {

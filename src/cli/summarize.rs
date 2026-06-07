@@ -60,6 +60,7 @@ pub fn run(args: SummarizeArgs) -> Result<(), String> {
             extra.insert("ai_summary".into(), summary.clone().into());
             super::output::print_json_success(extra);
         } else {
+            print_item_header(&candidate);
             // Render markdown in terminal — matches Python's console.print(Markdown(summary))
             termimad::MadSkin::default().print_text(summary);
         }
@@ -157,9 +158,33 @@ pub fn run(args: SummarizeArgs) -> Result<(), String> {
         extra.insert("ai_summary".into(), summary.clone().into());
         super::output::print_json_success(extra);
     } else {
+        print_item_header(&candidate);
         // Render markdown in terminal — matches Python's console.print(Markdown(summary))
         termimad::MadSkin::default().print_text(&summary);
     }
 
     Ok(())
+}
+
+fn print_item_header(candidate: &crate::models::UpdateCandidate) {
+    println!();
+    println!(
+        "  {} {}",
+        super::output::label("Item:"),
+        candidate.item.name
+    );
+    println!(
+        "  {} {}",
+        super::output::label("ID:"),
+        super::output::dim(&candidate.item.id)
+    );
+    let current = candidate.item.current_version.as_deref().unwrap_or("?");
+    let latest = candidate.latest_version.as_deref().unwrap_or("?");
+    println!(
+        "  {} {} → {}",
+        super::output::label("Update:"),
+        super::output::bold(current),
+        super::output::green_bold(latest)
+    );
+    println!();
 }

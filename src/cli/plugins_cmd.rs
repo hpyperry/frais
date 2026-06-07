@@ -37,8 +37,16 @@ pub fn list(args: JsonFlag) -> Result<(), String> {
                 .get(name)
                 .copied()
                 .unwrap_or_else(|| plugin.enabled_by_default());
-            let status = if plugin.is_available() { "✓" } else { "✗" };
-            let state = if effective { "enabled" } else { "disabled" };
+            let status = if plugin.is_available() {
+                super::output::check_mark()
+            } else {
+                super::output::cross_mark()
+            };
+            let state = if effective {
+                super::output::success("enabled")
+            } else {
+                super::output::dim("disabled")
+            };
             println!("  {} {:<20} {}", status, name, state);
         }
     }
@@ -73,7 +81,7 @@ pub fn enable(args: PluginAction) -> Result<(), String> {
         extra.insert("action".into(), "enabled".into());
         super::output::print_json_success(extra);
     } else {
-        println!("Plugin '{}' enabled.", args.name);
+        println!("{}", super::output::success(format!("Plugin '{}' enabled.", args.name)));
     }
     Ok(())
 }
@@ -106,7 +114,7 @@ pub fn disable(args: PluginAction) -> Result<(), String> {
         extra.insert("action".into(), "disabled".into());
         super::output::print_json_success(extra);
     } else {
-        println!("Plugin '{}' disabled.", args.name);
+        println!("{}", super::output::dim(format!("Plugin '{}' disabled.", args.name)));
     }
     Ok(())
 }

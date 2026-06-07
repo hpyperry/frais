@@ -108,17 +108,24 @@ fn execute_update_loop(
     for candidate in candidates {
         println!();
         println!(
-            "  {}  ({})",
-            candidate.item.name, candidate.item.id
+            "  {} {}",
+            super::output::label("Item:"),
+            candidate.item.name
         );
         println!(
-            "  {} → {}",
-            candidate.item.current_version.as_deref().unwrap_or("unknown"),
-            candidate.latest_version.as_deref().unwrap_or("unknown"),
+            "  {} {}",
+            super::output::label("ID:"),
+            super::output::dim(&candidate.item.id)
+        );
+        println!(
+            "  {} {} → {}",
+            super::output::label("Update:"),
+            super::output::bold(candidate.item.current_version.as_deref().unwrap_or("?")),
+            super::output::green_bold(candidate.latest_version.as_deref().unwrap_or("?"))
         );
         if let Some(ref summary) = candidate.ai_summary {
             println!();
-            println!("  AI Analysis");
+            println!("  {}", super::output::dim("Analysis"));
             // Render markdown in terminal — matches Python's console.print(Markdown(candidate.ai_summary))
             let skin = termimad::MadSkin::default();
             // Indent each line by 2 spaces to match Python's output
@@ -131,17 +138,24 @@ fn execute_update_loop(
         } else {
             println!();
             println!(
-                "  No AI summary yet — `frais summarize {}`",
-                candidate.item.id
+                "  {}",
+                super::output::dim(format!(
+                    "No AI summary yet — `frais summarize {}`",
+                    candidate.item.id
+                ))
             );
         }
 
         if candidate.can_auto_update
             && candidate.item.source != crate::models::SourceKind::AppStore
         {
-            println!("    cmd: {}", candidate.command.join(" "));
+            println!(
+                "  {} {}",
+                super::output::label("Update:"),
+                super::output::dim(candidate.command.join(" "))
+            );
         } else if !candidate.can_auto_update {
-            println!("    manual update");
+            println!("  {}", super::output::warning("manual update"));
         }
 
         // Confirm — matches typer.confirm("  Proceed?", default=False)
