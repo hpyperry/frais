@@ -216,106 +216,13 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
         );
         super::output::print_json_success(extra);
     } else {
-        // Blank line before output — matches Python
-        println!();
-
-        // System header — matches Python's _print_advise_header()
-        // "[bold cyan]OS:[/] macOS 14.5  [bold cyan]Arch:[/] arm64  [bold cyan]Plugins:[/] ..."
-        println!(
-            "  {} {} {}  {} {}  {} {}",
-            super::output::label("OS:"),
-            filtered_result.system.os_name,
-            filtered_result.system.os_version,
-            super::output::label("Arch:"),
-            filtered_result.system.arch,
-            super::output::label("Plugins:"),
-            selected.join(", "),
+        print_results(
+            &filtered_result,
+            &all_plugins,
+            &selected,
+            ignored_count,
+            args.all,
         );
-        println!();
-
-        // --- Results per plugin ---
-        // Matches Python's _print_advise_result() exactly.
-        let terminal_width = console::Term::stdout().size().1 as usize;
-
-        let mut any_candidates = false;
-        for name in &selected {
-            let result = match filtered_result.plugin_results.get(name) {
-                Some(r) => r,
-                None => continue,
-            };
-
-            if result.candidates.is_empty() {
-                continue;
-            }
-
-            any_candidates = true;
-            let candidates = &result.candidates;
-
-            // Plugin section separator — matches Python's Rule(f"[bold]{pname}[/] — {len} update(s)", style=color)
-            let plugin_color = all_plugins
-                .get(name)
-                .map(|p| p.display_color())
-                .unwrap_or("white");
-            print_rule(name, candidates.len(), plugin_color, terminal_width);
-
-            for c in candidates {
-                println!();
-                // Item ID — bold white, 2-space indent
-                println!("  {}", super::output::id(&c.item.id));
-
-                // Name | source — dim, 2-space indent
-                let source_str = c.item.source.as_str();
-                if c.item.name != c.item.id {
-                    println!(
-                        "  {}",
-                        super::output::dim(format!("{} | {}", c.item.name, source_str))
-                    );
-                } else {
-                    println!("  {}", super::output::dim(source_str));
-                }
-
-                // Version — [bold]current[/] → [bold green]latest[/]
-                let current = c.item.current_version.as_deref().unwrap_or("?");
-                let latest = c.latest_version.as_deref().unwrap_or("?");
-                println!(
-                    "  {} → {}",
-                    super::output::bold(current),
-                    super::output::green_bold(latest),
-                );
-
-                // AI summary — matches Python's Analysis section with rich.markdown.Markdown
-                if let Some(ref summary) = c.ai_summary {
-                    println!();
-                    println!("  {}", super::output::dim("Analysis"));
-                    // Render markdown in terminal — matches Python's console.print(Markdown(summary))
-                    let skin = termimad::MadSkin::default();
-                    // Indent each line by 2 spaces to match Python's output
-                    let indented = summary
-                        .lines()
-                        .map(|l| format!("  {}", l))
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    skin.print_text(&indented);
-                }
-
-                println!();
-            }
-        }
-
-        if !any_candidates {
-            println!("All software is up to date!");
-        }
-
-        if ignored_count > 0 {
-            println!(
-                "  {}",
-                super::output::dim(format!(
-                    "{} app(s) ignored (use `frais ignore list` to review)",
-                    ignored_count
-                ))
-            );
-        }
-        println!();
     }
 
     // --- Total time (matches Python's _output_and_cache) ---
@@ -343,11 +250,165 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
     Ok(())
 }
 
+/// Print scan results to stdout (shared by scan and advise commands).
+/// Matches Python's _print_advise_result() in advise.py.
+pub(crate) fn print_results(
+    scan_result: &crate::models::ScanResult,
+    all_plugins: &std::collections::BTreeMap<String, Box<dyn crate::plugins::ScannerPlugin>>,
+    selected: &[String],
+    ignored_count: usize,
+    show_all: bool,
+) {
+    // Blank line before output — matches Python
+    println!();
+
+    // System header
+    println!(
+        "  {} {} {}  {} {}  {} {}",
+        super::output::label("OS:"),
+        scan_result.system.os_name,
+        scan_result.system.os_version,
+        super::output::label("Arch:"),
+        scan_result.system.arch,
+        super::output::label("Plugins:"),
+        selected.join(", "),
+    );
+    println!();
+
+    let terminal_width = console::Term::stdout().size().1 as usize;
+
+    // Collect candidate IDs for --all up-to-date display
+    let candidate_item_ids: std::collections::HashSet<_> = scan_result
+        .all_candidates()
+        .iter()
+        .map(|c| c.item.id.clone())
+        .collect();
+
+    let mut any_output = false;
+
+    // --all: show up-to-date items first (matches Python's _print_advise_result)
+    if show_all {
+        for name in selected {
+            let result = match scan_result.plugin_results.get(name) {
+                Some(r) => r,
+                None => continue,
+            };
+            let current_items: Vec<_> = result
+                .items
+                .iter()
+                .filter(|it| !candidate_item_ids.contains(&it.id))
+                .collect();
+            if current_items.is_empty() {
+                continue;
+            }
+            any_output = true;
+            let plugin_color = all_plugins
+                .get(name)
+                .map(|p| p.display_color())
+                .unwrap_or("white");
+            print_rule(name, current_items.len(), plugin_color, terminal_width, "up to date");
+            for item in current_items {
+                println!();
+                println!("  {}", super::output::id(&item.id));
+                let source_str = item.display_source();
+                if item.name != item.id {
+                    println!(
+                        "  {}",
+                        super::output::dim(format!("{} | {}", item.name, source_str))
+                    );
+                } else {
+                    println!("  {}", super::output::dim(source_str));
+                }
+                let current = item.current_version.as_deref().unwrap_or("?");
+                println!(
+                    "  {}  {}",
+                    super::output::bold(current),
+                    super::output::dim("(up to date)")
+                );
+                println!();
+            }
+        }
+    }
+
+    // Show candidates (items with updates)
+    for name in selected {
+        let result = match scan_result.plugin_results.get(name) {
+            Some(r) => r,
+            None => continue,
+        };
+
+        if result.candidates.is_empty() {
+            continue;
+        }
+
+        any_output = true;
+
+        let plugin_color = all_plugins
+            .get(name)
+            .map(|p| p.display_color())
+            .unwrap_or("white");
+        print_rule(name, result.candidates.len(), plugin_color, terminal_width, "update(s)");
+
+        for c in &result.candidates {
+            println!();
+            println!("  {}", super::output::id(&c.item.id));
+
+            let source_str = c.item.display_source();
+            if c.item.name != c.item.id {
+                println!(
+                    "  {}",
+                    super::output::dim(format!("{} | {}", c.item.name, source_str))
+                );
+            } else {
+                println!("  {}", super::output::dim(source_str));
+            }
+
+            let current = c.item.current_version.as_deref().unwrap_or("?");
+            let latest = c.latest_version.as_deref().unwrap_or("?");
+            println!(
+                "  {} → {}",
+                super::output::bold(current),
+                super::output::green_bold(latest),
+            );
+
+            // AI summary — matches Python's Analysis section with rich.markdown.Markdown
+            if let Some(ref summary) = c.ai_summary {
+                println!();
+                println!("  {}", super::output::dim("Analysis"));
+                let skin = termimad::MadSkin::default();
+                let indented = summary
+                    .lines()
+                    .map(|l| format!("  {}", l))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                skin.print_text(&indented);
+            }
+
+            println!();
+        }
+    }
+
+    if !any_output {
+        println!("All software is up to date!");
+    }
+
+    if ignored_count > 0 {
+        println!(
+            "  {}",
+            super::output::dim(format!(
+                "{} app(s) ignored (use `frais ignore list` to review)",
+                ignored_count
+            ))
+        );
+    }
+    println!();
+}
+
 /// Print a full-width horizontal rule with centered title in the plugin's color.
-/// Matches Python's Rich Rule(f"[bold]{name}[/] — {count} update(s)", style=color).
-pub(crate) fn print_rule(name: &str, count: usize, color: &str, width: usize) {
+/// Matches Python's Rich Rule(f"[bold]{name}[/] — {count} {label}", style=color).
+pub(crate) fn print_rule(name: &str, count: usize, color: &str, width: usize, label: &str) {
     use console::style;
-    let title = format!(" {} — {} update(s) ", name, count);
+    let title = format!(" {} — {} {} ", name, count, label);
     let width = if width == 0 { 80 } else { width };
     let dash_count = width.saturating_sub(title.len());
     let left = dash_count / 2;

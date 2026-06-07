@@ -136,95 +136,13 @@ pub fn run(args: ScanArgs) -> Result<(), String> {
         );
         super::output::print_json_success(extra);
     } else {
-        // Blank line before output — matches Python
-        println!();
-
-        // System header — matches Python's _print_advise_header()
-        println!(
-            "  {} {} {}  {} {}  {} {}",
-            super::output::label("OS:"),
-            filtered_result.system.os_name,
-            filtered_result.system.os_version,
-            super::output::label("Arch:"),
-            filtered_result.system.arch,
-            super::output::label("Plugins:"),
-            selected.join(", "),
+        super::advise::print_results(
+            &filtered_result,
+            &all_plugins,
+            &selected,
+            ignored_count,
+            args.all,
         );
-        println!();
-
-        // --- Results per plugin (same format as advise) ---
-        let terminal_width = console::Term::stdout().size().1 as usize;
-
-        let mut any_candidates = false;
-        for name in &selected {
-            let result = match filtered_result.plugin_results.get(name) {
-                Some(r) => r,
-                None => continue,
-            };
-
-            if result.candidates.is_empty() {
-                continue;
-            }
-
-            any_candidates = true;
-
-            let plugin_color = all_plugins
-                .get(name)
-                .map(|p| p.display_color())
-                .unwrap_or("white");
-            super::advise::print_rule(name, result.candidates.len(), plugin_color, terminal_width);
-
-            for c in &result.candidates {
-                println!();
-                // Item ID — bold white
-                println!("  {}", super::output::id(&c.item.id));
-
-                // Name | source — dim
-                let source_str = c.item.source.as_str();
-                if c.item.name != c.item.id {
-                    println!(
-                        "  {}",
-                        super::output::dim(format!("{} | {}", c.item.name, source_str))
-                    );
-                } else {
-                    println!("  {}", super::output::dim(source_str));
-                }
-
-                // Version — [bold]current[/] → [bold green]latest[/]
-                let current = c.item.current_version.as_deref().unwrap_or("?");
-                let latest = c.latest_version.as_deref().unwrap_or("?");
-                println!(
-                    "  {} → {}",
-                    super::output::bold(current),
-                    super::output::green_bold(latest),
-                );
-
-                // AI summary if present (scan may have cached summaries)
-                if let Some(ref summary) = c.ai_summary {
-                    println!();
-                    println!("  {}", super::output::dim("Analysis"));
-                    for line in summary.lines() {
-                        println!("  {}", line);
-                    }
-                }
-
-                println!();
-            }
-        }
-
-        if !any_candidates {
-            println!("All software is up to date!");
-        }
-
-        if ignored_count > 0 {
-            println!(
-                "  {}",
-                super::output::dim(format!(
-                    "{} app(s) ignored (use `frais ignore list` to review)",
-                    ignored_count
-                ))
-            );
-        }
 
         // Total time
         let total = scan_progress
@@ -234,7 +152,6 @@ pub fn run(args: ScanArgs) -> Result<(), String> {
         if total > 0.0 {
             eprintln!("  {}", super::output::dim(format!("Total: {:.1}s", total)));
         }
-        println!();
     }
 
     // --- Save cache ---

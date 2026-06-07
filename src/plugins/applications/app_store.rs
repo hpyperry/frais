@@ -5,9 +5,17 @@ use crate::models::SourceKind;
 const ITUNES_SEARCH_URL: &str = "https://itunes.apple.com/lookup";
 
 /// Query iTunes API and return the parsed JSON response.
-/// Shared by check_app_store_version and resolve_app_store_command to avoid duplicate HTTP logic.
-fn query_itunes(bundle_id: &str, item_name: &str) -> Option<serde_json::Value> {
-    let url = format!("{}?bundleId={}&country=cn", ITUNES_SEARCH_URL, bundle_id);
+/// `is_ios`: true for iPhone/iPad apps on Mac (no entity filter needed),
+///           false for native macOS apps (entity=desktopSoftware).
+fn query_itunes(bundle_id: &str, item_name: &str, is_ios: bool) -> Option<serde_json::Value> {
+    let url = if is_ios {
+        format!("{}?bundleId={}&country=cn", ITUNES_SEARCH_URL, bundle_id)
+    } else {
+        format!(
+            "{}?bundleId={}&country=cn&entity=desktopSoftware",
+            ITUNES_SEARCH_URL, bundle_id
+        )
+    };
 
     let client = match reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
@@ -40,7 +48,7 @@ fn query_itunes(bundle_id: &str, item_name: &str) -> Option<serde_json::Value> {
 
 /// Query iTunes API for App Store app latest version and track ID.
 /// Returns (version, track_id). Both None if not found or not an App Store app.
-/// Matches Python's check_app_store_version exactly.
+/// Uses entity=desktopSoftware for native macOS apps; omits it for iOS-on-Mac apps.
 pub fn check_app_store_version(item: &SoftwareItem) -> (Option<String>, Option<u64>) {
     if item.source != SourceKind::AppStore {
         return (None, None);
@@ -51,7 +59,14 @@ pub fn check_app_store_version(item: &SoftwareItem) -> (Option<String>, Option<u
         return (None, None);
     }
 
-    let body = match query_itunes(bundle_id, &item.name) {
+    let is_ios = item
+        .metadata
+        .get("platform")
+        .and_then(|v| v.as_str())
+        .map(|p| p == "ios")
+        .unwrap_or(false);
+
+    let body = match query_itunes(bundle_id, &item.name, is_ios) {
         Some(v) => v,
         None => return (None, None),
     };
@@ -95,7 +110,14 @@ pub fn resolve_app_store_command(item: &SoftwareItem) -> (Vec<String>, bool) {
         return (vec![], false);
     }
 
-    let body = match query_itunes(bundle_id, &item.name) {
+    let is_ios = item
+        .metadata
+        .get("platform")
+        .and_then(|v| v.as_str())
+        .map(|p| p == "ios")
+        .unwrap_or(false);
+
+    let body = match query_itunes(bundle_id, &item.name, is_ios) {
         Some(v) => v,
         None => {
             log::debug!("itunes lookup failed for {}: api error", item.name);

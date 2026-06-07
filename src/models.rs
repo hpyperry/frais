@@ -117,6 +117,23 @@ impl SoftwareItem {
         );
         m
     }
+
+    /// Display-friendly source string for CLI output.
+    /// Appends `[ios]` suffix for iPhone/iPad apps running on macOS.
+    pub fn display_source(&self) -> String {
+        let base = self.source.as_str();
+        let is_ios = self
+            .metadata
+            .get("platform")
+            .and_then(|v| v.as_str())
+            .map(|p| p == "ios")
+            .unwrap_or(false);
+        if is_ios && self.source == SourceKind::AppStore {
+            format!("{} [ios]", base)
+        } else {
+            base.to_string()
+        }
+    }
 }
 
 /// Result of LLM version research — matches Python's ResearchResult dataclass.

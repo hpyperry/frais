@@ -78,19 +78,34 @@ pub fn scan_applications(paths: &[String]) -> Vec<SoftwareItem> {
     items
 }
 
-/// Read a single .app bundle and extract metadata from Info.plist.
-/// Matches Python's read_application exactly, including codesign, quarantine, and path_id fallback.
+/// Read a single .app bundle and extract metadata.
+/// Dispatches to the correct reader based on bundle structure:
+/// - macOS native: Contents/Info.plist
+/// - iOS on Apple Silicon: Wrapper/iTunesMetadata.plist + nested .app
 pub fn read_application(app_path: &Path) -> Option<SoftwareItem> {
-    let plist_path = app_path.join("Contents").join("Info.plist");
-    if !plist_path.exists() {
-        log::debug!(
-            "applications missing Info.plist path={}",
-            plist_path.display()
-        );
-        return None;
+    // Path 1: macOS native bundle
+    let macos_plist = app_path.join("Contents").join("Info.plist");
+    if macos_plist.exists() {
+        return read_macos_bundle(app_path, &macos_plist);
     }
 
-    let plist_value: plist::Value = match plist::Value::from_file(&plist_path) {
+    // Path 2: iOS app running on Apple Silicon Mac
+    let wrapper = app_path.join("Wrapper");
+    let itunes_plist = wrapper.join("iTunesMetadata.plist");
+    if wrapper.is_dir() && itunes_plist.exists() {
+        return read_ios_bundle(app_path, &wrapper, &itunes_plist);
+    }
+
+    log::debug!(
+        "applications missing Info.plist path={}",
+        app_path.display()
+    );
+    None
+}
+
+/// Read a native macOS .app bundle from Contents/Info.plist.
+fn read_macos_bundle(app_path: &Path, plist_path: &Path) -> Option<SoftwareItem> {
+    let plist_value: plist::Value = match plist::Value::from_file(plist_path) {
         Ok(v) => v,
         Err(e) => {
             log::debug!(
@@ -126,6 +141,10 @@ pub fn read_application(app_path: &Path) -> Option<SoftwareItem> {
         .and_then(|v| v.as_string())
         .map(|s| s.to_string());
 
+    // Platform: DTPlatformName="macosx" for native apps; absent for some (Electron etc.)
+    // Always treated as "macos" — iOS detection happens in read_ios_bundle
+    let platform = "macos";
+
     // Run codesign and xattr for source classification and metadata
     let signing = super::source_classifier::signing_summary(app_path);
     let quarantine = super::source_classifier::quarantine_summary(app_path);
@@ -134,7 +153,7 @@ pub fn read_application(app_path: &Path) -> Option<SoftwareItem> {
         &app_path.to_string_lossy(),
     );
 
-    // Stable ID: bundle_id first, then path_id fallback — matches Python
+    // Stable ID: bundle_id first, then path_id fallback
     let stable_id = bundle_id
         .clone()
         .unwrap_or_else(|| super::source_classifier::path_id(app_path));
@@ -143,6 +162,10 @@ pub fn read_application(app_path: &Path) -> Option<SoftwareItem> {
     metadata.insert(
         "bundle_id".into(),
         serde_json::Value::String(bundle_id.unwrap_or_default()),
+    );
+    metadata.insert(
+        "platform".into(),
+        serde_json::Value::String(platform.into()),
     );
     metadata.insert(
         "signing".into(),
@@ -168,6 +191,108 @@ pub fn read_application(app_path: &Path) -> Option<SoftwareItem> {
         path: Some(app_path.to_string_lossy().to_string()),
         metadata,
     })
+}
+
+/// Read an iOS app bundle running on Apple Silicon Mac.
+/// Structure: .app/Wrapper/iTunesMetadata.plist + Wrapper/<name>.app/Info.plist
+fn read_ios_bundle(
+    app_path: &Path,
+    wrapper: &Path,
+    itunes_plist: &Path,
+) -> Option<SoftwareItem> {
+    // Parse iTunesMetadata.plist — contains name, version, itemId
+    let itunes_value = plist::Value::from_file(itunes_plist).ok()?;
+    let itunes = itunes_value.as_dictionary()?;
+
+    let name = itunes
+        .get("itemName")
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string())?;
+
+    let version = itunes
+        .get("bundleShortVersionString")
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    let item_id = itunes
+        .get("itemId")
+        .and_then(|v| v.as_signed_integer())
+        .map(|id| id.to_string());
+
+    // Find the nested iOS .app bundle inside Wrapper/
+    let nested_app = find_ios_bundle(wrapper)?;
+    let nested_plist = nested_app.join("Info.plist");
+    if !nested_plist.exists() {
+        log::debug!(
+            "applications iOS bundle missing nested Info.plist path={}",
+            nested_plist.display()
+        );
+        return None;
+    }
+
+    let nested_value = plist::Value::from_file(&nested_plist).ok()?;
+    let nested = nested_value.as_dictionary()?;
+
+    let bundle_id = nested
+        .get("CFBundleIdentifier")
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    // iOS apps are always AppStore
+    let source = crate::models::SourceKind::AppStore;
+
+    let stable_id = bundle_id
+        .clone()
+        .unwrap_or_else(|| super::source_classifier::path_id(app_path));
+
+    let mut metadata = BTreeMap::new();
+    metadata.insert(
+        "bundle_id".into(),
+        serde_json::Value::String(bundle_id.unwrap_or_default()),
+    );
+    metadata.insert(
+        "platform".into(),
+        serde_json::Value::String("ios".into()),
+    );
+    // iOS apps have no macOS codesign/xattr — explicit null
+    metadata.insert("signing".into(), serde_json::Value::Null);
+    metadata.insert("quarantine".into(), serde_json::Value::Null);
+    if let Some(tid) = item_id {
+        metadata.insert(
+            "track_id".into(),
+            serde_json::Value::String(tid),
+        );
+    }
+
+    log::debug!(
+        "applications ios bundle name={} id={} version={}",
+        name,
+        stable_id,
+        version.as_deref().unwrap_or("unknown")
+    );
+
+    Some(SoftwareItem {
+        id: stable_id,
+        name,
+        kind: "application".into(),
+        source,
+        current_version: version,
+        path: Some(app_path.to_string_lossy().to_string()),
+        metadata,
+    })
+}
+
+/// Find the nested iOS .app directory inside the Wrapper/ directory.
+fn find_ios_bundle(wrapper: &Path) -> Option<std::path::PathBuf> {
+    let entries = std::fs::read_dir(wrapper).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().map(|e| e == "app").unwrap_or(false) && path.is_dir() {
+            return Some(path);
+        }
+    }
+    log::debug!("applications no nested .app found in Wrapper/");
+    None
 }
 
 #[cfg(test)]
