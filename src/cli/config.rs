@@ -322,12 +322,14 @@ fn run_wizard(
                 }
             }
             3 => {
-                if mode == "everything" {
-                    if let Some(p) = provider {
-                        api_key = ask_api_key(&p.name, current.as_ref())?;
-                    }
+                if let Some(p) = provider {
+                    api_key = ask_api_key(&p.name, current.as_ref())?;
                 }
-                step = 4;
+                if mode == "everything" {
+                    step = 4; // continue to language step
+                } else {
+                    step = 5; // skip language, done
+                }
             }
             4 => {
                 language = ask_language(&language)?;
