@@ -17,15 +17,6 @@ impl OpenAICompatibleClient {
             return Err("Provider configuration is not ready".into());
         }
 
-        let _base_url = if config.url.is_empty() {
-            config
-                .get_provider()
-                .and_then(|p| p.get_protocol_url("openai").cloned())
-                .unwrap_or_else(|| "https://api.deepseek.com".into())
-        } else {
-            config.url.clone()
-        };
-
         let timeout = std::time::Duration::from_secs(300);
         let client = reqwest::blocking::Client::builder()
             .timeout(timeout)
@@ -86,17 +77,20 @@ impl OpenAICompatibleClient {
 
     /// Execute the API call.
     pub(crate) fn create(&self, payload: &serde_json::Value) -> Result<String, LLMRequestError> {
-        let url = format!(
-            "{}/v1/chat/completions",
-            if self.config.url.is_empty() {
-                self.config
-                    .get_provider()
-                    .and_then(|p| p.get_protocol_url("openai").cloned())
-                    .unwrap_or_else(|| "https://api.deepseek.com".into())
-            } else {
-                self.config.url.clone()
-            }
-        );
+        let base = if self.config.url.is_empty() {
+            self.config
+                .get_provider()
+                .and_then(|p| p.get_protocol_url("openai").cloned())
+                .unwrap_or_else(|| "https://api.deepseek.com".into())
+        } else {
+            self.config.url.clone()
+        };
+        // Avoid double /v1 when user configures e.g. url = "http://localhost:8000/v1"
+        let url = if base.ends_with("/v1") {
+            format!("{base}/chat/completions")
+        } else {
+            format!("{base}/v1/chat/completions")
+        };
 
         let response = self
             .client

@@ -27,7 +27,7 @@ fn default_protocol() -> String {
 impl ProviderConfig {
     /// Whether the config is ready to use (both key and model present).
     pub fn is_ready(&self) -> bool {
-        !self.api_key.is_empty() && !self.model.is_empty()
+        !self.api_key.trim().is_empty() && !self.model.trim().is_empty()
     }
 
     /// Get the resolved provider from the registry.
@@ -133,11 +133,23 @@ pub fn save_config(
     Ok(())
 }
 
-/// Escape a value for TOML basic string (backslash + double-quote).
+/// Escape a value for TOML basic string.
+/// Escapes backslash, double-quote, and all control characters (U+0000–U+001F except tab).
 fn toml_escape(value: &str) -> String {
     let escaped: String = value
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"");
+        .chars()
+        .map(|c| match c {
+            '\\' => "\\\\".to_string(),
+            '"' => "\\\"".to_string(),
+            '\x08' => "\\b".to_string(),
+            '\x0C' => "\\f".to_string(),
+            '\n' => "\\n".to_string(),
+            '\r' => "\\r".to_string(),
+            '\t' => "\\t".to_string(),
+            c if (c as u32) < 0x20 => format!("\\u{:04x}", c as u32),
+            c => c.to_string(),
+        })
+        .collect();
     format!("\"{}\"", escaped)
 }
 

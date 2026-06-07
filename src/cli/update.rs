@@ -166,6 +166,14 @@ fn execute_update_loop(
                 candidate.item.name,
                 ok
             );
+        } else {
+            log::warn!(
+                "update skipped: no plugin found for candidate {} (plugin_name={:?}, plugin_map keys={:?})",
+                candidate.item.id,
+                plugin_name,
+                plugin_map.keys().collect::<Vec<_>>()
+            );
+            eprintln!("  Warning: no plugin found for {} — the cache may be corrupt. Try running `frais advise` again.", candidate.item.id);
         }
     }
 

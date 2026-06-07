@@ -85,7 +85,7 @@ impl ScanProgress {
 
             // Only update the message when the step changes — matches Python's
             // `if step != plugin_steps.get(pname):` guard.
-            let mut last = self.last_step.lock().unwrap();
+            let mut last = self.last_step.lock().unwrap_or_else(|e| e.into_inner());
             if step != *last.get(name).unwrap_or(&usize::MAX) {
                 last.insert(name.to_string(), step);
                 let step_label = self
@@ -112,7 +112,7 @@ impl ScanProgress {
                 let elapsed = start.elapsed().as_secs_f64();
                 self.scan_elapsed
                     .lock()
-                    .unwrap()
+                    .unwrap_or_else(|e| e.into_inner())
                     .insert(name.to_string(), elapsed);
             }
 
@@ -130,7 +130,7 @@ impl ScanProgress {
 
     /// Return the per-plugin elapsed times recorded at finish() time.
     pub fn scan_elapsed_map(&self) -> BTreeMap<String, f64> {
-        self.scan_elapsed.lock().unwrap().clone()
+        self.scan_elapsed.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     /// Maximum plugin scan time (= wall-clock duration of the scan phase).
@@ -138,7 +138,7 @@ impl ScanProgress {
     pub fn max_scan_time(&self) -> f64 {
         self.scan_elapsed
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .values()
             .copied()
             .fold(0.0f64, f64::max)

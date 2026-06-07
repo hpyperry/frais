@@ -170,8 +170,7 @@ Interactive update execution. Displays candidates, AI analysis, then prompts for
   "system": {
     "os_name": "macOS",
     "os_version": "26.5",
-    "arch": "arm64",
-    "applications_paths": ["/Applications", "~/Applications"]
+    "arch": "arm64"
   },
   "plugins": {
     "<name>": {

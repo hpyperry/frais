@@ -144,10 +144,12 @@ pub fn run(args: SummarizeArgs) -> Result<(), String> {
         }
     }
     // Save updated cache atomically
-    let _ = crate::store::scan_cache::save_scan_cache(
+    if let Err(e) = crate::store::scan_cache::save_scan_cache(
         &scan_result,
         &crate::paths::advice_cache(),
-    );
+    ) {
+        log::warn!("failed to save advice cache after summarize: {}", e);
+    }
 
     if args.json {
         let mut extra: BTreeMap<String, serde_json::Value> = BTreeMap::new();

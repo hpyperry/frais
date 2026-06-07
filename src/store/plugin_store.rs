@@ -65,14 +65,20 @@ pub fn remove_plugin_state(name: &str, path: &Path) -> Result<bool, String> {
     Ok(removed)
 }
 
-/// Write plugins config to file atomically.
+/// Build TOML content with sorted keys and proper escaping.
 fn _write_plugins_config(config: &BTreeMap<String, bool>, path: &Path) -> Result<(), String> {
     // Build TOML content with sorted keys
     let mut plugins_section = String::from("[plugins]\n");
     let mut sorted: Vec<_> = config.iter().collect();
     sorted.sort_by(|a, b| a.0.cmp(b.0));
     for (name, enabled) in &sorted {
-        plugins_section.push_str(&format!("{} = {}\n", name, enabled));
+        // Always wrap plugin names in quoted keys to handle names with
+        // spaces, dots, or digits — matches TOML quoted key spec.
+        plugins_section.push_str(&format!(
+            "\"{}\" = {}\n",
+            name.replace('\\', "\\\\").replace('"', "\\\""),
+            enabled
+        ));
     }
 
     if let Some(parent) = path.parent() {

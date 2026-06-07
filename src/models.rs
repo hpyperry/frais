@@ -21,6 +21,7 @@ pub enum SourceKind {
     HomebrewCask,
     #[serde(rename = "npm")]
     NpmGlobal,
+    #[serde(other)]
     Unknown,
 }
 

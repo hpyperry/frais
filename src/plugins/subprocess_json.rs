@@ -44,9 +44,38 @@ pub fn run_json(
         .map_err(|e| format!("Cannot execute {}: {e}", cmd[0]))?;
 
     // Wait with timeout — matches Python's subprocess.run(..., timeout=timeout)
-    // Rust stable doesn't have wait_timeout, so we poll with try_wait()
+    // Read stdout/stderr in a background thread to avoid pipe buffer deadlock
+    // when child output exceeds the OS pipe buffer (~64KB on macOS).
     let timeout = Duration::from_secs(timeout_secs);
     let start = std::time::Instant::now();
+    let stdout_buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let stderr_buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+
+    let mut child_stdout = child.stdout.take();
+    let mut child_stderr = child.stderr.take();
+
+    // Spawn reader threads to drain pipes while waiting
+    let reader_stdout = {
+        let buf = std::sync::Arc::clone(&stdout_buf);
+        child_stdout.take().map(|mut pipe| {
+            std::thread::spawn(move || {
+                let mut out: Vec<u8> = Vec::new();
+                let _ = std::io::Read::read_to_end(&mut pipe, &mut out);
+                *buf.lock().unwrap_or_else(|e| e.into_inner()) = out;
+            })
+        })
+    };
+    let reader_stderr = {
+        let buf = std::sync::Arc::clone(&stderr_buf);
+        child_stderr.take().map(|mut pipe| {
+            std::thread::spawn(move || {
+                let mut out: Vec<u8> = Vec::new();
+                let _ = std::io::Read::read_to_end(&mut pipe, &mut out);
+                *buf.lock().unwrap_or_else(|e| e.into_inner()) = out;
+            })
+        })
+    };
+
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
@@ -54,6 +83,9 @@ pub fn run_json(
                 if start.elapsed() >= timeout {
                     let _ = child.kill();
                     let _ = child.wait();
+                    // Join reader threads
+                    if let Some(t) = reader_stdout { let _ = t.join(); }
+                    if let Some(t) = reader_stderr { let _ = t.join(); }
                     return Err(format!("{} timed out after {}s", cmd[0], timeout_secs));
                 }
                 std::thread::sleep(Duration::from_millis(100));
@@ -61,28 +93,22 @@ pub fn run_json(
             Err(e) => {
                 let _ = child.kill();
                 let _ = child.wait();
+                if let Some(t) = reader_stdout { let _ = t.join(); }
+                if let Some(t) = reader_stderr { let _ = t.join(); }
                 return Err(format!("Cannot execute {}: {e}", cmd[0]));
             }
         }
     };
 
-    let stdout = child
-        .stdout
-        .take()
-        .map(|mut out| {
-            let mut buf = Vec::new();
-            std::io::Read::read_to_end(&mut out, &mut buf).unwrap_or(0);
-            buf
-        })
+    // Join reader threads to ensure all output is collected
+    if let Some(t) = reader_stdout { let _ = t.join(); }
+    if let Some(t) = reader_stderr { let _ = t.join(); }
+
+    let stdout = std::sync::Arc::into_inner(stdout_buf)
+        .map(|m| m.into_inner().unwrap_or_default())
         .unwrap_or_default();
-    let stderr = child
-        .stderr
-        .take()
-        .map(|mut err| {
-            let mut buf = Vec::new();
-            std::io::Read::read_to_end(&mut err, &mut buf).unwrap_or(0);
-            buf
-        })
+    let stderr = std::sync::Arc::into_inner(stderr_buf)
+        .map(|m| m.into_inner().unwrap_or_default())
         .unwrap_or_default();
     let output = (status, stdout, stderr);
 

@@ -10,7 +10,11 @@ pub fn run(args: DoctorArgs) -> Result<(), String> {
     if args.json {
         let mut extra: BTreeMap<String, serde_json::Value> = BTreeMap::new();
         extra.insert("version".into(), serde_json::Value::String(env!("CARGO_PKG_VERSION").into()));
-        extra.insert("system".into(), serde_json::to_value(&system).unwrap_or_default());
+        let mut sys: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+        sys.insert("os_name".into(), serde_json::Value::String(system.os_name.clone()));
+        sys.insert("os_version".into(), serde_json::Value::String(system.os_version.clone()));
+        sys.insert("arch".into(), serde_json::Value::String(system.arch.clone()));
+        extra.insert("system".into(), serde_json::json!(sys));
 
         // Plugins status
         let mut plugin_info: BTreeMap<String, serde_json::Value> = BTreeMap::new();
@@ -46,7 +50,6 @@ pub fn run(args: DoctorArgs) -> Result<(), String> {
         println!("Frais v{}", env!("CARGO_PKG_VERSION"));
         println!("  OS:      {} {}", system.os_name, system.os_version);
         println!("  Arch:    {}", system.arch);
-        println!("  Apps:    {}", system.applications_paths.join(", "));
         println!();
         println!("Plugins:");
         for (_name, plugin) in &plugins {

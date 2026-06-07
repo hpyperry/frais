@@ -43,8 +43,11 @@ impl Provider {
 }
 
 /// Built-in providers — matches Python's PROVIDERS list.
-pub fn builtin_providers() -> Vec<Provider> {
-    vec![
+/// Cached in a OnceLock to avoid re-allocating on every call.
+pub fn builtin_providers() -> &'static [Provider] {
+    use std::sync::OnceLock;
+    static PROVIDERS: OnceLock<Vec<Provider>> = OnceLock::new();
+    PROVIDERS.get_or_init(|| vec![
         Provider {
             id: "deepseek".into(),
             name: "DeepSeek".into(),
@@ -97,12 +100,12 @@ pub fn builtin_providers() -> Vec<Provider> {
                 m
             },
         },
-    ]
+    ])
 }
 
 /// Look up a provider by ID.
 pub fn get_provider(provider_id: &str) -> Option<Provider> {
-    builtin_providers().into_iter().find(|p| p.id == provider_id)
+    builtin_providers().iter().find(|p| p.id == provider_id).cloned()
 }
 
 /// Get the URL for a provider and protocol.

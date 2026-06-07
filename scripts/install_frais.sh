@@ -86,10 +86,6 @@ else
     chmod +x "$BIN_DIR/frais"
 fi
 
-# --------------- warm dyld cache ---------------
-echo "frais: warming cache..." >&2
-"$BIN_DIR/frais" doctor >/dev/null 2>&1 || true
-
 # --------------- PATH instructions ---------------
 echo "" >&2
 echo "frais: installed — $BIN_DIR/frais" >&2

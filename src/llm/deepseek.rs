@@ -242,6 +242,18 @@ impl LLMClient for DeepSeekAnthropicClient {
             }
         };
 
+        let status = response.status().as_u16();
+        if status != 200 {
+            let body = response.text().unwrap_or_default();
+            log::warn!(
+                "anthropic web_search returned status {} for {}: {}",
+                status,
+                query,
+                &body.chars().take(300).collect::<String>()
+            );
+            return vec![];
+        }
+
         let body: serde_json::Value = match response.json() {
             Ok(v) => v,
             Err(e) => {
@@ -249,6 +261,17 @@ impl LLMClient for DeepSeekAnthropicClient {
                 return vec![];
             }
         };
+
+        // Check for API-level errors in the response
+        if let Some(err_type) = body["type"].as_str() {
+            if err_type == "error" {
+                let msg = body["error"]["message"]
+                    .as_str()
+                    .unwrap_or("unknown error");
+                log::warn!("anthropic web_search API error for {}: {}", query, msg);
+                return vec![];
+            }
+        }
 
         let mut results = Vec::new();
         if let Some(blocks) = body["content"].as_array() {

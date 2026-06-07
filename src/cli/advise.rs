@@ -53,7 +53,7 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
     }
 
     // Store original handler for restoration on exit (matches Python's try/finally)
-    let _orig_handler = super::signal::install_interrupt_handler();
+    let restore_handler = super::signal::install_interrupt_handler();
 
     // --- Scan phase with live progress bars ---
     let show_progress = !args.json;
@@ -304,6 +304,9 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
         Ok(()) => {}
         Err(e) => log::warn!("failed to save advice cache: {}", e),
     }
+
+    // Restore original SIGINT handler before returning
+    restore_handler();
 
     Ok(())
 }

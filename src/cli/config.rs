@@ -597,7 +597,10 @@ fn test_and_save(
 
     let config_path = crate::paths::config_path();
     save_config(provider_id, model_id, api_key, protocol, url, &config_path)
-        .map_err(|_| ConfigCancelled)?;
+        .map_err(|e| {
+            eprintln!("  {} Failed to save config: {}", console::style("Error:").red(), e);
+            ConfigCancelled
+        })?;
 
     println!();
     println!(

@@ -138,15 +138,26 @@ impl ScannerPlugin for ApplicationsPlugin {
             }
             Err(e) => {
                 log::warn!("failed to create rayon thread pool: {}", e);
-                // Fallback: sequential research
+                // Fallback: sequential research with catch_unwind protection
                 for item in &to_research {
-                    match super::research::pipeline::research_application_update(
-                        llm.as_ref(), item,
-                    ) {
-                        Some(candidate) => {
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        super::research::pipeline::research_application_update(
+                            llm.as_ref(), item,
+                        )
+                    }));
+                    match result {
+                        Ok(Some(candidate)) => {
                             candidates.lock().unwrap().push(candidate);
                         }
-                        None => {}
+                        Ok(None) => {}
+                        Err(panic_err) => {
+                            let msg = panic_err
+                                .downcast_ref::<&str>()
+                                .map(|s| s.to_string())
+                                .or_else(|| panic_err.downcast_ref::<String>().cloned())
+                                .unwrap_or_else(|| "unknown panic".to_string());
+                            log::warn!("research failed for {}: {}", item.name, msg);
+                        }
                     }
                     let count = researched.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
                     if let Some(cb) = on_progress {
@@ -156,8 +167,8 @@ impl ScannerPlugin for ApplicationsPlugin {
             }
         }
 
-        let candidates = candidates.into_inner().unwrap_or_default();
-        let mut skipped = skipped_items.into_inner().unwrap_or_default();
+        let candidates = candidates.into_inner().unwrap_or_else(|e| e.into_inner());
+        let mut skipped = skipped_items.into_inner().unwrap_or_else(|e| e.into_inner());
         if skipped_count.load(std::sync::atomic::Ordering::SeqCst) > 0 {
             skipped.push(format!(
                 "{} research item(s) failed (see warnings above)",

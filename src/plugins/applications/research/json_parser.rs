@@ -42,9 +42,21 @@ fn extract_fenced_json(text: &str) -> Option<String> {
 fn extract_balanced(text: &str, open: char, close: char) -> Option<String> {
     let start = text.find(open)?;
     let mut depth = 0;
+    let mut in_string = false;
+    let mut escaped = false;
     let chars: Vec<char> = text[start..].chars().collect();
     for (i, c) in chars.iter().enumerate() {
-        if *c == open {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if *c == '\\' {
+                escaped = true;
+            } else if *c == '"' {
+                in_string = false;
+            }
+        } else if *c == '"' {
+            in_string = true;
+        } else if *c == open {
             depth += 1;
         } else if *c == close {
             depth -= 1;

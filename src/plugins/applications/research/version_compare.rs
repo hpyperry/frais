@@ -35,7 +35,7 @@ pub fn is_newer(current: Option<&str>, latest: Option<&str>) -> bool {
         return false;
     }
 
-    if let (Ok(vc), Ok(vl)) = (Version::parse(&l2), Version::parse(&c2)) {
+    if let (Ok(vc), Ok(vl)) = (Version::parse(&c2), Version::parse(&l2)) {
         return vl > vc;
     }
 
@@ -145,5 +145,12 @@ mod tests {
     #[test]
     fn test_is_newer_with_complex_versions() {
         assert!(is_newer(Some("1.2"), Some("1.2.3")));
+    }
+
+    #[test]
+    fn test_is_newer_digits_fallback_with_rc_suffixes() {
+        // digits_only("1.0.0rc1") = "1.0.01", digits_only("2.0.0rc2") = "2.0.02"
+        // Both parse as valid semver after digit stripping
+        assert!(is_newer(Some("1.0.0rc1"), Some("2.0.0rc2")));
     }
 }

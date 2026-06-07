@@ -19,35 +19,39 @@ const DDGS_MAX_CONSECUTIVE_FAILURES: usize = 3;
 // Cached HTTP clients — matches Python's @cache on _get_ddgs() and _get_fetch_client().
 use std::sync::OnceLock;
 
-fn get_ddgs_client() -> &'static reqwest::blocking::Client {
-    static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
-    CLIENT.get_or_init(|| {
-        reqwest::blocking::Client::builder()
-            .connect_timeout(std::time::Duration::from_secs(5))
-            .timeout(std::time::Duration::from_secs(8))
-            .user_agent(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
-                 AppleWebKit/537.36 (KHTML, like Gecko) \
-                 Chrome/148.0.0.0 Safari/537.36",
-            )
-            .build()
-            .expect("Failed to build DDGS HTTP client")
-    })
+fn get_ddgs_client() -> Option<&'static reqwest::blocking::Client> {
+    static CLIENT: OnceLock<Option<reqwest::blocking::Client>> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::blocking::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(5))
+                .timeout(std::time::Duration::from_secs(8))
+                .user_agent(
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
+                     AppleWebKit/537.36 (KHTML, like Gecko) \
+                     Chrome/148.0.0.0 Safari/537.36",
+                )
+                .build()
+                .ok()
+        })
+        .as_ref()
 }
 
-fn get_fetch_client() -> &'static reqwest::blocking::Client {
-    static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
-    CLIENT.get_or_init(|| {
-        reqwest::blocking::Client::builder()
-            .user_agent(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
-                 AppleWebKit/537.36 (KHTML, like Gecko) \
-                 Chrome/148.0.0.0 Safari/537.36",
-            )
-            .timeout(std::time::Duration::from_secs(15))
-            .build()
-            .expect("Failed to build fetch HTTP client")
-    })
+fn get_fetch_client() -> Option<&'static reqwest::blocking::Client> {
+    static CLIENT: OnceLock<Option<reqwest::blocking::Client>> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::blocking::Client::builder()
+                .user_agent(
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
+                     AppleWebKit/537.36 (KHTML, like Gecko) \
+                     Chrome/148.0.0.0 Safari/537.36",
+                )
+                .timeout(std::time::Duration::from_secs(15))
+                .build()
+                .ok()
+        })
+        .as_ref()
 }
 
 /// Web search via DuckDuckGo — matches Python's web_search() which uses DDGS().text().
@@ -60,7 +64,13 @@ pub fn web_search(query: &str) -> Vec<SearchResult> {
     }
 
     log::debug!("web_search query={}", query);
-    let client = get_ddgs_client();
+    let client = match get_ddgs_client() {
+        Some(c) => c,
+        None => {
+            log::warn!("web_search skipped: failed to build DDGS HTTP client");
+            return vec![];
+        }
+    };
 
     let url = format!(
         "https://html.duckduckgo.com/html/?q={}",
@@ -209,7 +219,10 @@ pub fn web_search_strategy(llm: &dyn LLMClient, query: &str) -> Vec<SearchResult
 pub fn web_fetch(url: &str) -> String {
     log::debug!("web_fetch url={}", url);
 
-    let client = get_fetch_client();
+    let client = match get_fetch_client() {
+        Some(c) => c,
+        None => return "Failed to build fetch HTTP client".to_string(),
+    };
     let resolved_url = github_url_to_api(url).unwrap_or_else(|| url.to_string());
 
     let mut headers: HashMap<&str, &str> = HashMap::new();
@@ -298,11 +311,16 @@ pub fn web_fetch_batch(urls: &[String]) -> HashMap<String, String> {
             Ok(mut map) => {
                 map.insert(url.clone(), content);
             }
-            Err(_) => {}
+            Err(e) => {
+                // Mutex poisoned — recover the data from the poisoned lock.
+                log::warn!("web_fetch_batch mutex poisoned, recovering data");
+                let mut map = e.into_inner();
+                map.insert(url.clone(), content);
+            }
         }
     });
 
-    results.into_inner().unwrap_or_default()
+    results.into_inner().unwrap_or_else(|e| e.into_inner())
 }
 
 /// Convert a GitHub URL to the API equivalent.
@@ -361,16 +379,17 @@ fn format_github_api(data: &serde_json::Value, _url: &str) -> String {
 /// Extract plain text from HTML.
 /// Matches Python's _extract_text().
 fn extract_text(html: &str) -> String {
-    let re_script = Regex::new(r"(?is)<script[^>]*>.*?</script>").unwrap();
-    let re_style = Regex::new(r"(?is)<style[^>]*>.*?</style>").unwrap();
-    let cleaned = re_script.replace_all(html, "");
-    let cleaned = re_style.replace_all(&cleaned, "");
+    static RE_SCRIPT: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"(?is)<script[^>]*>.*?</script>").unwrap());
+    static RE_STYLE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"(?is)<style[^>]*>.*?</style>").unwrap());
+    static RE_TAGS: Lazy<Regex> = Lazy::new(|| Regex::new(r"<[^>]+>").unwrap());
+    static RE_WS: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+").unwrap());
 
-    let re_tags = Regex::new(r"<[^>]+>").unwrap();
-    let text = re_tags.replace_all(&cleaned, " ");
-
-    let re_ws = Regex::new(r"\s+").unwrap();
-    re_ws.replace_all(&text, " ").trim().to_string()
+    let cleaned = RE_SCRIPT.replace_all(html, "");
+    let cleaned = RE_STYLE.replace_all(&cleaned, "");
+    let text = RE_TAGS.replace_all(&cleaned, " ");
+    RE_WS.replace_all(&text, " ").trim().to_string()
 }
 
 #[cfg(test)]
