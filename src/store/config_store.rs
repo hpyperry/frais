@@ -43,12 +43,15 @@ pub fn detect_language() -> String {
         }
     }
     // Fallback: check LANG env var
-    std::env::var("LANG")
+    if std::env::var("LANG")
         .unwrap_or_default()
         .starts_with("zh_")
-        .then(|| "zh")
-        .unwrap_or("en")
-        .to_string()
+    {
+        "zh"
+    } else {
+        "en"
+    }
+    .to_string()
 }
 
 impl ProviderConfig {

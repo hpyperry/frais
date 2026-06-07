@@ -118,11 +118,12 @@ pub fn exit_with_error(
     extra: BTreeMap<String, serde_json::Value>,
 ) -> ! {
     if json_mode {
-        let mut pairs: Vec<(String, serde_json::Value)> = Vec::new();
-        pairs.push(("ok".into(), serde_json::Value::Bool(false)));
-        pairs.push(("error".into(), serde_json::Value::String(message.into())));
-        pairs.push(("reason".into(), serde_json::Value::String(reason.into())));
-        pairs.push(("hint".into(), serde_json::Value::String(hint.into())));
+        let mut pairs: Vec<(String, serde_json::Value)> = vec![
+            ("ok".into(), serde_json::Value::Bool(false)),
+            ("error".into(), serde_json::Value::String(message.into())),
+            ("reason".into(), serde_json::Value::String(reason.into())),
+            ("hint".into(), serde_json::Value::String(hint.into())),
+        ];
         for (k, v) in extra {
             if k != "ok" && k != "error" && k != "reason" && k != "hint" {
                 pairs.push((k, v));

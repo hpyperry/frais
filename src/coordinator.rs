@@ -1,5 +1,5 @@
-/// Coordinator — matches Python's frais/coordinator.py.
-/// Orchestrates plugin selection, parallel scanning, and summary generation.
+//! Coordinator — matches Python's frais/coordinator.py.
+//! Orchestrates plugin selection, parallel scanning, and summary generation.
 
 use crate::models::{PluginScanResult, ScanResult, SystemProfile, UpdateCandidate};
 use crate::plugins::ScannerPlugin;
@@ -52,6 +52,7 @@ pub fn select_plugins(
 /// Run all plugin scans concurrently via thread::scope.
 /// Each plugin drives its own internal concurrency.
 /// Matches Python's run_scan() — ThreadPoolExecutor + try/except per plugin.
+#[allow(clippy::type_complexity)]
 pub fn run_scan(
     selected: &[String],
     all_plugins: &BTreeMap<String, Box<dyn ScannerPlugin>>,

@@ -18,8 +18,8 @@ pub fn classify_source(bundle_id: &str, app_path: &str) -> SourceKind {
 
     // Local build: no team ID and adhoc/no authority
     // Matches Python: team_id in {None, "-"} and authority in {None, "adhoc"}
-    let is_adhoc = signing.team_id.as_deref().map_or(true, |t| t == "-");
-    let is_unsigned = signing.authority.as_deref().map_or(true, |a| a == "adhoc");
+    let is_adhoc = signing.team_id.as_deref().is_none_or(|t| t == "-");
+    let is_unsigned = signing.authority.as_deref().is_none_or(|a| a == "adhoc");
 
     if is_adhoc && is_unsigned {
         return SourceKind::LocalBuild;

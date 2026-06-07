@@ -64,7 +64,7 @@ pub fn run(args: DoctorArgs) -> Result<(), String> {
 
         // --- Plugins ---
         println!("{}", super::output::section_header("Plugins"));
-        for (_name, plugin) in &plugins {
+        for plugin in plugins.values() {
             let name = plugin.name();
             let display = match name {
                 "applications" => "Applications",

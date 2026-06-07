@@ -188,7 +188,7 @@ fn parse_installed(data: &serde_json::Value) -> Vec<SoftwareItem> {
         let current = formula
             .get("linked_keg")
             .and_then(|v| v.as_str())
-            .or_else(|| inst_ver.as_deref())
+            .or(inst_ver.as_deref())
             .map(|s| s.to_string());
         items.push(SoftwareItem {
             id: format!("brew:{}", name),

@@ -94,6 +94,7 @@ pub fn manage() -> Result<(), String> {
 
 struct ConfigCancelled;
 
+#[allow(clippy::needless_borrow)]
 fn manage_flow() -> Result<(), ConfigCancelled> {
     let current = crate::store::config_store::load_config(&crate::paths::config_path());
     let providers = crate::providers::builtin_providers();

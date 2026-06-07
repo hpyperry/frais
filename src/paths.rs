@@ -9,14 +9,13 @@ pub fn frais_home() -> PathBuf {
 }
 
 fn dirs_frais_home() -> PathBuf {
-    let home = std::env::var("FRAIS_HOME")
+    std::env::var("FRAIS_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             let mut p = dirs_home();
             p.push(".frais");
             p
-        });
-    home
+        })
 }
 
 fn dirs_home() -> PathBuf {

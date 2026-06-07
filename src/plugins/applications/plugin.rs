@@ -204,7 +204,7 @@ impl ScannerPlugin for ApplicationsPlugin {
         // Manual: confirm before opening the app path — matches Python's typer.confirm()
         if let Some(ref path) = candidate.item.path {
             let confirm = dialoguer::Confirm::new()
-                .with_prompt(format!("    Open app for manual update?"))
+                .with_prompt("    Open app for manual update?".to_string())
                 .default(false)
                 .interact()
                 .unwrap_or(false);

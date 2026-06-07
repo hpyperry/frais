@@ -22,7 +22,7 @@ pub fn run(args: SummarizeArgs) -> Result<(), String> {
 
     // Find candidate by item_id
     let mut found_candidate: Option<crate::models::UpdateCandidate> = None;
-    for (_plugin_name, plugin_result) in &scan_result.plugin_results {
+    for plugin_result in scan_result.plugin_results.values() {
         for candidate in &plugin_result.candidates {
             if candidate.item.id == args.item_id {
                 found_candidate = Some(candidate.clone());

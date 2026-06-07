@@ -83,6 +83,7 @@ pub fn run(args: ScanArgs) -> Result<(), String> {
     };
 
     // Build callbacks for coordinator::run_scan()
+    #[allow(clippy::type_complexity)]
     let on_plugin_progress: Option<Box<dyn Fn(&str, usize, usize, usize) + Send + Sync>> =
         scan_progress.as_ref().map(|sp| {
             let sp = Arc::clone(sp);
@@ -91,6 +92,7 @@ pub fn run(args: ScanArgs) -> Result<(), String> {
             }) as Box<dyn Fn(&str, usize, usize, usize) + Send + Sync>
         });
 
+    #[allow(clippy::type_complexity)]
     let on_plugin_done: Option<Box<dyn Fn(&str, &crate::models::PluginScanResult) + Send + Sync>> =
         scan_progress.as_ref().map(|sp| {
             let sp = Arc::clone(sp);
@@ -176,7 +178,7 @@ pub fn run(args: ScanArgs) -> Result<(), String> {
                 if c.item.name != c.item.id {
                     println!(
                         "  {}",
-                        super::output::dim(&format!("{} | {}", c.item.name, source_str))
+                        super::output::dim(format!("{} | {}", c.item.name, source_str))
                     );
                 } else {
                     println!("  {}", super::output::dim(source_str));
@@ -211,7 +213,7 @@ pub fn run(args: ScanArgs) -> Result<(), String> {
         if ignored_count > 0 {
             println!(
                 "  {}",
-                super::output::dim(&format!(
+                super::output::dim(format!(
                     "{} app(s) ignored (use `frais ignore list` to review)",
                     ignored_count
                 ))
@@ -224,7 +226,7 @@ pub fn run(args: ScanArgs) -> Result<(), String> {
             .map(|sp| sp.max_scan_time())
             .unwrap_or(0.0);
         if total > 0.0 {
-            eprintln!("  {}", super::output::dim(&format!("Total: {:.1}s", total)));
+            eprintln!("  {}", super::output::dim(format!("Total: {:.1}s", total)));
         }
         println!();
     }

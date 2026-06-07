@@ -33,9 +33,9 @@ impl LLMClient for MiMoClient {
         let mut payload = self.inner.build_payload(&messages, max_tokens);
 
         // MiMo uses max_completion_tokens, not max_tokens
-        payload.as_object_mut().map(|obj| {
+        if let Some(obj) = payload.as_object_mut() {
             obj.remove("max_tokens");
-        });
+        }
         if let Some(mt) = max_tokens {
             if mt > 0 {
                 payload["max_completion_tokens"] = serde_json::json!(mt);

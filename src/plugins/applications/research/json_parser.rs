@@ -31,7 +31,7 @@ fn extract_fenced_json(text: &str) -> Option<String> {
         let without_fence = text
             .strip_prefix("```")
             .and_then(|s| s.strip_prefix("json"))
-            .unwrap_or(&text[3..]);
+            .unwrap_or_else(|| text.strip_prefix("```").unwrap_or(text));
         if let Some(end) = without_fence.rfind("```") {
             return Some(without_fence[..end].trim().to_string());
         }

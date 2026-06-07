@@ -89,6 +89,7 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
 
     // Build callbacks for coordinator::run_scan() — matches Python's
     // make_progress_callback + make_done_callback.
+    #[allow(clippy::type_complexity)]
     let on_plugin_progress: Option<Box<dyn Fn(&str, usize, usize, usize) + Send + Sync>> =
         scan_progress.as_ref().map(|sp| {
             let sp = Arc::clone(sp);
@@ -97,6 +98,7 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
             }) as Box<dyn Fn(&str, usize, usize, usize) + Send + Sync>
         });
 
+    #[allow(clippy::type_complexity)]
     let on_plugin_done: Option<Box<dyn Fn(&str, &crate::models::PluginScanResult) + Send + Sync>> =
         scan_progress.as_ref().map(|sp| {
             let sp = Arc::clone(sp);
@@ -184,7 +186,7 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
 
             // Write summaries back into filtered_result
             let mut idx: usize = 0;
-            for (_pname, pr) in &mut filtered_result.plugin_results {
+            for pr in filtered_result.plugin_results.values_mut() {
                 for c in &mut pr.candidates {
                     if idx < all_cands.len() && c.ai_summary.is_none() {
                         c.ai_summary = all_cands[idx].ai_summary.take();
@@ -260,7 +262,7 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
                 if c.item.name != c.item.id {
                     println!(
                         "  {}",
-                        super::output::dim(&format!("{} | {}", c.item.name, source_str))
+                        super::output::dim(format!("{} | {}", c.item.name, source_str))
                     );
                 } else {
                     println!("  {}", super::output::dim(source_str));
@@ -301,7 +303,7 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
         if ignored_count > 0 {
             println!(
                 "  {}",
-                super::output::dim(&format!(
+                super::output::dim(format!(
                     "{} app(s) ignored (use `frais ignore list` to review)",
                     ignored_count
                 ))
@@ -318,7 +320,7 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
             .unwrap_or(0.0);
         let total = max_scan + summarize_elapsed;
         if total > 0.0 {
-            eprintln!("  {}", super::output::dim(&format!("Total: {:.1}s", total)));
+            eprintln!("  {}", super::output::dim(format!("Total: {:.1}s", total)));
         }
     }
 
