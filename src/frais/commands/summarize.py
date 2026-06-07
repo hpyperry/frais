@@ -47,8 +47,8 @@ def build_summary_prompt(candidate: UpdateCandidate) -> str:
         f"Risk level: {d.get('risk_level', 'unknown')}\n"
         f"Auto-update available: {d.get('can_auto_update', False)}\n"
         f"Update command: {' '.join(d.get('command', [])) or '(manual)'}\n"
-        f"Dependencies: {len(dep.get('depends_on', []))} packages\n"
-        f"Used by: {len(dep.get('used_by', []))} packages\n"
+        f"Depends on: {len(dep.get('depends_on', []))} ({', '.join(dep.get('depends_on', []))})\n"
+        f"Used by: {len(dep.get('used_by', []))} ({', '.join(dep.get('used_by', []))})\n"
         f"Evidence: {json.dumps(d.get('evidence', []), ensure_ascii=False)}\n"
         f"Release notes: {d.get('release_notes') or '(none)'}"
     )

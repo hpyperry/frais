@@ -12,3 +12,8 @@ htmlcov/
 .coverage
 
 typescript
+
+
+# Added by cargo
+
+/target
