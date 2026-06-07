@@ -147,7 +147,10 @@ mod tests {
     fn test_print_json_success_includes_ok_true() {
         // Can't easily capture stdout in tests, but verify structure
         let mut fields: BTreeMap<String, serde_json::Value> = BTreeMap::new();
-        fields.insert("version".into(), serde_json::Value::String("0.1.0".into()));
+        fields.insert(
+            "version".into(),
+            serde_json::Value::String(env!("CARGO_PKG_VERSION").into()),
+        );
         // This prints to stdout — structural verification in integration tests
     }
 

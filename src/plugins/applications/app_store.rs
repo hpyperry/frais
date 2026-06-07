@@ -11,7 +11,7 @@ fn query_itunes(bundle_id: &str, item_name: &str) -> Option<serde_json::Value> {
 
     let client = match reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
-        .user_agent("frais/0.1.0")
+        .user_agent(concat!("frais/", env!("CARGO_PKG_VERSION")))
         .build()
     {
         Ok(c) => c,

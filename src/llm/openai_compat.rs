@@ -20,7 +20,7 @@ impl OpenAICompatibleClient {
         let timeout = std::time::Duration::from_secs(300);
         let client = reqwest::blocking::Client::builder()
             .timeout(timeout)
-            .user_agent("frais/0.1.0")
+            .user_agent(concat!("frais/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|e| format!("Cannot create HTTP client: {e}"))?;
 
