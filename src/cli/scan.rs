@@ -50,6 +50,27 @@ pub fn run(args: ScanArgs) -> Result<(), String> {
         }
     }
 
+    // Warn if the LLM client doesn't support server-side web search (DDGS fallback)
+    if !args.json {
+        if let Some(c) = crate::store::config_store::load_config(&crate::paths::config_path()) {
+            if c.is_ready() {
+                if let Ok(llm) = crate::llm::get_client(&c, None) {
+                    if !llm.supports_web_search() {
+                        use console::style;
+                        eprintln!(
+                            "  {}",
+                            style(
+                                "Note: web search uses DuckDuckGo fallback (less accurate). \
+                                 Switch to a provider/client with server-side search for best results."
+                            )
+                            .dim()
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     // --- Scan phase with live progress bars ---
     let show_progress = !args.json;
     let scan_progress: Option<Arc<super::scan_progress::ScanProgress>> = if show_progress {

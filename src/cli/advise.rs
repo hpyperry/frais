@@ -52,6 +52,27 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
         }
     }
 
+    // Warn before scan if web search will use DDGS fallback
+    if !args.json {
+        if let Some(ref c) = crate::store::config_store::load_config(&crate::paths::config_path()) {
+            if c.is_ready() {
+                if let Ok(llm) = crate::llm::get_client(c, None) {
+                    if !llm.supports_web_search() {
+                        use console::style;
+                        eprintln!(
+                            "  {}",
+                            style(
+                                "Note: web search uses DuckDuckGo fallback (less accurate). \
+                                 Switch to a provider/client with server-side search for best results."
+                            )
+                            .dim()
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     // Store original handler for restoration on exit (matches Python's try/finally)
     let restore_handler = super::signal::install_interrupt_handler();
 
@@ -100,7 +121,7 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
     // --- LLM summaries with progress bar ---
     let llm_config = crate::store::config_store::load_config(&crate::paths::config_path());
     let llm: Option<Box<dyn crate::llm::base::LLMClient>> = match llm_config {
-        Some(c) if c.is_ready() => crate::llm::get_client(&c, None).ok(),
+        Some(ref c) if c.is_ready() => crate::llm::get_client(c, None).ok(),
         _ => {
             if !args.json {
                 eprintln!("Warning: LLM not configured. Skipping AI summaries.");

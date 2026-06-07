@@ -198,6 +198,10 @@ impl LLMClient for DeepSeekAnthropicClient {
         // reqwest::blocking::Client closes when dropped
     }
 
+    fn supports_web_search(&self) -> bool {
+        true
+    }
+
     fn web_search(&self, query: &str) -> Vec<SearchResult> {
         // DeepSeek Anthropic protocol supports server-side web_search via the
         // web_search_20250305 tool. Matches Python's DeepSeekAnthropicClient.web_search() exactly.

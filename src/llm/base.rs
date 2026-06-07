@@ -89,6 +89,12 @@ pub trait LLMClient: Send + Sync {
         vec![]
     }
 
+    /// Whether this client implementation supports server-side web search.
+    /// Override in clients that have a real implementation (e.g. DeepSeek Anthropic).
+    fn supports_web_search(&self) -> bool {
+        false
+    }
+
     /// Test connection with a minimal request.
     fn test_connection(&self) -> Result<String, LLMRequestError> {
         self.chat("", "Reply with exactly: ok", Some(64), true)
