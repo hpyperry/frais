@@ -1,5 +1,6 @@
 // config commands — matches Python's frais/commands/config.py.
 use super::JsonFlag;
+use crate::store::config_store::save_config;
 use std::collections::BTreeMap;
 
 pub fn show(args: JsonFlag) -> Result<(), String> {
@@ -14,6 +15,7 @@ pub fn show(args: JsonFlag) -> Result<(), String> {
             extra.insert("model".into(), c.model.clone().into());
             extra.insert("protocol".into(), c.protocol.clone().into());
             extra.insert("url".into(), c.url.clone().into());
+            extra.insert("language".into(), c.language.clone().into());
             extra.insert(
                 "key_suffix".into(),
                 if c.api_key.len() > 4 {
@@ -36,6 +38,8 @@ pub fn show(args: JsonFlag) -> Result<(), String> {
                 println!("  {} {}", super::output::label("Provider:"), provider_name);
                 println!("  {} {}", super::output::label("Model:"), c.model);
                 println!("  {} {}", super::output::label("Protocol:"), c.protocol);
+                let lang_label = if c.language == "zh" { "中文" } else { "English" };
+                println!("  {} {}", super::output::label("Language:"), lang_label);
                 if !c.url.is_empty() {
                     println!("  {} {}", super::output::label("URL:"), c.url);
                 }
@@ -94,7 +98,23 @@ fn manage_flow() -> Result<(), ConfigCancelled> {
                     .unwrap_or_else(|| providers[0].name.clone());
                 let api_key = ask_api_key(&provider_name, Some(c))?;
                 println!();
-                test_and_save(&c.provider, &c.model, &api_key, &c.protocol, &c.url)?;
+                test_and_save(&c.provider, &c.model, &api_key, &c.protocol, &c.url, &c.language)?;
+                return Ok(());
+            }
+            ModifyChoice::Language => {
+                // Change only the summary language — no API test needed
+                let new_lang = ask_language(&c.language)?;
+                println!();
+                save_config(&c.provider, &c.model, &c.api_key, &c.protocol, &c.url, &new_lang, &crate::paths::config_path())
+                    .map_err(|e| {
+                        eprintln!("  {} Failed to save config: {}", console::style("Error:").red(), e);
+                        ConfigCancelled
+                    })?;
+                println!();
+                println!(
+                    "{}",
+                    console::style("Language updated.").green()
+                );
                 return Ok(());
             }
             ModifyChoice::Provider => {
@@ -115,6 +135,7 @@ fn manage_flow() -> Result<(), ConfigCancelled> {
 enum ModifyChoice {
     Provider,
     Key,
+    Language,
     Everything,
     Cancel,
 }
@@ -130,6 +151,8 @@ fn show_current_config(config: &crate::store::config_store::ProviderConfig) {
     println!("  Model:    {}", console::style(&config.model).cyan());
     println!("  Protocol: {}", console::style(&config.protocol).cyan());
     println!("  URL:      {}", console::style(&config.url).cyan());
+    let lang_label = if config.language == "zh" { "中文" } else { "English" };
+    println!("  Language: {}", console::style(lang_label).cyan());
     let masked = if config.api_key.len() >= 4 {
         format!("***{}", &config.api_key[config.api_key.len() - 4..])
     } else {
@@ -147,6 +170,7 @@ fn ask_what_to_modify() -> Result<ModifyChoice, ConfigCancelled> {
     let items = &[
         "Provider & Model",
         "API Key",
+        "Language (中文 / English)",
         "Everything (full reconfiguration)",
         "Cancel (Ctrl+C)",
     ];
@@ -161,8 +185,9 @@ fn ask_what_to_modify() -> Result<ModifyChoice, ConfigCancelled> {
     match selection {
         0 => Ok(ModifyChoice::Provider),
         1 => Ok(ModifyChoice::Key),
-        2 => Ok(ModifyChoice::Everything),
-        3 => Ok(ModifyChoice::Cancel),
+        2 => Ok(ModifyChoice::Language),
+        3 => Ok(ModifyChoice::Everything),
+        4 => Ok(ModifyChoice::Cancel),
         _ => Err(ConfigCancelled),
     }
 }
@@ -176,18 +201,22 @@ fn run_wizard(
     current: &Option<crate::store::config_store::ProviderConfig>,
     mode: &str,
 ) -> Result<(), ConfigCancelled> {
-    let mut step: usize = 0; // 0=provider, 1=protocol, 2=url, 3=key, 4=done
+    let mut step: usize = 0; // 0=provider, 1=protocol, 2=url, 3=key, 4=language, 5=done
     let mut provider: Option<&crate::providers::Provider> = None;
     let mut model: Option<&crate::providers::ModelInfo> = None;
     let mut protocol = String::from("openai");
     let mut url = String::new();
+    let mut language = current
+        .as_ref()
+        .map(|c| c.language.clone())
+        .unwrap_or_else(crate::store::config_store::detect_language);
     let mut api_key = if mode == "provider" {
         current.as_ref().map(|c| c.api_key.clone()).unwrap_or_default()
     } else {
         String::new()
     };
 
-    while step < 4 {
+    while step < 5 {
         match step {
             0 => {
                 let result = pick_provider_and_model(providers, current)?;
@@ -214,7 +243,23 @@ fn run_wizard(
                                     let key = ask_api_key(&provider_name, current.as_ref())?;
                                     println!();
                                     let c = current.as_ref().unwrap();
-                                    test_and_save(&c.provider, &c.model, &key, &c.protocol, &c.url)?;
+                                    test_and_save(&c.provider, &c.model, &key, &c.protocol, &c.url, &c.language)?;
+                                    return Ok(());
+                                }
+                                ModifyChoice::Language => {
+                                    let c = current.as_ref().unwrap();
+                                    let new_lang = ask_language(&c.language)?;
+                                    println!();
+                                    save_config(&c.provider, &c.model, &c.api_key, &c.protocol, &c.url, &new_lang, &crate::paths::config_path())
+                                        .map_err(|e| {
+                                            eprintln!("  {} Failed to save config: {}", console::style("Error:").red(), e);
+                                            ConfigCancelled
+                                        })?;
+                                    println!();
+                                    println!(
+                                        "{}",
+                                        console::style("Language updated.").green()
+                                    );
                                     return Ok(());
                                 }
                                 ModifyChoice::Provider => {
@@ -267,6 +312,10 @@ fn run_wizard(
                 }
                 step = 4;
             }
+            4 => {
+                language = ask_language(&language)?;
+                step = 5;
+            }
             _ => {}
         }
     }
@@ -274,7 +323,7 @@ fn run_wizard(
     let p = provider.unwrap();
     let m = model.unwrap();
     println!();
-    test_and_save(&p.id, &m.id, &api_key, &protocol, &url)
+    test_and_save(&p.id, &m.id, &api_key, &protocol, &url, &language)
 }
 
 // ============================================================================
@@ -493,7 +542,43 @@ fn ask_url(
 }
 
 // ============================================================================
-// Step 3: API key input
+// Step 4: Summary language
+// ============================================================================
+
+fn ask_language(current_language: &str) -> Result<String, ConfigCancelled> {
+    use dialoguer::Select;
+
+    println!();
+    println!("Select summary language (Ctrl+C to cancel):");
+    let current_label = if current_language == "zh" { "中文" } else { "English" };
+    println!("  Current: {}", console::style(current_label).dim());
+
+    let items = &["English", "中文 (Chinese)", "Back"];
+    let default_idx = if current_language == "zh" { 1 } else { 0 };
+
+    let sel = Select::new()
+        .with_prompt("Language for AI summaries")
+        .items(items)
+        .default(default_idx)
+        .interact()
+        .map_err(|_| ConfigCancelled)?;
+
+    match sel {
+        0 => {
+            println!("  English selected.");
+            Ok("en".into())
+        }
+        1 => {
+            println!("  中文 selected.");
+            Ok("zh".into())
+        }
+        2 => Ok(current_language.to_string()),
+        _ => Err(ConfigCancelled),
+    }
+}
+
+// ============================================================================
+// Step 3: API key input (now step 3)
 // ============================================================================
 
 fn ask_api_key(
@@ -542,6 +627,7 @@ fn test_and_save(
     api_key: &str,
     protocol: &str,
     url: &str,
+    language: &str,
 ) -> Result<(), ConfigCancelled> {
     use crate::store::config_store::{ProviderConfig, save_config};
     use dialoguer::Confirm;
@@ -560,6 +646,7 @@ fn test_and_save(
         api_key_source: None,
         protocol: protocol.into(),
         url: url.into(),
+        language: language.into(),
     };
 
     match crate::llm::get_client(&test_config, None) {
@@ -601,7 +688,7 @@ fn test_and_save(
     }
 
     let config_path = crate::paths::config_path();
-    save_config(provider_id, model_id, api_key, protocol, url, &config_path)
+    save_config(provider_id, model_id, api_key, protocol, url, language, &config_path)
         .map_err(|e| {
             eprintln!("  {} Failed to save config: {}", console::style("Error:").red(), e);
             ConfigCancelled

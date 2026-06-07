@@ -18,10 +18,37 @@ pub struct ProviderConfig {
     pub protocol: String,
     #[serde(default)]
     pub url: String,
+    /// Summary language: "zh" or "en". Defaults to detected system locale.
+    #[serde(default = "detect_language")]
+    pub language: String,
 }
 
 fn default_protocol() -> String {
     "openai".into()
+}
+
+/// Detect summary language from system locale.
+/// On macOS, checks AppleLocale first (the actual system language),
+/// then falls back to the LANG environment variable.
+/// Returns "zh" if the locale is Chinese, otherwise "en".
+pub fn detect_language() -> String {
+    // macOS: read system language from defaults
+    if let Ok(locale) = std::process::Command::new("defaults")
+        .args(["read", "-g", "AppleLocale"])
+        .output()
+    {
+        let stdout = String::from_utf8_lossy(&locale.stdout);
+        if stdout.trim().starts_with("zh") {
+            return "zh".to_string();
+        }
+    }
+    // Fallback: check LANG env var
+    std::env::var("LANG")
+        .unwrap_or_default()
+        .starts_with("zh_")
+        .then(|| "zh")
+        .unwrap_or("en")
+        .to_string()
 }
 
 impl ProviderConfig {
@@ -60,6 +87,11 @@ pub fn load_config(path: &Path) -> Option<ProviderConfig> {
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
+    let language = llm_section
+        .get("language")
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| if detect_language() == "zh" { "zh" } else { "en" })
+        .to_string();
 
     // API key resolution order matches Python exactly:
     // 1. FRAIS_LLM_API_KEY env var
@@ -88,6 +120,7 @@ pub fn load_config(path: &Path) -> Option<ProviderConfig> {
         api_key_source: key_source,
         protocol,
         url,
+        language,
     })
 }
 
@@ -109,15 +142,17 @@ pub fn save_config(
     api_key: &str,
     protocol: &str,
     url: &str,
+    language: &str,
     path: &Path,
 ) -> Result<(), String> {
     let toml_content = format!(
-        "[llm]\nprovider = {provider}\nmodel = {model}\napi_key = {key}\nprotocol = {proto}\nurl = {url}\n",
+        "[llm]\nprovider = {provider}\nmodel = {model}\napi_key = {key}\nprotocol = {proto}\nurl = {url}\nlanguage = {lang}\n",
         provider = toml_escape(provider_id),
         model = toml_escape(model),
         key = toml_escape(api_key),
         proto = toml_escape(protocol),
         url = toml_escape(url),
+        lang = toml_escape(language),
     );
 
     // Ensure parent directory
@@ -172,6 +207,7 @@ mod tests {
             api_key_source: Some("config".into()),
             protocol: "openai".into(),
             url: "".into(),
+            language: "en".into(),
         };
         assert!(config.is_ready());
     }
@@ -185,6 +221,7 @@ mod tests {
             api_key_source: None,
             protocol: "openai".into(),
             url: "".into(),
+            language: "en".into(),
         };
         assert!(!config.is_ready());
     }
@@ -200,13 +237,14 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
         let path = dir.path().join("config.toml");
 
-        save_config("deepseek", "deepseek-v4-flash", "sk-test", "openai", "", &path).unwrap();
+        save_config("deepseek", "deepseek-v4-flash", "sk-test", "openai", "", "en", &path).unwrap();
         let config = load_config(&path).unwrap();
 
         assert_eq!(config.provider, "deepseek");
         assert_eq!(config.model, "deepseek-v4-flash");
         assert_eq!(config.api_key, "sk-test");
         assert_eq!(config.protocol, "openai");
+        assert_eq!(config.language, "en");
     }
 
     #[test]
@@ -215,7 +253,7 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
         let path = dir.path().join("config.toml");
 
-        save_config("deepseek", "deepseek-v4-flash", "file-key", "openai", "", &path).unwrap();
+        save_config("deepseek", "deepseek-v4-flash", "file-key", "openai", "", "en", &path).unwrap();
         std::env::set_var("FRAIS_LLM_API_KEY", "env-key-1234");
 
         let config = load_config(&path).unwrap();

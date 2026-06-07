@@ -121,8 +121,10 @@ pub fn run(args: SummarizeArgs) -> Result<(), String> {
         }
     };
 
+    let language = config.language.as_str();
+
     // Generate summary via plugin.summarize() — matches Python's flow
-    if let Err(e) = plugin.summarize(&*llm, &mut candidate) {
+    if let Err(e) = plugin.summarize(&*llm, &mut candidate, language) {
         super::output::exit_with_error(
             &format!("LLM request failed: {e}"),
             args.json,

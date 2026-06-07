@@ -132,6 +132,12 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
 
     let mut summarize_elapsed: f64 = 0.0;
 
+    // Resolve language from config for summaries
+    let language = llm_config
+        .as_ref()
+        .map(|c| c.language.as_str())
+        .unwrap_or("en");
+
     if let Some(ref agent) = llm {
         // Flatten candidates into a Vec for parallel summary processing.
         let mut all_cands: Vec<crate::models::UpdateCandidate> = Vec::new();
@@ -166,6 +172,7 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
                         bar.advance();
                     }
                 }),
+                language,
             );
             summarize_elapsed = t0.elapsed().as_secs_f64();
 

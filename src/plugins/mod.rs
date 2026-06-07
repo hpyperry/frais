@@ -9,7 +9,7 @@ use crate::llm::base::{LLMClient, LLMRequestError};
 use crate::models::{PluginScanResult, SystemProfile, UpdateCandidate};
 
 /// Chinese summary prompt — matches Python's _SUMMARIZE_PROMPT in commands/summarize.py.
-const SUMMARIZE_PROMPT: &str =
+const SUMMARIZE_PROMPT_ZH: &str =
     "You are helping a macOS user decide whether to update installed software. \
      Write a concise update recommendation in Chinese.\n\
      \n\
@@ -21,9 +21,27 @@ const SUMMARIZE_PROMPT: &str =
      - Never invent version numbers, CVEs, or changelog details not present in the data.\n\
      - If evidence is weak or missing, say so honestly — prefer \"信息不足\" over guessing.";
 
+/// English summary prompt — same rules, English output.
+const SUMMARIZE_PROMPT_EN: &str =
+    "You are helping a macOS user decide whether to update installed software. \
+     Write a concise update recommendation in English.\n\
+     \n\
+     Rules:\n\
+     - Output 3-4 short bullet lines (each starting with \"- \"), no preamble or closing.\n\
+     - Use **bold** for version numbers, risk levels, and key actions.\n\
+     - Mention: what changed, risk level, dependency impact (if any), and a clear recommendation.\n\
+     - If the evidence includes URLs, reference the most credible one.\n\
+     - Never invent version numbers, CVEs, or changelog details not present in the data.\n\
+     - If evidence is weak or missing, say so honestly — prefer \"insufficient information\" over guessing.";
+
+/// Pick the right summary prompt for the requested language.
+fn summary_prompt(language: &str) -> &'static str {
+    if language == "zh" { SUMMARIZE_PROMPT_ZH } else { SUMMARIZE_PROMPT_EN }
+}
+
 /// Build the user prompt for generating an update recommendation.
 /// Matches Python's build_summary_prompt() in commands/summarize.py.
-pub fn build_summary_prompt(candidate: &UpdateCandidate) -> String {
+pub fn build_summary_prompt(candidate: &UpdateCandidate, language: &str) -> String {
     let item = &candidate.item;
     let dep = &candidate.dependency_impact;
     let dep_count = dep.depends_on.len();
@@ -47,7 +65,7 @@ pub fn build_summary_prompt(candidate: &UpdateCandidate) -> String {
          Used by: {} ({})\n\
          Evidence: {}\n\
          Release notes: {}",
-        SUMMARIZE_PROMPT,
+        summary_prompt(language),
         item.name,
         item.kind,
         item.source.as_str(),
@@ -124,17 +142,18 @@ pub trait ScannerPlugin: Send + Sync {
     }
 
     /// Generate AI summary for a candidate.
-    /// Default: uses summarize_candidate() with Chinese prompt.
+    /// Default: uses summarize_candidate() with the configured language prompt.
     /// Matches Python's ScannerPlugin.summarize() → summarize_candidate().
     fn summarize(
         &self,
         agent: &dyn LLMClient,
         candidate: &mut UpdateCandidate,
+        language: &str,
     ) -> Result<(), LLMRequestError> {
         if candidate.ai_summary.is_some() {
             return Ok(());
         }
-        let prompt = build_summary_prompt(candidate);
+        let prompt = build_summary_prompt(candidate, language);
         let summary = agent.chat("", &prompt, None, false)?;
         candidate.ai_summary = Some(summary);
         Ok(())

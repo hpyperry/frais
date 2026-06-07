@@ -149,6 +149,7 @@ pub fn run_summaries(
     plugins: &BTreeMap<String, Box<dyn ScannerPlugin>>,
     _max_workers: usize,
     on_progress: Option<&(dyn Fn() + Sync)>,
+    language: &str,
 ) {
     use rayon::prelude::*;
 
@@ -172,7 +173,7 @@ pub fn run_summaries(
                 Some(p) => p,
                 None => return,
             };
-            if let Err(e) = plugin.summarize(llm, c) {
+            if let Err(e) = plugin.summarize(llm, c, language) {
                 log::warn!("summary failed: {}", e);
             }
             if let Some(ref cb) = on_progress {

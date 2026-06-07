@@ -331,6 +331,7 @@ mod tests {
             api_key_source: Some("config".into()),
             protocol: "openai".into(),
             url: "".into(),
+            language: "en".into(),
         }
     }
 
@@ -365,6 +366,7 @@ mod tests {
             api_key_source: None,
             protocol: "anthropic".into(),
             url: "".into(),
+            language: "en".into(),
         };
         let result = DeepSeekAnthropicClient::new(&config);
         assert!(result.is_err());

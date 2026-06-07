@@ -39,6 +39,7 @@ pub fn run(args: DoctorArgs) -> Result<(), String> {
             llm.insert("model".into(), c.model.clone().into());
             llm.insert("protocol".into(), c.protocol.clone().into());
             llm.insert("url".into(), c.url.clone().into());
+            llm.insert("language".into(), c.language.clone().into());
             llm.insert("key_suffix".into(), mask_key(&c.api_key).into());
             extra.insert("llm".into(), serde_json::json!(llm));
         } else {
@@ -82,6 +83,8 @@ pub fn run(args: DoctorArgs) -> Result<(), String> {
                 c.model,
                 c.protocol
             );
+            let lang_label = if c.language == "zh" { "中文" } else { "English" };
+            println!("  {} {}", super::output::label("Language:"), lang_label);
             println!("  {} {}", super::output::label("Key:"), mask_key(&c.api_key));
         } else {
             println!();

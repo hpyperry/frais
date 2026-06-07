@@ -74,6 +74,7 @@ mod tests {
             api_key_source: Some("config".into()),
             protocol: "openai".into(),
             url: "".into(),
+            language: "en".into(),
         }
     }
 
