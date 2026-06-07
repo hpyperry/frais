@@ -58,7 +58,7 @@ pub fn show(args: JsonFlag) -> Result<(), String> {
                 super::output::info_row("Endpoint:", &endpoint);
                 let lang_label = if c.language == "zh" { "中文" } else { "English" };
                 super::output::info_row("Language:", lang_label);
-                let masked = if c.api_key.len() >= 4 {
+                let masked = if c.api_key.len() > 4 {
                     format!("***{}", &c.api_key[c.api_key.len()-4..])
                 } else {
                     "***".into()
@@ -169,7 +169,7 @@ fn show_current_config(config: &crate::store::config_store::ProviderConfig) {
     super::output::info_row("Endpoint:", &endpoint);
     let lang_label = if config.language == "zh" { "中文" } else { "English" };
     super::output::info_row("Language:", lang_label);
-    let masked = if config.api_key.len() >= 4 {
+    let masked = if config.api_key.len() > 4 {
         format!("***{}", &config.api_key[config.api_key.len() - 4..])
     } else {
         "***".into()
@@ -596,7 +596,7 @@ fn ask_api_key(
 ) -> Result<String, ConfigCancelled> {
     println!();
     if let Some(c) = current {
-        let masked = if c.api_key.len() >= 4 {
+        let masked = if c.api_key.len() > 4 {
             format!("***{}", &c.api_key[c.api_key.len() - 4..])
         } else {
             "(not set)".into()

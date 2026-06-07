@@ -63,9 +63,11 @@ fn normalize(value: &str) -> String {
     }
 }
 
-/// Keep only digits and dots.
+/// Keep only the leading digits and dots — stop at first non-digit, non-dot.
+/// This prevents pre-release suffixes (rc1, beta2, alpha3) from merging their
+/// digits with the patch number (e.g. "1.0.9rc1" → "1.0.9", not "1.0.91").
 fn digits_only(value: &str) -> String {
-    value.chars().filter(|c| c.is_ascii_digit() || *c == '.').collect()
+    value.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect()
 }
 
 #[cfg(test)]
@@ -133,8 +135,14 @@ mod tests {
     }
 
     #[test]
-    fn test_digits_only_keeps_numbers_and_dots() {
-        assert_eq!(digits_only("1.2.3beta4"), "1.2.34");
+    fn test_digits_only_stops_at_first_non_digit() {
+        assert_eq!(digits_only("1.2.3beta4"), "1.2.3");
+    }
+
+    #[test]
+    fn test_digits_only_with_rc_suffix() {
+        // "1.0.9rc1" should produce "1.0.9", not "1.0.91"
+        assert_eq!(digits_only("1.0.9rc1"), "1.0.9");
     }
 
     #[test]
@@ -149,8 +157,15 @@ mod tests {
 
     #[test]
     fn test_is_newer_digits_fallback_with_rc_suffixes() {
-        // digits_only("1.0.0rc1") = "1.0.01", digits_only("2.0.0rc2") = "2.0.02"
+        // digits_only("1.0.0rc1") = "1.0.0", digits_only("2.0.0rc2") = "2.0.0"
         // Both parse as valid semver after digit stripping
         assert!(is_newer(Some("1.0.0rc1"), Some("2.0.0rc2")));
+    }
+
+    #[test]
+    fn test_is_newer_rc_not_newer_than_stable() {
+        // "1.0.9rc1" should NOT be considered newer than "1.0.9"
+        // digits_only("1.0.9rc1") → "1.0.9", which equals "1.0.9" → false
+        assert!(!is_newer(Some("1.0.9"), Some("1.0.9rc1")));
     }
 }

@@ -66,12 +66,57 @@ impl ProviderConfig {
 /// Load config from a TOML file. Returns None if missing or invalid.
 /// Matches Python's load_config() including env var override logic.
 pub fn load_config(path: &Path) -> Option<ProviderConfig> {
-    let content = std::fs::read_to_string(path).ok()?;
-    let toml_value: toml::Value = toml::from_str(&content).ok()?;
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) => {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                log::warn!("Cannot read config file {}: {}", path.display(), e);
+            }
+            return None;
+        }
+    };
+    let toml_value: toml::Value = match toml::from_str(&content) {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!(
+                "Config file {} is not valid TOML: {}. Run `frais config manage` to fix.",
+                path.display(),
+                e
+            );
+            return None;
+        }
+    };
 
-    let llm_section = toml_value.get("llm")?;
-    let provider_id = llm_section.get("provider")?.as_str()?.to_string();
-    let model = llm_section.get("model")?.as_str()?.to_string();
+    let llm_section = match toml_value.get("llm") {
+        Some(s) => s,
+        None => {
+            log::warn!(
+                "Config file {} missing [llm] section. Run `frais config manage` to set up.",
+                path.display()
+            );
+            return None;
+        }
+    };
+    let provider_id = match llm_section.get("provider").and_then(|v| v.as_str()) {
+        Some(id) => id.to_string(),
+        None => {
+            log::warn!(
+                "Config file {} missing provider field in [llm] section.",
+                path.display()
+            );
+            return None;
+        }
+    };
+    let model = match llm_section.get("model").and_then(|v| v.as_str()) {
+        Some(m) => m.to_string(),
+        None => {
+            log::warn!(
+                "Config file {} missing model field in [llm] section.",
+                path.display()
+            );
+            return None;
+        }
+    };
     let file_key = llm_section
         .get("api_key")
         .and_then(|v| v.as_str())

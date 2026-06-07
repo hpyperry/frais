@@ -52,9 +52,12 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
         }
     }
 
+    // Load config once for both DDGS warning and LLM summaries (avoid TOCTOU).
+    let llm_config = crate::store::config_store::load_config(&crate::paths::config_path());
+
     // Warn before scan if web search will use DDGS fallback
     if !args.json {
-        if let Some(ref c) = crate::store::config_store::load_config(&crate::paths::config_path()) {
+        if let Some(ref c) = llm_config {
             if c.is_ready() {
                 if let Ok(llm) = crate::llm::get_client(c, None) {
                     if !llm.supports_web_search() {
@@ -119,7 +122,12 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
     let ignored_count = filter_result.ignored_count;
 
     // --- LLM summaries with progress bar ---
-    let llm_config = crate::store::config_store::load_config(&crate::paths::config_path());
+    // Resolve language from config before moving llm_config into the client.
+    let language = llm_config
+        .as_ref()
+        .map(|c| c.language.as_str())
+        .unwrap_or("en");
+
     let llm: Option<Box<dyn crate::llm::base::LLMClient>> = match llm_config {
         Some(ref c) if c.is_ready() => crate::llm::get_client(c, None).ok(),
         _ => {
@@ -131,12 +139,6 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
     };
 
     let mut summarize_elapsed: f64 = 0.0;
-
-    // Resolve language from config for summaries
-    let language = llm_config
-        .as_ref()
-        .map(|c| c.language.as_str())
-        .unwrap_or("en");
 
     if let Some(ref agent) = llm {
         // Flatten candidates into a Vec for parallel summary processing.

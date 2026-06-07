@@ -4,6 +4,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 pub fn run(args: ScanArgs) -> Result<(), String> {
+    // Install SIGINT handler for cursor restoration on Ctrl+C during progress bars.
+    let _restore_handler = super::signal::install_interrupt_handler();
+
     let system = crate::system::detect_system();
     let all_plugins = crate::plugins::registry::all_plugins();
 

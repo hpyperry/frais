@@ -33,15 +33,18 @@ pub fn init_ignored(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Save ignored IDs to file atomically.
+/// Save ignored IDs to file atomically. Preserves the comment header.
+const IGNORE_HEADER: &str = "# Frais ignore list — one bundle ID per line\n";
+
 pub fn save_ignored(ids: &BTreeSet<String>, path: &Path) -> Result<(), String> {
     let mut sorted: Vec<&String> = ids.iter().collect();
     sorted.sort();
 
-    let content: String = sorted
-        .iter()
-        .map(|id| format!("{}\n", id))
-        .collect();
+    let mut content = String::from(IGNORE_HEADER);
+    for id in &sorted {
+        content.push_str(id);
+        content.push('\n');
+    }
 
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("Cannot create dir: {e}"))?;

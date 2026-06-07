@@ -52,12 +52,13 @@ pub fn run(args: SummarizeArgs) -> Result<(), String> {
         }
     };
 
-    // If already summarized, return existing
-    if let Some(ref summary) = candidate.ai_summary {
+    // If already summarized, return existing (skip empty strings — LLM may
+    // return empty response due to content-filter blocks; treat as uncached).
+    if let Some(summary) = candidate.ai_summary.as_deref().filter(|s| !s.is_empty()) {
         if args.json {
             let mut extra: BTreeMap<String, serde_json::Value> = BTreeMap::new();
             extra.insert("item_id".into(), args.item_id.clone().into());
-            extra.insert("ai_summary".into(), summary.clone().into());
+            extra.insert("ai_summary".into(), summary.to_string().into());
             super::output::print_json_success(extra);
         } else {
             print_item_header(&candidate);

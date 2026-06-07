@@ -86,6 +86,8 @@ impl OpenAICompatibleClient {
             self.config.url.clone()
         };
         // Avoid double /v1 when user configures e.g. url = "http://localhost:8000/v1"
+        // Strip trailing slash first to handle "/v1/" (common with OpenWebUI/LiteLLM proxies).
+        let base = base.trim_end_matches('/');
         let url = if base.ends_with("/v1") {
             format!("{base}/chat/completions")
         } else {
@@ -108,7 +110,14 @@ impl OpenAICompatibleClient {
             })?;
 
         let status = response.status().as_u16();
-        let response_text = response.text().unwrap_or_default();
+        let response_text = match response.text() {
+            Ok(t) => t,
+            Err(e) => {
+                return Err(LLMRequestError::new(&format!(
+                    "Failed to read response body (status {status}): {e}"
+                )));
+            }
+        };
 
         if status != 200 {
             return Err(LLMRequestError::with_response(
