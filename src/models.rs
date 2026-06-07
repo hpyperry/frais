@@ -52,8 +52,14 @@ pub struct SystemProfile {
 impl SystemProfile {
     pub fn to_dict(&self) -> BTreeMap<String, serde_json::Value> {
         let mut m = BTreeMap::new();
-        m.insert("os_name".into(), serde_json::Value::String(self.os_name.clone()));
-        m.insert("os_version".into(), serde_json::Value::String(self.os_version.clone()));
+        m.insert(
+            "os_name".into(),
+            serde_json::Value::String(self.os_name.clone()),
+        );
+        m.insert(
+            "os_version".into(),
+            serde_json::Value::String(self.os_version.clone()),
+        );
         m.insert("arch".into(), serde_json::Value::String(self.arch.clone()));
         m.insert(
             "applications_paths".into(),
@@ -87,7 +93,10 @@ impl SoftwareItem {
         m.insert("id".into(), serde_json::Value::String(self.id.clone()));
         m.insert("name".into(), serde_json::Value::String(self.name.clone()));
         m.insert("kind".into(), serde_json::Value::String(self.kind.clone()));
-        m.insert("source".into(), serde_json::Value::String(self.source.as_str().to_string()));
+        m.insert(
+            "source".into(),
+            serde_json::Value::String(self.source.as_str().to_string()),
+        );
         m.insert(
             "current_version".into(),
             match &self.current_version {
@@ -130,7 +139,9 @@ pub struct ResearchResult {
     pub release_notes: Option<String>,
 }
 
-fn unknown_str() -> String { "unknown".into() }
+fn unknown_str() -> String {
+    "unknown".into()
+}
 
 impl Default for ResearchResult {
     fn default() -> Self {
@@ -174,16 +185,25 @@ impl DependencyImpact {
         m.insert(
             "used_by".into(),
             serde_json::Value::Array(
-                self.used_by.iter().map(|v| serde_json::Value::String(v.clone())).collect(),
+                self.used_by
+                    .iter()
+                    .map(|v| serde_json::Value::String(v.clone()))
+                    .collect(),
             ),
         );
         m.insert(
             "depends_on".into(),
             serde_json::Value::Array(
-                self.depends_on.iter().map(|v| serde_json::Value::String(v.clone())).collect(),
+                self.depends_on
+                    .iter()
+                    .map(|v| serde_json::Value::String(v.clone()))
+                    .collect(),
             ),
         );
-        m.insert("impact_level".into(), serde_json::Value::String(self.impact_level.clone()));
+        m.insert(
+            "impact_level".into(),
+            serde_json::Value::String(self.impact_level.clone()),
+        );
         m
     }
 }
@@ -215,24 +235,42 @@ pub struct UpdateCandidate {
 impl UpdateCandidate {
     pub fn to_dict(&self) -> BTreeMap<String, serde_json::Value> {
         let mut m = BTreeMap::new();
-        m.insert("item".into(), serde_json::to_value(&self.item).unwrap_or_default());
+        m.insert(
+            "item".into(),
+            serde_json::to_value(&self.item).unwrap_or_default(),
+        );
         m.insert("latest_version".into(), opt_str(&self.latest_version));
         m.insert("release_notes".into(), opt_str(&self.release_notes));
-        m.insert("dependency_impact".into(), serde_json::to_value(&self.dependency_impact).unwrap_or_default());
+        m.insert(
+            "dependency_impact".into(),
+            serde_json::to_value(&self.dependency_impact).unwrap_or_default(),
+        );
         m.insert("risk_level".into(), opt_str(&self.risk_level));
         m.insert("ai_summary".into(), opt_str(&self.ai_summary));
-        m.insert("recommended_action".into(), opt_str(&self.recommended_action));
-        m.insert("can_auto_update".into(), serde_json::Value::Bool(self.can_auto_update));
+        m.insert(
+            "recommended_action".into(),
+            opt_str(&self.recommended_action),
+        );
+        m.insert(
+            "can_auto_update".into(),
+            serde_json::Value::Bool(self.can_auto_update),
+        );
         m.insert(
             "command".into(),
             serde_json::Value::Array(
-                self.command.iter().map(|c| serde_json::Value::String(c.clone())).collect(),
+                self.command
+                    .iter()
+                    .map(|c| serde_json::Value::String(c.clone()))
+                    .collect(),
             ),
         );
         m.insert(
             "evidence".into(),
             serde_json::Value::Array(
-                self.evidence.iter().map(|e| serde_json::Value::String(e.clone())).collect(),
+                self.evidence
+                    .iter()
+                    .map(|e| serde_json::Value::String(e.clone()))
+                    .collect(),
             ),
         );
         m
@@ -260,12 +298,21 @@ pub struct PluginScanResult {
 impl PluginScanResult {
     pub fn to_dict(&self) -> BTreeMap<String, serde_json::Value> {
         let mut m = BTreeMap::new();
-        m.insert("items".into(), serde_json::to_value(&self.items).unwrap_or_default());
-        m.insert("candidates".into(), serde_json::to_value(&self.candidates).unwrap_or_default());
+        m.insert(
+            "items".into(),
+            serde_json::to_value(&self.items).unwrap_or_default(),
+        );
+        m.insert(
+            "candidates".into(),
+            serde_json::to_value(&self.candidates).unwrap_or_default(),
+        );
         m.insert(
             "skipped".into(),
             serde_json::Value::Array(
-                self.skipped.iter().map(|s| serde_json::Value::String(s.clone())).collect(),
+                self.skipped
+                    .iter()
+                    .map(|s| serde_json::Value::String(s.clone()))
+                    .collect(),
             ),
         );
         m
@@ -291,8 +338,14 @@ impl ScanResult {
 
     pub fn to_dict(&self) -> BTreeMap<String, serde_json::Value> {
         let mut m = BTreeMap::new();
-        m.insert("system".into(), serde_json::to_value(&self.system).unwrap_or_default());
-        m.insert("plugin_results".into(), serde_json::to_value(&self.plugin_results).unwrap_or_default());
+        m.insert(
+            "system".into(),
+            serde_json::to_value(&self.system).unwrap_or_default(),
+        );
+        m.insert(
+            "plugin_results".into(),
+            serde_json::to_value(&self.plugin_results).unwrap_or_default(),
+        );
         m
     }
 }
@@ -435,7 +488,10 @@ mod tests {
             applications_paths: vec!["/Applications".into()],
         };
         let d = sp.to_dict();
-        assert_eq!(d.get("os_name").unwrap(), &serde_json::Value::String("macOS".into()));
+        assert_eq!(
+            d.get("os_name").unwrap(),
+            &serde_json::Value::String("macOS".into())
+        );
     }
 
     #[test]

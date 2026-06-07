@@ -4,21 +4,20 @@ use std::collections::BTreeMap;
 
 pub fn run(args: SummarizeArgs) -> Result<(), String> {
     // Load cached scan
-    let mut scan_result = match crate::store::scan_cache::load_scan_cache(
-        &crate::paths::advice_cache(),
-    ) {
-        Ok(sr) => sr,
-        Err(e) => {
-            super::output::exit_with_error(
-                &format!("No scan cache found: {e}"),
-                args.json,
-                1,
-                "no_cache",
-                "Run `frais advise` or `frais scan` first to generate a scan cache.",
-            BTreeMap::<String, serde_json::Value>::new(),
-            );
-        }
-    };
+    let mut scan_result =
+        match crate::store::scan_cache::load_scan_cache(&crate::paths::advice_cache()) {
+            Ok(sr) => sr,
+            Err(e) => {
+                super::output::exit_with_error(
+                    &format!("No scan cache found: {e}"),
+                    args.json,
+                    1,
+                    "no_cache",
+                    "Run `frais advise` or `frais scan` first to generate a scan cache.",
+                    BTreeMap::<String, serde_json::Value>::new(),
+                );
+            }
+        };
 
     // Find candidate by item_id
     let mut found_candidate: Option<crate::models::UpdateCandidate> = None;
@@ -69,9 +68,7 @@ pub fn run(args: SummarizeArgs) -> Result<(), String> {
     }
 
     // Get LLM client
-    let config = match crate::store::config_store::load_config(
-        &crate::paths::config_path(),
-    ) {
+    let config = match crate::store::config_store::load_config(&crate::paths::config_path()) {
         Some(c) if c.is_ready() => c,
         _ => {
             super::output::exit_with_error(
@@ -80,14 +77,13 @@ pub fn run(args: SummarizeArgs) -> Result<(), String> {
                 2,
                 "config_missing",
                 "Run `frais config manage` to configure an LLM provider.",
-            BTreeMap::<String, serde_json::Value>::new(),
+                BTreeMap::<String, serde_json::Value>::new(),
             );
         }
     };
 
-    let llm = crate::llm::get_client(&config, None).map_err(|e| {
-        format!("Cannot create LLM client: {e}")
-    })?;
+    let llm = crate::llm::get_client(&config, None)
+        .map_err(|e| format!("Cannot create LLM client: {e}"))?;
 
     // Find plugin for this candidate's item_id by scanning plugin_results
     let mut plugin_name: Option<String> = None;
@@ -148,10 +144,9 @@ pub fn run(args: SummarizeArgs) -> Result<(), String> {
         }
     }
     // Save updated cache atomically
-    if let Err(e) = crate::store::scan_cache::save_scan_cache(
-        &scan_result,
-        &crate::paths::advice_cache(),
-    ) {
+    if let Err(e) =
+        crate::store::scan_cache::save_scan_cache(&scan_result, &crate::paths::advice_cache())
+    {
         log::warn!("failed to save advice cache after summarize: {}", e);
     }
 

@@ -170,10 +170,8 @@ impl LLMClient for DeepSeekAnthropicClient {
             ));
         }
 
-        let body: serde_json::Value =
-            serde_json::from_str(&response_text).map_err(|e| {
-                LLMRequestError::new(&format!("Cannot parse response: {e}"))
-            })?;
+        let body: serde_json::Value = serde_json::from_str(&response_text)
+            .map_err(|e| LLMRequestError::new(&format!("Cannot parse response: {e}")))?;
 
         // Extract text from content blocks
         let content = body["content"]
@@ -190,7 +188,9 @@ impl LLMClient for DeepSeekAnthropicClient {
 
         match content {
             Some(text) => Ok(text),
-            None => Err(LLMRequestError::new("Empty content in Anthropic API response")),
+            None => Err(LLMRequestError::new(
+                "Empty content in Anthropic API response",
+            )),
         }
     }
 
@@ -269,9 +269,7 @@ impl LLMClient for DeepSeekAnthropicClient {
         // Check for API-level errors in the response
         if let Some(err_type) = body["type"].as_str() {
             if err_type == "error" {
-                let msg = body["error"]["message"]
-                    .as_str()
-                    .unwrap_or("unknown error");
+                let msg = body["error"]["message"].as_str().unwrap_or("unknown error");
                 log::warn!("anthropic web_search API error for {}: {}", query, msg);
                 return vec![];
             }
@@ -283,10 +281,9 @@ impl LLMClient for DeepSeekAnthropicClient {
                 if block["type"].as_str() == Some("web_search_tool_result") {
                     if let Some(items) = block["content"].as_array() {
                         for item in items {
-                            if let (Some(url), Some(title)) = (
-                                item["url"].as_str(),
-                                item["title"].as_str(),
-                            ) {
+                            if let (Some(url), Some(title)) =
+                                (item["url"].as_str(), item["title"].as_str())
+                            {
                                 if !url.is_empty() {
                                     results.push(SearchResult {
                                         title: title.to_string(),
@@ -321,7 +318,6 @@ impl LLMClient for DeepSeekAnthropicClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     fn test_config() -> ProviderConfig {
         ProviderConfig {

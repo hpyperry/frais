@@ -43,10 +43,7 @@ pub fn detect_system() -> SystemProfile {
 
 /// Get macOS architecture via uname -m (matches Python's platform.machine()).
 fn macos_arch() -> String {
-    if let Ok(output) = std::process::Command::new("uname")
-        .arg("-m")
-        .output()
-    {
+    if let Ok(output) = std::process::Command::new("uname").arg("-m").output() {
         if output.status.success() {
             let arch = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !arch.is_empty() {
@@ -97,7 +94,9 @@ mod tests {
         assert!(!profile.os_name.is_empty());
         assert!(!profile.arch.is_empty());
         assert!(!profile.applications_paths.is_empty());
-        assert!(profile.applications_paths.contains(&"/Applications".to_string()));
+        assert!(profile
+            .applications_paths
+            .contains(&"/Applications".to_string()));
     }
 
     #[test]

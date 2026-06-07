@@ -13,7 +13,7 @@ pub mod signal;
 pub mod summarize;
 pub mod update;
 
-use clap::{Parser, Subcommand, Args};
+use clap::{Args, Parser, Subcommand};
 use std::process;
 
 /// Frais: macOS update checker with LLM-powered version research.
@@ -90,7 +90,9 @@ pub struct JsonFlag {
 
 // Make JsonFlag's json field accessible
 impl JsonFlag {
-    pub fn json(&self) -> bool { self.json }
+    pub fn json(&self) -> bool {
+        self.json
+    }
 }
 
 #[derive(Subcommand, Debug)]

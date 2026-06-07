@@ -127,10 +127,8 @@ impl OpenAICompatibleClient {
             ));
         }
 
-        let body: serde_json::Value =
-            serde_json::from_str(&response_text).map_err(|e| {
-                LLMRequestError::new(&format!("Cannot parse response: {e}"))
-            })?;
+        let body: serde_json::Value = serde_json::from_str(&response_text)
+            .map_err(|e| LLMRequestError::new(&format!("Cannot parse response: {e}")))?;
 
         let content = body["choices"][0]["message"]["content"]
             .as_str()
@@ -173,7 +171,6 @@ impl LLMClient for OpenAICompatibleClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     fn test_config() -> ProviderConfig {
         ProviderConfig {

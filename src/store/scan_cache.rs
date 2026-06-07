@@ -15,10 +15,8 @@ pub fn save_scan_cache(scan_result: &ScanResult, path: &Path) -> Result<(), Stri
 
     // Atomic write: write to .tmp then rename
     let tmp_path = path.with_extension("json.tmp");
-    std::fs::write(&tmp_path, &json)
-        .map_err(|e| format!("Cannot write cache: {e}"))?;
-    std::fs::rename(&tmp_path, path)
-        .map_err(|e| format!("Cannot save cache: {e}"))?;
+    std::fs::write(&tmp_path, &json).map_err(|e| format!("Cannot write cache: {e}"))?;
+    std::fs::rename(&tmp_path, path).map_err(|e| format!("Cannot save cache: {e}"))?;
 
     log::info!("Scan cache saved to {}", path.display());
     Ok(())
@@ -26,10 +24,9 @@ pub fn save_scan_cache(scan_result: &ScanResult, path: &Path) -> Result<(), Stri
 
 /// Load a scan result from the cache file.
 pub fn load_scan_cache(path: &Path) -> Result<ScanResult, String> {
-    let json = std::fs::read_to_string(path)
-        .map_err(|e| format!("Cannot read cache: {e}"))?;
-    let result: ScanResult = serde_json::from_str(&json)
-        .map_err(|e| format!("Cannot parse cache: {e}"))?;
+    let json = std::fs::read_to_string(path).map_err(|e| format!("Cannot read cache: {e}"))?;
+    let result: ScanResult =
+        serde_json::from_str(&json).map_err(|e| format!("Cannot parse cache: {e}"))?;
     Ok(result)
 }
 

@@ -33,10 +33,7 @@ pub fn load_plugins_config(path: &Path) -> BTreeMap<String, bool> {
 
 /// Initialize the plugins config file with defaults from all discovered plugins.
 /// Only writes if the file does not already exist — matches Python's idempotent init.
-pub fn init_plugins_config(
-    path: &Path,
-    plugins: &BTreeMap<String, bool>,
-) -> Result<(), String> {
+pub fn init_plugins_config(path: &Path, plugins: &BTreeMap<String, bool>) -> Result<(), String> {
     if path.exists() {
         return Ok(());
     }
@@ -47,11 +44,7 @@ pub fn init_plugins_config(
 }
 
 /// Save a single plugin's state.
-pub fn save_plugin_state(
-    name: &str,
-    enabled: bool,
-    path: &Path,
-) -> Result<(), String> {
+pub fn save_plugin_state(name: &str, enabled: bool, path: &Path) -> Result<(), String> {
     let mut config = load_plugins_config(path);
     config.insert(name.to_string(), enabled);
     _write_plugins_config(&config, path)
@@ -88,8 +81,7 @@ fn _write_plugins_config(config: &BTreeMap<String, bool>, path: &Path) -> Result
     let tmp_path = path.with_extension("toml.tmp");
     std::fs::write(&tmp_path, &plugins_section)
         .map_err(|e| format!("Cannot write plugins config: {e}"))?;
-    std::fs::rename(&tmp_path, path)
-        .map_err(|e| format!("Cannot save plugins config: {e}"))?;
+    std::fs::rename(&tmp_path, path).map_err(|e| format!("Cannot save plugins config: {e}"))?;
 
     Ok(())
 }
@@ -108,11 +100,7 @@ mod tests {
     fn test_load_plugins_config_reads_toml() {
         let dir = tempfile::TempDir::new().unwrap();
         let path = dir.path().join("plugins.toml");
-        std::fs::write(
-            &path,
-            "[plugins]\napplications = true\nhomebrew = false\n",
-        )
-        .unwrap();
+        std::fs::write(&path, "[plugins]\napplications = true\nhomebrew = false\n").unwrap();
 
         let config = load_plugins_config(&path);
         assert_eq!(config.get("applications"), Some(&true));

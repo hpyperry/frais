@@ -294,11 +294,7 @@ fn test_ignore_add_and_remove() {
 #[test]
 fn test_scan_json_output() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let output = frais_in(&tmp)
-        .arg("scan")
-        .arg("--json")
-        .assert()
-        .success();
+    let output = frais_in(&tmp).arg("scan").arg("--json").assert().success();
 
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
@@ -334,10 +330,7 @@ fn test_summarize_no_cache() {
 #[test]
 fn test_update_no_cache() {
     let tmp = tempfile::TempDir::new().unwrap();
-    frais_in(&tmp)
-        .arg("update")
-        .assert()
-        .code(1);
+    frais_in(&tmp).arg("update").assert().code(1);
 }
 
 // ============================================================================
@@ -376,7 +369,10 @@ fn test_json_envelope_ok_is_first_key() {
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
     let ok_pos = stdout.find("\"ok\"").unwrap();
     let version_pos = stdout.find("\"version\"").unwrap();
-    assert!(ok_pos < version_pos, "\"ok\" should be the first key in JSON output");
+    assert!(
+        ok_pos < version_pos,
+        "\"ok\" should be the first key in JSON output"
+    );
 }
 
 #[test]
@@ -394,7 +390,10 @@ fn test_json_error_has_reason_and_hint() {
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(json["ok"], false);
     assert!(json["error"].is_string(), "error field should be a string");
-    assert!(json["reason"].is_string(), "reason field should be a string");
+    assert!(
+        json["reason"].is_string(),
+        "reason field should be a string"
+    );
     assert!(json["hint"].is_string(), "hint field should be a string");
 }
 
@@ -419,17 +418,15 @@ fn test_json_output_is_valid_utf8() {
 #[test]
 fn test_scan_includes_available_plugins() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let output = frais_in(&tmp)
-        .arg("scan")
-        .arg("--json")
-        .assert()
-        .success();
+    let output = frais_in(&tmp).arg("scan").arg("--json").assert().success();
 
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     let results = json["plugin_results"].as_object().unwrap();
 
     // Applications plugin should always be present (is_available = true)
-    assert!(results.contains_key("applications"),
-        "applications plugin should be in scan results");
+    assert!(
+        results.contains_key("applications"),
+        "applications plugin should be in scan results"
+    );
 }

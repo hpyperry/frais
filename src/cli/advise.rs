@@ -9,17 +9,17 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
     let all_plugins = crate::plugins::registry::all_plugins();
 
     // --- Resolve plugins via coordinator (respects persisted state) ---
-    let (selected, warnings) = crate::coordinator::select_plugins(
-        args.plugins.as_deref(),
-        &all_plugins,
-    );
+    let (selected, warnings) =
+        crate::coordinator::select_plugins(args.plugins.as_deref(), &all_plugins);
 
     if selected.is_empty() {
-        let unknown: Vec<&String> = warnings.iter()
+        let unknown: Vec<&String> = warnings
+            .iter()
             .filter(|w| w.starts_with("Unknown plugin: "))
             .collect();
         let detail = if !unknown.is_empty() {
-            let names: Vec<String> = unknown.iter()
+            let names: Vec<String> = unknown
+                .iter()
                 .map(|w| w.trim_start_matches("Unknown plugin: ").to_string())
                 .collect();
             format!("No available plugins matched: {}", names.join(", "))
@@ -82,7 +82,10 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
     // --- Scan phase with live progress bars ---
     let show_progress = !args.json;
     let scan_progress: Option<Arc<super::scan_progress::ScanProgress>> = if show_progress {
-        Some(super::scan_progress::ScanProgress::new(&selected, &all_plugins))
+        Some(super::scan_progress::ScanProgress::new(
+            &selected,
+            &all_plugins,
+        ))
     } else {
         None
     };
@@ -99,13 +102,16 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
         });
 
     #[allow(clippy::type_complexity)]
-    let on_plugin_done: Option<Box<dyn Fn(&str, &crate::models::PluginScanResult) + Send + Sync>> =
-        scan_progress.as_ref().map(|sp| {
-            let sp = Arc::clone(sp);
-            Box::new(move |name: &str, result: &crate::models::PluginScanResult| {
+    let on_plugin_done: Option<
+        Box<dyn Fn(&str, &crate::models::PluginScanResult) + Send + Sync>,
+    > = scan_progress.as_ref().map(|sp| {
+        let sp = Arc::clone(sp);
+        Box::new(
+            move |name: &str, result: &crate::models::PluginScanResult| {
                 sp.finish(name, result.items.len(), result.candidates.len());
-            }) as Box<dyn Fn(&str, &crate::models::PluginScanResult) + Send + Sync>
-        });
+            },
+        ) as Box<dyn Fn(&str, &crate::models::PluginScanResult) + Send + Sync>
+    });
 
     // Parallel plugin scanning — matches Python's run_scan_phase → coordinator.run_scan
     let scan_result = crate::coordinator::run_scan(
@@ -325,10 +331,8 @@ pub fn run(args: AdviseArgs) -> Result<(), String> {
     }
 
     // --- Save cache ---
-    match crate::store::scan_cache::save_scan_cache(
-        &filtered_result,
-        &crate::paths::advice_cache(),
-    ) {
+    match crate::store::scan_cache::save_scan_cache(&filtered_result, &crate::paths::advice_cache())
+    {
         Ok(()) => {}
         Err(e) => log::warn!("failed to save advice cache: {}", e),
     }

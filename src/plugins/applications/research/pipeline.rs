@@ -82,10 +82,7 @@ pub fn research_application_update(
 
 /// 3-step structured research: LLM generates queries, we search & fetch, LLM extracts version.
 /// Matches Python's _llm_structured_research exactly.
-fn llm_structured_research(
-    llm: &dyn LLMClient,
-    item: &SoftwareItem,
-) -> Option<ResearchResult> {
+fn llm_structured_research(llm: &dyn LLMClient, item: &SoftwareItem) -> Option<ResearchResult> {
     // Step 1: LLM generates search queries
     let queries = match generate_search_queries(llm, item) {
         Ok(q) => q,
@@ -385,7 +382,9 @@ mod tests {
             _max_tokens: Option<u32>,
             _disable_thinking: bool,
         ) -> Result<String, LLMRequestError> {
-            let idx = self.call_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let idx = self
+                .call_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if idx < self.responses.len() {
                 Ok(self.responses[idx].clone())
             } else {
@@ -542,7 +541,9 @@ mod tests {
                 _max_tokens: Option<u32>,
                 _disable_thinking: bool,
             ) -> Result<String, LLMRequestError> {
-                let idx = self.call_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let idx = self
+                    .call_count
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 if idx < self.responses.len() {
                     Ok(self.responses[idx].clone())
                 } else {
@@ -591,7 +592,9 @@ mod tests {
                 _max_tokens: Option<u32>,
                 _disable_thinking: bool,
             ) -> Result<String, LLMRequestError> {
-                let idx = self.call_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let idx = self
+                    .call_count
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 Ok(self.responses.get(idx).cloned().unwrap_or_default())
             }
             fn close(&self) {}
@@ -678,10 +681,12 @@ mod tests {
                 _max_tokens: Option<u32>,
                 _disable_thinking: bool,
             ) -> Result<String, LLMRequestError> {
-                let idx = self.call_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let idx = self
+                    .call_count
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 match idx {
-                    0 => Ok("[\"test query\"]".into()),  // Step 1: queries
-                    _ => Ok("[]".into()),                 // Step 2: empty URLs
+                    0 => Ok("[\"test query\"]".into()), // Step 1: queries
+                    _ => Ok("[]".into()),               // Step 2: empty URLs
                 }
             }
             fn close(&self) {}
@@ -716,11 +721,13 @@ mod tests {
                 _max_tokens: Option<u32>,
                 _disable_thinking: bool,
             ) -> Result<String, LLMRequestError> {
-                let idx = self.call_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let idx = self
+                    .call_count
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 match idx {
-                    0 => Ok("[\"test query\"]".into()),       // Step 1: queries
+                    0 => Ok("[\"test query\"]".into()),          // Step 1: queries
                     1 => Ok("[\"https://example.com\"]".into()), // Step 2: URLs
-                    _ => Ok("not valid json at all".into()),  // Step 3: bad output
+                    _ => Ok("not valid json at all".into()),     // Step 3: bad output
                 }
             }
             fn close(&self) {}
@@ -757,7 +764,7 @@ mod tests {
             }
             fn close(&self) {}
             fn web_search(&self, _query: &str) -> Vec<SearchResult> {
-                vec![]  // Empty results — falls through to DDGS which also returns empty
+                vec![] // Empty results — falls through to DDGS which also returns empty
             }
         }
 

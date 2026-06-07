@@ -72,10 +72,7 @@ pub fn web_search(query: &str) -> Vec<SearchResult> {
         }
     };
 
-    let url = format!(
-        "https://html.duckduckgo.com/html/?q={}",
-        urlencoding(query)
-    );
+    let url = format!("https://html.duckduckgo.com/html/?q={}", urlencoding(query));
 
     let response = match client.get(&url).send() {
         Ok(r) => r,
@@ -179,7 +176,11 @@ fn parse_ddg_results(html: &str) -> Vec<SearchResult> {
             .unwrap_or_default();
 
         if !title.is_empty() && !url.is_empty() {
-            results.push(SearchResult { title, url, snippet });
+            results.push(SearchResult {
+                title,
+                url,
+                snippet,
+            });
         }
     }
     results
@@ -273,11 +274,7 @@ pub fn web_fetch(url: &str) -> String {
                             text.chars().take(FETCH_MAX_CHARS).collect::<String>()
                         );
                     }
-                    log::debug!(
-                        "web_fetch got {} chars from {}",
-                        text.len(),
-                        resolved_url
-                    );
+                    log::debug!("web_fetch got {} chars from {}", text.len(), resolved_url);
                     log::debug!(
                         "web_fetch content={}",
                         text.chars().take(2000).collect::<String>()
@@ -357,16 +354,16 @@ fn format_github_api(data: &serde_json::Value, _url: &str) -> String {
             .or_else(|| obj.get("name"))
             .and_then(|v| v.as_str())
             .unwrap_or("");
-        let body = obj
-            .get("body")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let body = obj.get("body").and_then(|v| v.as_str()).unwrap_or("");
         let body_short: String = body.chars().take(1500).collect();
         let published = obj
             .get("published_at")
             .and_then(|v| v.as_str())
             .unwrap_or("");
-        format!("Tag: {}\nPublished: {}\nRelease Notes:\n{}", tag, published, body_short)
+        format!(
+            "Tag: {}\nPublished: {}\nRelease Notes:\n{}",
+            tag, published, body_short
+        )
     } else {
         serde_json::to_string(item)
             .unwrap_or_default()

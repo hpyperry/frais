@@ -21,10 +21,8 @@ pub fn install_interrupt_handler() -> Box<dyn Fn()> {
     };
 
     // Return a closure that restores the original handler
-    Box::new(move || {
-        unsafe {
-            libc::sigaction(libc::SIGINT, &prev, std::ptr::null_mut());
-        }
+    Box::new(move || unsafe {
+        libc::sigaction(libc::SIGINT, &prev, std::ptr::null_mut());
     })
 }
 

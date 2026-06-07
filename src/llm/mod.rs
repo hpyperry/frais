@@ -34,7 +34,10 @@ fn client_map() -> &'static HashMap<(&'static str, &'static str), ClientFactory>
 }
 
 /// Create an LLM client from provider config — matches Python's get_client().
-pub fn get_client(config: &ProviderConfig, protocol: Option<&str>) -> Result<Box<dyn LLMClient>, String> {
+pub fn get_client(
+    config: &ProviderConfig,
+    protocol: Option<&str>,
+) -> Result<Box<dyn LLMClient>, String> {
     let protocol = protocol.unwrap_or(&config.protocol);
 
     // Validate protocol is supported by the provider
@@ -64,7 +67,6 @@ pub fn get_client(config: &ProviderConfig, protocol: Option<&str>) -> Result<Box
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     fn test_config(provider_id: &str, key: &str) -> ProviderConfig {
         ProviderConfig {

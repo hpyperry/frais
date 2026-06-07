@@ -43,10 +43,7 @@ pub fn detect_language() -> String {
         }
     }
     // Fallback: check LANG env var
-    if std::env::var("LANG")
-        .unwrap_or_default()
-        .starts_with("zh_")
-    {
+    if std::env::var("LANG").unwrap_or_default().starts_with("zh_") {
         "zh"
     } else {
         "en"
@@ -138,7 +135,13 @@ pub fn load_config(path: &Path) -> Option<ProviderConfig> {
     let language = llm_section
         .get("language")
         .and_then(|v| v.as_str())
-        .unwrap_or_else(|| if detect_language() == "zh" { "zh" } else { "en" })
+        .unwrap_or_else(|| {
+            if detect_language() == "zh" {
+                "zh"
+            } else {
+                "en"
+            }
+        })
         .to_string();
 
     // API key resolution order matches Python exactly:
@@ -285,7 +288,16 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
         let path = dir.path().join("config.toml");
 
-        save_config("deepseek", "deepseek-v4-flash", "sk-test", "openai", "", "en", &path).unwrap();
+        save_config(
+            "deepseek",
+            "deepseek-v4-flash",
+            "sk-test",
+            "openai",
+            "",
+            "en",
+            &path,
+        )
+        .unwrap();
         let config = load_config(&path).unwrap();
 
         assert_eq!(config.provider, "deepseek");
@@ -301,7 +313,16 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
         let path = dir.path().join("config.toml");
 
-        save_config("deepseek", "deepseek-v4-flash", "file-key", "openai", "", "en", &path).unwrap();
+        save_config(
+            "deepseek",
+            "deepseek-v4-flash",
+            "file-key",
+            "openai",
+            "",
+            "en",
+            &path,
+        )
+        .unwrap();
         std::env::set_var("FRAIS_LLM_API_KEY", "env-key-1234");
 
         let config = load_config(&path).unwrap();

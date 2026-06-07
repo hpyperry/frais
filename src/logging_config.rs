@@ -21,13 +21,11 @@ pub fn configure(debug: bool, log_file: Option<&str>, no_log: bool) {
                 .start()
                 .ok();
         } else {
-            let log_path = log_file
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| {
-                    crate::paths::default_log_file()
-                        .to_string_lossy()
-                        .to_string()
-                });
+            let log_path = log_file.map(|s| s.to_string()).unwrap_or_else(|| {
+                crate::paths::default_log_file()
+                    .to_string_lossy()
+                    .to_string()
+            });
 
             // Ensure log directory exists
             if let Some(parent) = Path::new(&log_path).parent() {
@@ -56,7 +54,6 @@ pub fn configure(debug: bool, log_file: Option<&str>, no_log: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     #[test]
     fn test_configure_no_log() {

@@ -71,7 +71,12 @@ pub fn signing_summary(path: &Path) -> SigningInfo {
             let authority = stderr
                 .lines()
                 .find(|l| l.trim().starts_with("Authority="))
-                .map(|l| l.trim().strip_prefix("Authority=").unwrap_or("").to_string());
+                .map(|l| {
+                    l.trim()
+                        .strip_prefix("Authority=")
+                        .unwrap_or("")
+                        .to_string()
+                });
             let team_id = stderr
                 .lines()
                 .find(|l| l.trim().starts_with("TeamIdentifier="))
@@ -98,7 +103,11 @@ pub fn quarantine_summary(path: &Path) -> Option<String> {
     match output {
         Ok(o) if o.status.success() => {
             let data = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            if data.is_empty() { None } else { Some(data) }
+            if data.is_empty() {
+                None
+            } else {
+                Some(data)
+            }
         }
         _ => None,
     }
@@ -112,18 +121,12 @@ mod tests {
     fn test_classify_source_app_store() {
         // This test simulates the App Store classification logic
         // Actual codesign check requires a real app
-        assert_eq!(
-            SourceKind::AppStore.as_str(),
-            "app store"
-        );
+        assert_eq!(SourceKind::AppStore.as_str(), "app store");
     }
 
     #[test]
     fn test_classify_source_unknown_default() {
-        assert_eq!(
-            SourceKind::Unknown.as_str(),
-            "unknown"
-        );
+        assert_eq!(SourceKind::Unknown.as_str(), "unknown");
     }
 
     #[test]

@@ -47,65 +47,73 @@ impl Provider {
 pub fn builtin_providers() -> &'static [Provider] {
     use std::sync::OnceLock;
     static PROVIDERS: OnceLock<Vec<Provider>> = OnceLock::new();
-    PROVIDERS.get_or_init(|| vec![
-        Provider {
-            id: "deepseek".into(),
-            name: "DeepSeek".into(),
-            models: vec![
-                ModelInfo {
-                    id: "deepseek-v4-flash".into(),
-                    name: "DeepSeek V4 Flash".into(),
-                    supports_thinking: true,
+    PROVIDERS.get_or_init(|| {
+        vec![
+            Provider {
+                id: "deepseek".into(),
+                name: "DeepSeek".into(),
+                models: vec![
+                    ModelInfo {
+                        id: "deepseek-v4-flash".into(),
+                        name: "DeepSeek V4 Flash".into(),
+                        supports_thinking: true,
+                    },
+                    ModelInfo {
+                        id: "deepseek-v4-pro".into(),
+                        name: "DeepSeek V4 Pro".into(),
+                        supports_thinking: true,
+                    },
+                    ModelInfo {
+                        id: "deepseek-chat".into(),
+                        name: "DeepSeek Chat (deprecated)".into(),
+                        supports_thinking: false,
+                    },
+                ],
+                protocols: vec!["openai".into(), "anthropic".into()],
+                web_search_protocols: vec!["anthropic".into()],
+                protocol_urls: {
+                    let mut m = std::collections::BTreeMap::new();
+                    m.insert("openai".into(), "https://api.deepseek.com".into());
+                    m.insert(
+                        "anthropic".into(),
+                        "https://api.deepseek.com/anthropic".into(),
+                    );
+                    m
                 },
-                ModelInfo {
-                    id: "deepseek-v4-pro".into(),
-                    name: "DeepSeek V4 Pro".into(),
-                    supports_thinking: true,
-                },
-                ModelInfo {
-                    id: "deepseek-chat".into(),
-                    name: "DeepSeek Chat (deprecated)".into(),
-                    supports_thinking: false,
-                },
-            ],
-            protocols: vec!["openai".into(), "anthropic".into()],
-            web_search_protocols: vec!["anthropic".into()],
-            protocol_urls: {
-                let mut m = std::collections::BTreeMap::new();
-                m.insert("openai".into(), "https://api.deepseek.com".into());
-                m.insert("anthropic".into(), "https://api.deepseek.com/anthropic".into());
-                m
             },
-        },
-        Provider {
-            id: "mimo".into(),
-            name: "Xiaomi MiMo".into(),
-            models: vec![
-                ModelInfo {
-                    id: "mimo-v2.5-pro".into(),
-                    name: "MiMo V2.5 Pro".into(),
-                    supports_thinking: true,
+            Provider {
+                id: "mimo".into(),
+                name: "Xiaomi MiMo".into(),
+                models: vec![
+                    ModelInfo {
+                        id: "mimo-v2.5-pro".into(),
+                        name: "MiMo V2.5 Pro".into(),
+                        supports_thinking: true,
+                    },
+                    ModelInfo {
+                        id: "mimo-v2-flash".into(),
+                        name: "MiMo V2 Flash".into(),
+                        supports_thinking: false,
+                    },
+                ],
+                protocols: vec!["openai".into()],
+                web_search_protocols: vec!["openai".into()],
+                protocol_urls: {
+                    let mut m = std::collections::BTreeMap::new();
+                    m.insert("openai".into(), "https://api.xiaomimimo.com/v1".into());
+                    m
                 },
-                ModelInfo {
-                    id: "mimo-v2-flash".into(),
-                    name: "MiMo V2 Flash".into(),
-                    supports_thinking: false,
-                },
-            ],
-            protocols: vec!["openai".into()],
-            web_search_protocols: vec!["openai".into()],
-            protocol_urls: {
-                let mut m = std::collections::BTreeMap::new();
-                m.insert("openai".into(), "https://api.xiaomimimo.com/v1".into());
-                m
             },
-        },
-    ])
+        ]
+    })
 }
 
 /// Look up a provider by ID.
 pub fn get_provider(provider_id: &str) -> Option<Provider> {
-    builtin_providers().iter().find(|p| p.id == provider_id).cloned()
+    builtin_providers()
+        .iter()
+        .find(|p| p.id == provider_id)
+        .cloned()
 }
 
 /// Get the URL for a provider and protocol.

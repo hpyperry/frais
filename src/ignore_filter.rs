@@ -25,11 +25,15 @@ pub fn apply_ignore_filter(scan_result: &ScanResult) -> IgnoreFilterResult {
 
     for plugin_result in filtered_result.plugin_results.values_mut() {
         // Filter items (Python: plugin_result.items = [item for item in ... if item.id not in ignored_ids])
-        plugin_result.items.retain(|item| !ignored_ids.contains(&item.id));
+        plugin_result
+            .items
+            .retain(|item| !ignored_ids.contains(&item.id));
 
         // Filter candidates and count removed — matches Python's ignored_count logic
         let before_count = plugin_result.candidates.len();
-        plugin_result.candidates.retain(|c| !ignored_ids.contains(&c.item.id));
+        plugin_result
+            .candidates
+            .retain(|c| !ignored_ids.contains(&c.item.id));
         ignored_count += before_count - plugin_result.candidates.len();
     }
 

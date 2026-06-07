@@ -13,7 +13,10 @@ pub fn make_candidate(
     let command: Vec<String> = if item.source == SourceKind::AppStore {
         match app_store_id {
             Some(id) => {
-                vec!["open".into(), format!("macappstore://apps.apple.com/app/id{}", id)]
+                vec![
+                    "open".into(),
+                    format!("macappstore://apps.apple.com/app/id{}", id),
+                ]
             }
             None => vec![],
         }
@@ -40,9 +43,9 @@ pub fn make_candidate(
         recommended_action: None,
         can_auto_update: !command.is_empty(),
         command,
-        evidence: result.map(|r| r.evidence.clone()).unwrap_or_else(|| {
-            vec![format!("Source: {}", source)]
-        }),
+        evidence: result
+            .map(|r| r.evidence.clone())
+            .unwrap_or_else(|| vec![format!("Source: {}", source)]),
     }
 }
 
@@ -65,7 +68,13 @@ mod tests {
 
     #[test]
     fn test_make_candidate_homebrew_formula() {
-        let c = make_candidate(test_item(SourceKind::HomebrewFormula), "2.0.0".into(), None, "brew", None);
+        let c = make_candidate(
+            test_item(SourceKind::HomebrewFormula),
+            "2.0.0".into(),
+            None,
+            "brew",
+            None,
+        );
         assert!(c.can_auto_update);
         assert_eq!(c.command, vec!["brew", "upgrade", "test"]);
         assert_eq!(c.latest_version, Some("2.0.0".into()));
@@ -74,7 +83,13 @@ mod tests {
 
     #[test]
     fn test_make_candidate_local_build() {
-        let c = make_candidate(test_item(SourceKind::LocalBuild), "2.0.0".into(), None, "llm", None);
+        let c = make_candidate(
+            test_item(SourceKind::LocalBuild),
+            "2.0.0".into(),
+            None,
+            "llm",
+            None,
+        );
         assert!(!c.can_auto_update);
         assert!(c.command.is_empty());
         assert_eq!(c.evidence, vec!["Source: llm"]);
@@ -83,14 +98,26 @@ mod tests {
     #[test]
     fn test_make_candidate_npm() {
         // Python's _make_candidate() does NOT handle npm — NpmPlugin has its own _make_candidate().
-        let c = make_candidate(test_item(SourceKind::NpmGlobal), "2.0.0".into(), None, "npm", None);
+        let c = make_candidate(
+            test_item(SourceKind::NpmGlobal),
+            "2.0.0".into(),
+            None,
+            "npm",
+            None,
+        );
         assert!(!c.can_auto_update);
         assert!(c.command.is_empty());
     }
 
     #[test]
     fn test_make_candidate_app_store() {
-        let c = make_candidate(test_item(SourceKind::AppStore), "2.0.0".into(), None, "itunes", Some(12345));
+        let c = make_candidate(
+            test_item(SourceKind::AppStore),
+            "2.0.0".into(),
+            None,
+            "itunes",
+            Some(12345),
+        );
         assert!(c.can_auto_update);
         assert_eq!(c.command[0], "open");
         assert!(c.command[1].contains("macappstore"));
@@ -99,7 +126,13 @@ mod tests {
 
     #[test]
     fn test_make_candidate_app_store_no_track_id() {
-        let c = make_candidate(test_item(SourceKind::AppStore), "2.0.0".into(), None, "itunes", None);
+        let c = make_candidate(
+            test_item(SourceKind::AppStore),
+            "2.0.0".into(),
+            None,
+            "itunes",
+            None,
+        );
         assert!(!c.can_auto_update);
         assert!(c.command.is_empty());
     }
@@ -115,7 +148,13 @@ mod tests {
             evidence: vec!["https://example.com/releases".into()],
             release_notes: Some("Bug fixes".into()),
         };
-        let c = make_candidate(test_item(SourceKind::Application), "2.0.0".into(), Some(&result), "llm", None);
+        let c = make_candidate(
+            test_item(SourceKind::Application),
+            "2.0.0".into(),
+            Some(&result),
+            "llm",
+            None,
+        );
         assert_eq!(c.evidence, vec!["https://example.com/releases"]);
         assert_eq!(c.release_notes, Some("Bug fixes".into()));
     }

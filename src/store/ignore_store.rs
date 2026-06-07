@@ -51,10 +51,8 @@ pub fn save_ignored(ids: &BTreeSet<String>, path: &Path) -> Result<(), String> {
     }
 
     let tmp_path = path.with_extension("txt.tmp");
-    std::fs::write(&tmp_path, &content)
-        .map_err(|e| format!("Cannot write ignore file: {e}"))?;
-    std::fs::rename(&tmp_path, path)
-        .map_err(|e| format!("Cannot save ignore file: {e}"))?;
+    std::fs::write(&tmp_path, &content).map_err(|e| format!("Cannot write ignore file: {e}"))?;
+    std::fs::rename(&tmp_path, path).map_err(|e| format!("Cannot save ignore file: {e}"))?;
 
     Ok(())
 }
@@ -93,7 +91,11 @@ mod tests {
     fn test_load_ignored_skips_comments_and_blanks() {
         let dir = tempfile::TempDir::new().unwrap();
         let path = dir.path().join("ignore.txt");
-        std::fs::write(&path, "# comment\n\ncom.example.app\n\n# another comment\ncom.foo.bar\n").unwrap();
+        std::fs::write(
+            &path,
+            "# comment\n\ncom.example.app\n\n# another comment\ncom.foo.bar\n",
+        )
+        .unwrap();
 
         let ids = load_ignored(&path);
         assert_eq!(ids.len(), 2);

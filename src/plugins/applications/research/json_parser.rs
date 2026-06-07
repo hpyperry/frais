@@ -76,12 +76,18 @@ pub fn parse_json_list(text: &str) -> Vec<String> {
         Ok(value) => match ensure_list(&value) {
             Ok(list) => list,
             Err(_) => {
-                log::warn!("failed to parse JSON list from: {}", &text.chars().take(200).collect::<String>());
+                log::warn!(
+                    "failed to parse JSON list from: {}",
+                    &text.chars().take(200).collect::<String>()
+                );
                 vec![]
             }
         },
         Err(_) => {
-            log::warn!("failed to parse JSON list from: {}", &text.chars().take(200).collect::<String>());
+            log::warn!(
+                "failed to parse JSON list from: {}",
+                &text.chars().take(200).collect::<String>()
+            );
             vec![]
         }
     }
@@ -94,11 +100,17 @@ pub fn parse_json_object(text: &str) -> serde_json::Value {
     match serde_json::from_str::<serde_json::Value>(&json) {
         Ok(v @ serde_json::Value::Object(_)) => v,
         Ok(_) => {
-            log::warn!("failed to parse JSON object from: {}", &text.chars().take(200).collect::<String>());
+            log::warn!(
+                "failed to parse JSON object from: {}",
+                &text.chars().take(200).collect::<String>()
+            );
             serde_json::json!({})
         }
         Err(_) => {
-            log::warn!("failed to parse JSON object from: {}", &text.chars().take(200).collect::<String>());
+            log::warn!(
+                "failed to parse JSON object from: {}",
+                &text.chars().take(200).collect::<String>()
+            );
             serde_json::json!({})
         }
     }

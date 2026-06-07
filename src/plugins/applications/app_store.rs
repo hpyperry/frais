@@ -56,7 +56,10 @@ pub fn check_app_store_version(item: &SoftwareItem) -> (Option<String>, Option<u
         None => return (None, None),
     };
 
-    let result_count = body.get("resultCount").and_then(|v| v.as_u64()).unwrap_or(0);
+    let result_count = body
+        .get("resultCount")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
     if result_count == 0 {
         return (None, None);
     }
@@ -100,10 +103,18 @@ pub fn resolve_app_store_command(item: &SoftwareItem) -> (Vec<String>, bool) {
         }
     };
 
-    if body.get("resultCount").and_then(|v| v.as_u64()).unwrap_or(0) > 0 {
+    if body
+        .get("resultCount")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0)
+        > 0
+    {
         if let Some(track_id) = body["results"][0].get("trackId").and_then(|v| v.as_u64()) {
             return (
-                vec!["open".into(), format!("macappstore://apps.apple.com/app/id{}", track_id)],
+                vec![
+                    "open".into(),
+                    format!("macappstore://apps.apple.com/app/id{}", track_id),
+                ],
                 true,
             );
         }

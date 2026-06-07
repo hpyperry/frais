@@ -186,7 +186,6 @@ pub fn run_summaries(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     struct TestPlugin {
         name: &'static str,

@@ -90,18 +90,17 @@ impl ScannerPlugin for NpmPlugin {
         }
 
         log::info!("npm scan all start");
-        let installed_raw =
-            match run_json(&["npm", "ls", "-g", "--depth=0", "--json"], &[0], 60) {
-                Ok(data) => data,
-                Err(e) => {
-                    log::warn!("npm scan all failed error={}", e);
-                    return PluginScanResult {
-                        items: vec![],
-                        candidates: vec![],
-                        skipped: vec![e],
-                    };
-                }
-            };
+        let installed_raw = match run_json(&["npm", "ls", "-g", "--depth=0", "--json"], &[0], 60) {
+            Ok(data) => data,
+            Err(e) => {
+                log::warn!("npm scan all failed error={}", e);
+                return PluginScanResult {
+                    items: vec![],
+                    candidates: vec![],
+                    skipped: vec![e],
+                };
+            }
+        };
         let outdated_raw = match run_json(&["npm", "outdated", "-g", "--json"], &[0, 1], 60) {
             Ok(data) => data,
             Err(e) => {
@@ -138,9 +137,7 @@ impl ScannerPlugin for NpmPlugin {
 
 /// Parse npm outdated -g --json output into candidates and items.
 /// Matches Python's _parse_outdated().
-fn parse_outdated(
-    data: &serde_json::Value,
-) -> (Vec<UpdateCandidate>, Vec<SoftwareItem>) {
+fn parse_outdated(data: &serde_json::Value) -> (Vec<UpdateCandidate>, Vec<SoftwareItem>) {
     let mut candidates = Vec::new();
     let mut items = Vec::new();
 
@@ -172,7 +169,10 @@ fn parse_installed(data: &serde_json::Value) -> Vec<SoftwareItem> {
 
     let mut items: Vec<SoftwareItem> = Vec::new();
     for (name, info) in deps {
-        let version = info.get("version").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let version = info
+            .get("version")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
         items.push(SoftwareItem {
             id: format!("npm:{}", name),
             name: name.clone(),
@@ -193,7 +193,10 @@ fn parse_installed(data: &serde_json::Value) -> Vec<SoftwareItem> {
 // ============================================================================
 
 fn make_candidate(name: &str, info: &serde_json::Value) -> UpdateCandidate {
-    let current = info.get("current").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let current = info
+        .get("current")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let latest = info
         .get("latest")
         .or_else(|| info.get("wanted"))

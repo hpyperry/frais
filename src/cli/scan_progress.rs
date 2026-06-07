@@ -130,7 +130,10 @@ impl ScanProgress {
 
     /// Return the per-plugin elapsed times recorded at finish() time.
     pub fn scan_elapsed_map(&self) -> BTreeMap<String, f64> {
-        self.scan_elapsed.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.scan_elapsed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Maximum plugin scan time (= wall-clock duration of the scan phase).

@@ -20,7 +20,11 @@ pub fn scan_applications(paths: &[String]) -> Vec<SoftwareItem> {
         };
         let base = Path::new(&expanded);
         let exists = base.exists() && base.is_dir();
-        log::info!("applications scan path={} exists={}", base.display(), exists);
+        log::info!(
+            "applications scan path={} exists={}",
+            base.display(),
+            exists
+        );
         if !exists {
             continue;
         }
@@ -208,14 +212,21 @@ mod tests {
             let item = result.unwrap();
             // Should have a stable path_id fallback
             assert!(item.id.starts_with("app:"));
-            assert_eq!(item.metadata.get("bundle_id").unwrap(), &serde_json::Value::String("".into()));
+            assert_eq!(
+                item.metadata.get("bundle_id").unwrap(),
+                &serde_json::Value::String("".into())
+            );
         }
     }
 
     #[test]
     fn test_path_id_is_stable() {
-        let id1 = super::super::source_classifier::path_id(std::path::Path::new("/Applications/Test.app"));
-        let id2 = super::super::source_classifier::path_id(std::path::Path::new("/Applications/Test.app"));
+        let id1 = super::super::source_classifier::path_id(std::path::Path::new(
+            "/Applications/Test.app",
+        ));
+        let id2 = super::super::source_classifier::path_id(std::path::Path::new(
+            "/Applications/Test.app",
+        ));
         assert_eq!(id1, id2);
         assert!(id1.starts_with("app:"));
         assert_eq!(id1.len(), 16); // "app:" + 12 hex chars

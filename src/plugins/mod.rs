@@ -36,7 +36,11 @@ const SUMMARIZE_PROMPT_EN: &str =
 
 /// Pick the right summary prompt for the requested language.
 fn summary_prompt(language: &str) -> &'static str {
-    if language == "zh" { SUMMARIZE_PROMPT_ZH } else { SUMMARIZE_PROMPT_EN }
+    if language == "zh" {
+        SUMMARIZE_PROMPT_ZH
+    } else {
+        SUMMARIZE_PROMPT_EN
+    }
 }
 
 /// Build the user prompt for generating an update recommendation.
@@ -163,7 +167,7 @@ pub trait ScannerPlugin: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{SoftwareItem, SourceKind, DependencyImpact};
+    use crate::models::{DependencyImpact, SoftwareItem, SourceKind};
     use std::collections::BTreeMap;
 
     struct TestPlugin {

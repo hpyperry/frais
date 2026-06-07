@@ -38,8 +38,7 @@ impl ScannerPlugin for HomebrewPlugin {
             return PluginScanResult {
                 items: vec![],
                 candidates: vec![],
-                skipped: vec!["Homebrew is not installed or `brew` is not on PATH."
-                    .into()],
+                skipped: vec!["Homebrew is not installed or `brew` is not on PATH.".into()],
             };
         }
 
@@ -80,24 +79,23 @@ impl ScannerPlugin for HomebrewPlugin {
             return PluginScanResult {
                 items: vec![],
                 candidates: vec![],
-                skipped: vec!["Homebrew is not installed or `brew` is not on PATH."
-                    .into()],
+                skipped: vec!["Homebrew is not installed or `brew` is not on PATH.".into()],
             };
         }
 
         log::info!("homebrew scan all start");
-        let installed_raw =
-            match run_json(&["brew", "info", "--json=v2", "--installed"], &[0], 60) {
-                Ok(data) => data,
-                Err(e) => {
-                    log::warn!("homebrew scan all failed error={}", e);
-                    return PluginScanResult {
-                        items: vec![],
-                        candidates: vec![],
-                        skipped: vec![e],
-                    };
-                }
-            };
+        let installed_raw = match run_json(&["brew", "info", "--json=v2", "--installed"], &[0], 60)
+        {
+            Ok(data) => data,
+            Err(e) => {
+                log::warn!("homebrew scan all failed error={}", e);
+                return PluginScanResult {
+                    items: vec![],
+                    candidates: vec![],
+                    skipped: vec![e],
+                };
+            }
+        };
         let outdated_raw = match run_json(&["brew", "outdated", "--json=v2"], &[0, 1], 60) {
             Ok(data) => data,
             Err(e) => {
@@ -134,9 +132,7 @@ impl ScannerPlugin for HomebrewPlugin {
 
 /// Parse outdated output into items and candidates.
 /// Matches Python's _parse_outdated().
-fn parse_outdated(
-    data: &serde_json::Value,
-) -> (Vec<UpdateCandidate>, Vec<SoftwareItem>) {
+fn parse_outdated(data: &serde_json::Value) -> (Vec<UpdateCandidate>, Vec<SoftwareItem>) {
     let mut candidates = Vec::new();
     let mut items = Vec::new();
 
@@ -263,10 +259,7 @@ fn formula_candidate(formula: &serde_json::Value) -> UpdateCandidate {
                 }
             }
         }
-        if let Some(rd) = info
-            .get("runtime_dependencies")
-            .and_then(|v| v.as_array())
-        {
+        if let Some(rd) = info.get("runtime_dependencies").and_then(|v| v.as_array()) {
             for dep in rd {
                 if let Some(s) = dep.as_str() {
                     deps.push(s.to_string());
@@ -406,9 +399,10 @@ fn brew_info(name: &str, cask: bool) -> serde_json::Value {
         Ok(data) => {
             let section = if cask { "casks" } else { "formulae" };
             match data.get(section).and_then(|v| v.as_array()) {
-                Some(items) => items.first().cloned().unwrap_or(serde_json::Value::Object(
-                    serde_json::Map::new(),
-                )),
+                Some(items) => items
+                    .first()
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
                 None => serde_json::Value::Object(serde_json::Map::new()),
             }
         }
@@ -498,7 +492,9 @@ fn cask_current_version(cask: &serde_json::Value) -> Option<String> {
     if let Some(linked) = cask.get("linked_keg").and_then(|v| v.as_str()) {
         return Some(linked.to_string());
     }
-    cask.get("version").and_then(|v| v.as_str()).map(|s| s.to_string())
+    cask.get("version")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
 #[cfg(test)]

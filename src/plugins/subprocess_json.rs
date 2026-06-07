@@ -84,8 +84,12 @@ pub fn run_json(
                     let _ = child.kill();
                     let _ = child.wait();
                     // Join reader threads
-                    if let Some(t) = reader_stdout { let _ = t.join(); }
-                    if let Some(t) = reader_stderr { let _ = t.join(); }
+                    if let Some(t) = reader_stdout {
+                        let _ = t.join();
+                    }
+                    if let Some(t) = reader_stderr {
+                        let _ = t.join();
+                    }
                     return Err(format!("{} timed out after {}s", cmd[0], timeout_secs));
                 }
                 std::thread::sleep(Duration::from_millis(100));
@@ -93,16 +97,24 @@ pub fn run_json(
             Err(e) => {
                 let _ = child.kill();
                 let _ = child.wait();
-                if let Some(t) = reader_stdout { let _ = t.join(); }
-                if let Some(t) = reader_stderr { let _ = t.join(); }
+                if let Some(t) = reader_stdout {
+                    let _ = t.join();
+                }
+                if let Some(t) = reader_stderr {
+                    let _ = t.join();
+                }
                 return Err(format!("Cannot execute {}: {e}", cmd[0]));
             }
         }
     };
 
     // Join reader threads to ensure all output is collected
-    if let Some(t) = reader_stdout { let _ = t.join(); }
-    if let Some(t) = reader_stderr { let _ = t.join(); }
+    if let Some(t) = reader_stdout {
+        let _ = t.join();
+    }
+    if let Some(t) = reader_stderr {
+        let _ = t.join();
+    }
 
     let stdout = std::sync::Arc::into_inner(stdout_buf)
         .map(|m| m.into_inner().unwrap_or_default())
@@ -155,11 +167,7 @@ mod tests {
     #[test]
     fn test_run_json_non_zero_exit() {
         // `ls /nonexistent` will fail
-        let result = run_json(
-            &["ls", "/nonexistent/path/that/does/not/exist"],
-            &[0],
-            10,
-        );
+        let result = run_json(&["ls", "/nonexistent/path/that/does/not/exist"], &[0], 10);
         assert!(result.is_err());
     }
 

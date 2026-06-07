@@ -67,7 +67,10 @@ fn normalize(value: &str) -> String {
 /// This prevents pre-release suffixes (rc1, beta2, alpha3) from merging their
 /// digits with the patch number (e.g. "1.0.9rc1" → "1.0.9", not "1.0.91").
 fn digits_only(value: &str) -> String {
-    value.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect()
+    value
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .collect()
 }
 
 #[cfg(test)]

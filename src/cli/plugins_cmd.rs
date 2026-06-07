@@ -4,9 +4,8 @@ use std::collections::BTreeMap;
 
 pub fn list(args: JsonFlag) -> Result<(), String> {
     let plugins = crate::plugins::registry::all_plugins();
-    let persisted = crate::store::plugin_store::load_plugins_config(
-        &crate::paths::plugins_config_path(),
-    );
+    let persisted =
+        crate::store::plugin_store::load_plugins_config(&crate::paths::plugins_config_path());
 
     if args.json() {
         let mut list = Vec::new();
@@ -17,10 +16,18 @@ pub fn list(args: JsonFlag) -> Result<(), String> {
                 .unwrap_or_else(|| plugin.enabled_by_default());
             let mut entry: BTreeMap<String, serde_json::Value> = BTreeMap::new();
             entry.insert("name".into(), name.clone().into());
-            entry.insert("available".into(), if plugin.is_available() { "yes" } else { "no" }.into());
+            entry.insert(
+                "available".into(),
+                if plugin.is_available() { "yes" } else { "no" }.into(),
+            );
             entry.insert(
                 "default".into(),
-                if plugin.enabled_by_default() { "enabled" } else { "disabled" }.into(),
+                if plugin.enabled_by_default() {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+                .into(),
             );
             entry.insert(
                 "effective".into(),
@@ -81,7 +88,10 @@ pub fn enable(args: PluginAction) -> Result<(), String> {
         extra.insert("action".into(), "enabled".into());
         super::output::print_json_success(extra);
     } else {
-        println!("{}", super::output::success(format!("Plugin '{}' enabled.", args.name)));
+        println!(
+            "{}",
+            super::output::success(format!("Plugin '{}' enabled.", args.name))
+        );
     }
     Ok(())
 }
@@ -114,7 +124,10 @@ pub fn disable(args: PluginAction) -> Result<(), String> {
         extra.insert("action".into(), "disabled".into());
         super::output::print_json_success(extra);
     } else {
-        println!("{}", super::output::dim(format!("Plugin '{}' disabled.", args.name)));
+        println!(
+            "{}",
+            super::output::dim(format!("Plugin '{}' disabled.", args.name))
+        );
     }
     Ok(())
 }

@@ -6,13 +6,21 @@ use crate::plugins::ScannerPlugin;
 pub struct ApplicationsPlugin;
 
 impl ScannerPlugin for ApplicationsPlugin {
-    fn name(&self) -> &'static str { "applications" }
-    fn enabled_by_default(&self) -> bool { true }
-    fn display_color(&self) -> &'static str { "cyan" }
+    fn name(&self) -> &'static str {
+        "applications"
+    }
+    fn enabled_by_default(&self) -> bool {
+        true
+    }
+    fn display_color(&self) -> &'static str {
+        "cyan"
+    }
     fn scan_steps(&self) -> &'static [&'static str] {
         &["discovering apps", "researching latest versions"]
     }
-    fn is_available(&self) -> bool { true }
+    fn is_available(&self) -> bool {
+        true
+    }
 
     fn scan(
         &self,
@@ -33,9 +41,7 @@ impl ScannerPlugin for ApplicationsPlugin {
         let config = match crate::store::config_store::load_config(&config_path) {
             Some(c) => c,
             None => {
-                log::warn!(
-                    "LLM not available for applications research: config not found"
-                );
+                log::warn!("LLM not available for applications research: config not found");
                 return PluginScanResult {
                     items,
                     candidates: vec![],
@@ -80,10 +86,8 @@ impl ScannerPlugin for ApplicationsPlugin {
         // Use rayon ThreadPoolBuilder to respect max_workers — matches Python's ThreadPoolExecutor(max_workers=max_workers).
         let researched = std::sync::atomic::AtomicUsize::new(0);
         let skipped_count = std::sync::atomic::AtomicUsize::new(0);
-        let candidates: std::sync::Mutex<Vec<UpdateCandidate>> =
-            std::sync::Mutex::new(Vec::new());
-        let skipped_items: std::sync::Mutex<Vec<String>> =
-            std::sync::Mutex::new(Vec::new());
+        let candidates: std::sync::Mutex<Vec<UpdateCandidate>> = std::sync::Mutex::new(Vec::new());
+        let skipped_items: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
         let pool_result = rayon::ThreadPoolBuilder::new()
             .num_threads(max_workers.min(total).max(1))
@@ -98,7 +102,8 @@ impl ScannerPlugin for ApplicationsPlugin {
                         // try: candidate = future.result() except Exception as exc: ...
                         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                             super::research::pipeline::research_application_update(
-                                llm.as_ref(), item,
+                                llm.as_ref(),
+                                item,
                             )
                         }));
                         match result {
@@ -117,18 +122,18 @@ impl ScannerPlugin for ApplicationsPlugin {
                                     .map(|s| s.to_string())
                                     .or_else(|| panic_err.downcast_ref::<String>().cloned())
                                     .unwrap_or_else(|| "unknown panic".to_string());
-                                log::warn!(
-                                    "research failed for {}: {}",
-                                    item.name,
-                                    msg
-                                );
+                                log::warn!("research failed for {}: {}", item.name, msg);
                                 if let Ok(mut guard) = skipped_items.lock() {
-                                    guard.push(format!("research failed for {}: {}", item.name, msg));
+                                    guard.push(format!(
+                                        "research failed for {}: {}",
+                                        item.name, msg
+                                    ));
                                 }
                                 skipped_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                             }
                         }
-                        let count = researched.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                        let count =
+                            researched.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
                         // Real-time progress: called from worker thread — on_progress is Sync.
                         if let Some(cb) = on_progress {
                             cb(1, count, total);
@@ -141,9 +146,7 @@ impl ScannerPlugin for ApplicationsPlugin {
                 // Fallback: sequential research with catch_unwind protection
                 for item in &to_research {
                     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        super::research::pipeline::research_application_update(
-                            llm.as_ref(), item,
-                        )
+                        super::research::pipeline::research_application_update(llm.as_ref(), item)
                     }));
                     match result {
                         Ok(Some(candidate)) => {
@@ -168,7 +171,9 @@ impl ScannerPlugin for ApplicationsPlugin {
         }
 
         let candidates = candidates.into_inner().unwrap_or_else(|e| e.into_inner());
-        let mut skipped = skipped_items.into_inner().unwrap_or_else(|e| e.into_inner());
+        let mut skipped = skipped_items
+            .into_inner()
+            .unwrap_or_else(|e| e.into_inner());
         if skipped_count.load(std::sync::atomic::Ordering::SeqCst) > 0 {
             skipped.push(format!(
                 "{} research item(s) failed (see warnings above)",
@@ -188,12 +193,9 @@ impl ScannerPlugin for ApplicationsPlugin {
     fn update(&self, candidate: &UpdateCandidate) -> bool {
         // App Store apps: open macappstore:// URL
         if candidate.item.source == SourceKind::AppStore {
-            let (cmd, can_auto) =
-                super::app_store::resolve_app_store_command(&candidate.item);
+            let (cmd, can_auto) = super::app_store::resolve_app_store_command(&candidate.item);
             if can_auto && !cmd.is_empty() {
-                let _ = std::process::Command::new(&cmd[0])
-                    .args(&cmd[1..])
-                    .status();
+                let _ = std::process::Command::new(&cmd[0]).args(&cmd[1..]).status();
                 return true;
             }
         }

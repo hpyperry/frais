@@ -84,10 +84,7 @@ fn parse_candidates_from_cache(
 
 /// Filter candidates by exact id or name match.
 /// Matches Python's _filter_candidates() — EXACT match, not substring.
-fn filter_candidates(
-    candidates: &[UpdateCandidate],
-    only: Option<&str>,
-) -> Vec<UpdateCandidate> {
+fn filter_candidates(candidates: &[UpdateCandidate], only: Option<&str>) -> Vec<UpdateCandidate> {
     match only {
         None => candidates.to_vec(),
         Some(filter) => candidates
@@ -146,8 +143,7 @@ fn execute_update_loop(
             );
         }
 
-        if candidate.can_auto_update
-            && candidate.item.source != crate::models::SourceKind::AppStore
+        if candidate.can_auto_update && candidate.item.source != crate::models::SourceKind::AppStore
         {
             println!(
                 "  {} {}",

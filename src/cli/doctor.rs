@@ -9,19 +9,42 @@ pub fn run(args: DoctorArgs) -> Result<(), String> {
 
     if args.json {
         let mut extra: BTreeMap<String, serde_json::Value> = BTreeMap::new();
-        extra.insert("version".into(), serde_json::Value::String(env!("CARGO_PKG_VERSION").into()));
+        extra.insert(
+            "version".into(),
+            serde_json::Value::String(env!("CARGO_PKG_VERSION").into()),
+        );
         let mut sys: BTreeMap<String, serde_json::Value> = BTreeMap::new();
-        sys.insert("os_name".into(), serde_json::Value::String(system.os_name.clone()));
-        sys.insert("os_version".into(), serde_json::Value::String(system.os_version.clone()));
-        sys.insert("arch".into(), serde_json::Value::String(system.arch.clone()));
+        sys.insert(
+            "os_name".into(),
+            serde_json::Value::String(system.os_name.clone()),
+        );
+        sys.insert(
+            "os_version".into(),
+            serde_json::Value::String(system.os_version.clone()),
+        );
+        sys.insert(
+            "arch".into(),
+            serde_json::Value::String(system.arch.clone()),
+        );
         extra.insert("system".into(), serde_json::json!(sys));
 
         // Plugins status
         let mut plugin_info: BTreeMap<String, serde_json::Value> = BTreeMap::new();
         for (name, plugin) in &plugins {
             let mut info: BTreeMap<String, serde_json::Value> = BTreeMap::new();
-            info.insert("available".into(), if plugin.is_available() { "yes" } else { "no" }.into());
-            info.insert("default".into(), if plugin.enabled_by_default() { "enabled" } else { "disabled" }.into());
+            info.insert(
+                "available".into(),
+                if plugin.is_available() { "yes" } else { "no" }.into(),
+            );
+            info.insert(
+                "default".into(),
+                if plugin.enabled_by_default() {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+                .into(),
+            );
             plugin_info.insert(name.clone(), serde_json::json!(info));
         }
         extra.insert("plugins".into(), serde_json::json!(plugin_info));
@@ -58,7 +81,14 @@ pub fn run(args: DoctorArgs) -> Result<(), String> {
 
         // --- System ---
         println!("{}", super::output::section_header("System"));
-        super::output::info_row("OS", &format!("{} {}", system.os_name, super::output::dim(&system.os_version)));
+        super::output::info_row(
+            "OS",
+            &format!(
+                "{} {}",
+                system.os_name,
+                super::output::dim(&system.os_version)
+            ),
+        );
         super::output::info_row("Arch", &system.arch);
         println!();
 
@@ -104,12 +134,26 @@ pub fn run(args: DoctorArgs) -> Result<(), String> {
                     .to_string()
             };
             super::output::info_row("Endpoint", &endpoint);
-            let lang_label = if c.language == "zh" { "中文" } else { "English" };
+            let lang_label = if c.language == "zh" {
+                "中文"
+            } else {
+                "English"
+            };
             super::output::info_row("Language", lang_label);
-            super::output::info_row_dim("Key", &format!("{}  ({})", mask_key(&c.api_key), key_source_label(c.api_key_source.as_deref())));
+            super::output::info_row_dim(
+                "Key",
+                &format!(
+                    "{}  ({})",
+                    mask_key(&c.api_key),
+                    key_source_label(c.api_key_source.as_deref())
+                ),
+            );
         } else {
             println!("{}", super::output::section_header("LLM"));
-            println!("  {}", super::output::dim("Not configured. Run `frais config manage` to set up."));
+            println!(
+                "  {}",
+                super::output::dim("Not configured. Run `frais config manage` to set up.")
+            );
         }
     }
 
