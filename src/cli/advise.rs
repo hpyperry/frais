@@ -306,7 +306,13 @@ pub(crate) fn print_results(
                 .get(name)
                 .map(|p| p.display_color())
                 .unwrap_or("white");
-            print_rule(name, current_items.len(), plugin_color, terminal_width, "up to date");
+            print_rule(
+                name,
+                current_items.len(),
+                plugin_color,
+                terminal_width,
+                "up to date",
+            );
             for item in current_items {
                 println!();
                 println!("  {}", super::output::id(&item.id));
@@ -347,7 +353,13 @@ pub(crate) fn print_results(
             .get(name)
             .map(|p| p.display_color())
             .unwrap_or("white");
-        print_rule(name, result.candidates.len(), plugin_color, terminal_width, "update(s)");
+        print_rule(
+            name,
+            result.candidates.len(),
+            plugin_color,
+            terminal_width,
+            "update(s)",
+        );
 
         for c in &result.candidates {
             println!();

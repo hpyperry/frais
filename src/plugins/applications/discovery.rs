@@ -195,11 +195,7 @@ fn read_macos_bundle(app_path: &Path, plist_path: &Path) -> Option<SoftwareItem>
 
 /// Read an iOS app bundle running on Apple Silicon Mac.
 /// Structure: .app/Wrapper/iTunesMetadata.plist + Wrapper/<name>.app/Info.plist
-fn read_ios_bundle(
-    app_path: &Path,
-    wrapper: &Path,
-    itunes_plist: &Path,
-) -> Option<SoftwareItem> {
+fn read_ios_bundle(app_path: &Path, wrapper: &Path, itunes_plist: &Path) -> Option<SoftwareItem> {
     // Parse iTunesMetadata.plist — contains name, version, itemId
     let itunes_value = plist::Value::from_file(itunes_plist).ok()?;
     let itunes = itunes_value.as_dictionary()?;
@@ -250,18 +246,12 @@ fn read_ios_bundle(
         "bundle_id".into(),
         serde_json::Value::String(bundle_id.unwrap_or_default()),
     );
-    metadata.insert(
-        "platform".into(),
-        serde_json::Value::String("ios".into()),
-    );
+    metadata.insert("platform".into(), serde_json::Value::String("ios".into()));
     // iOS apps have no macOS codesign/xattr — explicit null
     metadata.insert("signing".into(), serde_json::Value::Null);
     metadata.insert("quarantine".into(), serde_json::Value::Null);
     if let Some(tid) = item_id {
-        metadata.insert(
-            "track_id".into(),
-            serde_json::Value::String(tid),
-        );
+        metadata.insert("track_id".into(), serde_json::Value::String(tid));
     }
 
     log::debug!(
