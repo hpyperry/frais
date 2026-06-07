@@ -1,19 +1,18 @@
-.venv/
-.pytest_cache/
-.DS_Store
-__pycache__/
-*.py[cod]
+# Rust
+/target
 
+# macOS
+.DS_Store
+
+# Build artifacts
 build/
 dist/
 *.spec
 
+# IDE
+.idea/
+.vscode/
+
+# Coverage
 htmlcov/
 .coverage
-
-typescript
-
-
-# Added by cargo
-
-/target
