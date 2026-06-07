@@ -46,10 +46,11 @@ fn test_doctor_output() {
         .arg("doctor")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Frais v"))
-        .stdout(predicate::str::contains("OS:"))
-        .stdout(predicate::str::contains("Arch:"))
-        .stdout(predicate::str::contains("Plugins:"));
+        .stdout(predicate::str::contains("frais v"))
+        .stdout(predicate::str::contains("System"))
+        .stdout(predicate::str::contains("Plugins"))
+        .stdout(predicate::str::contains("Applications"))
+        .stdout(predicate::str::contains("LLM"));
 }
 
 #[test]

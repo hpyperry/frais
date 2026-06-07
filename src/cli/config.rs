@@ -3,6 +3,18 @@ use super::JsonFlag;
 use crate::store::config_store::save_config;
 use std::collections::BTreeMap;
 
+/// Shorten a key source for display.
+fn short_key_source(source: Option<&str>) -> String {
+    match source {
+        Some("FRAIS_LLM_API_KEY") | Some("MIMO_API_KEY") | Some("OPENAI_API_KEY") => {
+            "env var".to_string()
+        }
+        Some(s) if s.ends_with("config.toml") => "config file".to_string(),
+        Some(s) => s.to_string(),
+        None => "unknown".to_string(),
+    }
+}
+
 pub fn show(args: JsonFlag) -> Result<(), String> {
     let config = crate::store::config_store::load_config(&crate::paths::config_path());
     let json_output = args.json();
@@ -35,25 +47,24 @@ pub fn show(args: JsonFlag) -> Result<(), String> {
                 let provider_name = c.get_provider()
                     .map(|p| p.name)
                     .unwrap_or_else(|| c.provider.clone());
-                println!("  {} {}", super::output::label("Provider:"), provider_name);
-                println!("  {} {}", super::output::label("Model:"), c.model);
-                println!("  {} {}", super::output::label("Protocol:"), c.protocol);
+                super::output::info_row("Provider:", &provider_name);
+                super::output::info_row("Model:", &c.model);
+                super::output::info_row("Protocol:", &c.protocol);
+                let endpoint = if c.url.is_empty() {
+                    super::output::dim("(default)").to_string()
+                } else {
+                    c.url.clone()
+                };
+                super::output::info_row("Endpoint:", &endpoint);
                 let lang_label = if c.language == "zh" { "中文" } else { "English" };
-                println!("  {} {}", super::output::label("Language:"), lang_label);
-                if !c.url.is_empty() {
-                    println!("  {} {}", super::output::label("URL:"), c.url);
-                }
+                super::output::info_row("Language:", lang_label);
                 let masked = if c.api_key.len() >= 4 {
                     format!("***{}", &c.api_key[c.api_key.len()-4..])
                 } else {
                     "***".into()
                 };
-                println!(
-                    "  {} {} {}",
-                    super::output::label("Key:"),
-                    masked,
-                    super::output::dim(format!("(via {})", c.api_key_source.as_deref().unwrap_or("unknown")))
-                );
+                let source_note = short_key_source(c.api_key_source.as_deref());
+                super::output::info_row_dim("Key:", &format!("{masked}  ({source_note})"));
             }
             None => {
                 println!(
@@ -142,23 +153,29 @@ enum ModifyChoice {
 
 fn show_current_config(config: &crate::store::config_store::ProviderConfig) {
     println!();
-    println!("Current configuration:");
+    println!("  {}", super::output::bold("Current configuration"));
     let provider = config
         .get_provider()
         .map(|p| p.name.clone())
         .unwrap_or_else(|| config.provider.clone());
-    println!("  Provider: {}", console::style(&provider).cyan());
-    println!("  Model:    {}", console::style(&config.model).cyan());
-    println!("  Protocol: {}", console::style(&config.protocol).cyan());
-    println!("  URL:      {}", console::style(&config.url).cyan());
+    super::output::info_row("Provider:", &provider);
+    super::output::info_row("Model:", &config.model);
+    super::output::info_row("Protocol:", &config.protocol);
+    let endpoint = if config.url.is_empty() {
+        super::output::dim("(default)").to_string()
+    } else {
+        config.url.clone()
+    };
+    super::output::info_row("Endpoint:", &endpoint);
     let lang_label = if config.language == "zh" { "中文" } else { "English" };
-    println!("  Language: {}", console::style(lang_label).cyan());
+    super::output::info_row("Language:", lang_label);
     let masked = if config.api_key.len() >= 4 {
         format!("***{}", &config.api_key[config.api_key.len() - 4..])
     } else {
         "***".into()
     };
-    println!("  API key:  {}", console::style(&masked).dim());
+    let source_note = short_key_source(config.api_key_source.as_deref());
+    super::output::info_row_dim("Key:", &format!("{masked}  ({source_note})"));
     println!();
 }
 
@@ -166,13 +183,13 @@ fn ask_what_to_modify() -> Result<ModifyChoice, ConfigCancelled> {
     use dialoguer::Select;
 
     println!();
-    println!("What would you like to modify?");
+    println!("What would you like to change?");
     let items = &[
         "Provider & Model",
         "API Key",
-        "Language (中文 / English)",
-        "Everything (full reconfiguration)",
-        "Cancel (Ctrl+C)",
+        "Language",
+        "Everything",
+        "Cancel",
     ];
 
     let selection = Select::new()
@@ -341,7 +358,7 @@ fn pick_provider_and_model<'a>(
     loop {
         // --- Provider selection ---
         println!();
-        println!("Select an LLM provider (Ctrl+C to cancel):");
+        println!("Select provider:");
         if let Some(c) = current {
             if let Some(p) = c.get_provider() {
                 println!("  Current: {}", console::style(&p.name).dim());
@@ -380,7 +397,6 @@ fn pick_provider_and_model<'a>(
         }
 
         let provider = &providers[sel - back_offset];
-        println!("  {} selected.", console::style(&provider.name).green());
         println!();
 
         // --- Model selection ---
@@ -392,7 +408,7 @@ fn pick_provider_and_model<'a>(
             }
         });
 
-        println!("Select a model for {} (Ctrl+C to cancel):", provider.name);
+        println!("Select model:");
         if let Some(mid) = current_model_id {
             let name = provider.models.iter().find(|m| m.id == mid).map(|m| m.name.as_str()).unwrap_or(mid);
             println!("  Current: {}", console::style(name).dim());
@@ -420,7 +436,6 @@ fn pick_provider_and_model<'a>(
         }
 
         let model = &provider.models[model_sel - 1];
-        println!("  {} selected.", console::style(&model.name).green());
         return Ok(Some((provider, model)));
     }
 }
@@ -447,8 +462,7 @@ fn pick_protocol(
     println!();
     if provider.protocols.len() == 1 {
         let proto = &provider.protocols[0];
-        println!("Protocol for {}: {}", provider.name, console::style(proto).cyan());
-        println!("  (only one available)");
+        println!("Protocol: {} (only option)", console::style(proto).cyan());
 
         let items = &["Continue", "Back"];
         let sel = Select::new()
@@ -464,7 +478,7 @@ fn pick_protocol(
         return Ok(ProtocolChoice::Selected(proto.clone()));
     }
 
-    println!("Select protocol for {} (Ctrl+C to cancel):", provider.name);
+    println!("Select protocol:");
     println!("  Current: {}", console::style(current_protocol).dim());
 
     let mut items = vec!["Back".into()];
@@ -485,7 +499,6 @@ fn pick_protocol(
     }
 
     let chosen = provider.protocols[sel - 1].clone();
-    println!("  {} selected.", console::style(&chosen).green());
     Ok(ProtocolChoice::Selected(chosen))
 }
 
@@ -512,7 +525,7 @@ fn ask_url(
     let current_url = current_url_val.as_str();
 
     println!();
-    println!("Endpoint URL for {} ({})", provider.name, protocol);
+    println!("Endpoint URL:");
     println!("  Default: {}", console::style(&default_url).dim());
     if current_url != default_url {
         println!("  Current: {}", console::style(current_url).dim());
@@ -549,29 +562,23 @@ fn ask_language(current_language: &str) -> Result<String, ConfigCancelled> {
     use dialoguer::Select;
 
     println!();
-    println!("Select summary language (Ctrl+C to cancel):");
+    println!("Summary language:");
     let current_label = if current_language == "zh" { "中文" } else { "English" };
     println!("  Current: {}", console::style(current_label).dim());
 
-    let items = &["English", "中文 (Chinese)", "Back"];
+    let items = &["English", "中文", "Back"];
     let default_idx = if current_language == "zh" { 1 } else { 0 };
 
     let sel = Select::new()
-        .with_prompt("Language for AI summaries")
+        .with_prompt("Language")
         .items(items)
         .default(default_idx)
         .interact()
         .map_err(|_| ConfigCancelled)?;
 
     match sel {
-        0 => {
-            println!("  English selected.");
-            Ok("en".into())
-        }
-        1 => {
-            println!("  中文 selected.");
-            Ok("zh".into())
-        }
+        0 => Ok("en".into()),
+        1 => Ok("zh".into()),
         2 => Ok(current_language.to_string()),
         _ => Err(ConfigCancelled),
     }
@@ -582,7 +589,7 @@ fn ask_language(current_language: &str) -> Result<String, ConfigCancelled> {
 // ============================================================================
 
 fn ask_api_key(
-    provider_name: &str,
+    _provider_name: &str,
     current: Option<&crate::store::config_store::ProviderConfig>,
 ) -> Result<String, ConfigCancelled> {
     println!();
@@ -592,11 +599,11 @@ fn ask_api_key(
         } else {
             "(not set)".into()
         };
-        println!("Enter API key for {} (Ctrl+C to cancel):", provider_name);
+        println!("API key:");
         println!("  Current: {}", console::style(&masked).dim());
-        println!("  (leave empty to keep current key)");
+        println!("  (leave empty to keep current)");
     } else {
-        println!("Enter API key for {} (Ctrl+C to cancel):", provider_name);
+        println!("API key:");
     }
 
     let api_key = rpassword::prompt_password("API key (input hidden): ")

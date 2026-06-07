@@ -55,6 +55,32 @@ pub fn cross_mark() -> console::StyledObject<&'static str> {
     console::style("\u{2717}").yellow()
 }
 
+/// Label width for aligned info rows.
+pub const ROW_LABEL_WIDTH: usize = 12;
+
+/// Print an aligned info row: "  LABEL       VALUE".
+/// Label is left-padded to ROW_LABEL_WIDTH for consistent alignment.
+pub fn info_row(lbl: &str, value: &str) {
+    let padded = format!("{:<width$}", lbl, width = ROW_LABEL_WIDTH);
+    println!("  {} {}", label(&padded), value);
+}
+
+/// Print an aligned info row with dimmed value.
+pub fn info_row_dim(lbl: &str, value: &str) {
+    let padded = format!("{:<width$}", lbl, width = ROW_LABEL_WIDTH);
+    println!("  {} {}", label(&padded), dim(value));
+}
+
+/// Print a section heading: "✓ HEADING".
+pub fn section_header(text: &str) -> String {
+    format!("{} {}", check_mark(), bold(text))
+}
+
+/// Print a section heading: "  HEADING" (without checkmark).
+pub fn section(text: &str) {
+    println!("  {}", bold(text));
+}
+
 /// Build a JSON string with guaranteed key order.
 /// serde_json::to_string_pretty on BTreeMap sorts alphabetically,
 /// but the LLM Agent Contract requires "ok" to always be the first key.

@@ -48,47 +48,68 @@ pub fn run(args: DoctorArgs) -> Result<(), String> {
 
         super::output::print_json_success(extra);
     } else {
+        // Header
         println!(
             "{} v{}",
-            super::output::bold("Frais"),
+            super::output::bold("frais"),
             super::output::bold(env!("CARGO_PKG_VERSION"))
         );
-        println!(
-            "  {} {} {}",
-            super::output::label("OS:"),
-            system.os_name,
-            system.os_version
-        );
-        println!("  {} {}", super::output::label("Arch:"), system.arch);
         println!();
-        println!("{}", super::output::label("Plugins:"));
-        for (_name, plugin) in &plugins {
-            let status = if plugin.is_available() {
-                super::output::check_mark()
-            } else {
-                super::output::cross_mark()
-            };
-            println!("  {} {}", status, plugin.name());
-        }
 
+        // --- System ---
+        println!("{}", super::output::section_header("System"));
+        super::output::info_row("OS", &format!("{} {}", system.os_name, super::output::dim(&system.os_version)));
+        super::output::info_row("Arch", &system.arch);
+        println!();
+
+        // --- Plugins ---
+        println!("{}", super::output::section_header("Plugins"));
+        for (_name, plugin) in &plugins {
+            let name = plugin.name();
+            let display = match name {
+                "applications" => "Applications",
+                "homebrew" => "Homebrew",
+                "npm" => "NPM",
+                other => other,
+            };
+            if plugin.is_available() {
+                println!("  {}  {}", super::output::check_mark(), display);
+            } else {
+                println!("  {}  {}", super::output::cross_mark(), display);
+            }
+        }
+        println!();
+
+        // --- LLM ---
         if let Some(c) = &config {
+            println!("{}", super::output::section_header("LLM"));
             let provider_name = crate::providers::get_provider(&c.provider)
                 .map(|p| p.name)
                 .unwrap_or_else(|| c.provider.clone());
-            println!();
-            println!(
-                "{} {} {} ({})",
-                super::output::label("LLM:"),
-                provider_name,
-                c.model,
-                c.protocol
-            );
+            super::output::info_row("Provider", &provider_name);
+            super::output::info_row("Model", &c.model);
+            let protocol_display = match c.protocol.as_str() {
+                "openai" => "OpenAI",
+                "anthropic" => "Anthropic",
+                other => other,
+            };
+            super::output::info_row("Protocol", protocol_display);
+            let endpoint = if c.url.is_empty() {
+                "(default)".to_string()
+            } else {
+                c.url
+                    .trim_start_matches("https://")
+                    .trim_start_matches("http://")
+                    .trim_end_matches('/')
+                    .to_string()
+            };
+            super::output::info_row("Endpoint", &endpoint);
             let lang_label = if c.language == "zh" { "中文" } else { "English" };
-            println!("  {} {}", super::output::label("Language:"), lang_label);
-            println!("  {} {}", super::output::label("Key:"), mask_key(&c.api_key));
+            super::output::info_row("Language", lang_label);
+            super::output::info_row_dim("Key", &format!("{}  ({})", mask_key(&c.api_key), key_source_label(c.api_key_source.as_deref())));
         } else {
-            println!();
-            println!("{} {}", super::output::label("LLM:"), super::output::dim("not configured"));
+            println!("{}", super::output::section_header("LLM"));
+            println!("  {}", super::output::dim("Not configured. Run `frais config manage` to set up."));
         }
     }
 
@@ -100,5 +121,13 @@ fn mask_key(key: &str) -> String {
         "***".into()
     } else {
         format!("***{}", &key[key.len() - 4..])
+    }
+}
+
+fn key_source_label(source: Option<&str>) -> &str {
+    match source {
+        Some("FRAIS_LLM_API_KEY") | Some("MIMO_API_KEY") | Some("OPENAI_API_KEY") => "env var",
+        Some(s) if s.ends_with("config.toml") => "config file",
+        _ => "unknown",
     }
 }
