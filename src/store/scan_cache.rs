@@ -1,5 +1,5 @@
 // Scan cache store — matches Python's frais/store/scan_cache.py.
-// Writes scan results to ~/.frais/log/last_advice.json atomically.
+// Writes scan results to ~/.frais/cache/last_advice.json atomically.
 
 use crate::models::ScanResult;
 use std::path::Path;

@@ -45,9 +45,16 @@ pub fn default_error_log_file() -> PathBuf {
     p
 }
 
-/// Scan cache file: ~/.frais/log/last_advice.json
+/// Cache directory: ~/.frais/cache
+pub fn cache_dir() -> PathBuf {
+    let mut p = frais_home();
+    p.push("cache");
+    p
+}
+
+/// Scan cache file: ~/.frais/cache/last_advice.json
 pub fn advice_cache() -> PathBuf {
-    let mut p = default_log_dir();
+    let mut p = cache_dir();
     p.push("last_advice.json");
     p
 }

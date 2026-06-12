@@ -105,7 +105,7 @@ frais scan --json
 frais scan --json --plugins applications --all
 ```
 
-Structured scan output for LLM agent consumption. Includes `system`, `plugin_results` with `items` and `candidates`. Saves cache to `~/.frais/log/last_advice.json` for `summarize` and `update`.
+Structured scan output for LLM agent consumption. Includes `system`, `plugin_results` with `items` and `candidates`. Saves cache to `~/.frais/cache/last_advice.json` for `summarize` and `update`.
 
 ### `advise`
 
@@ -379,6 +379,11 @@ frais --no-log advise
 ```
 
 Logs are written to `~/.frais/log/frais.log` by default. Log files auto-rotate at 50 MB.
+
+All data (config, logs, cache) lives under `~/.frais/`. Set `FRAIS_HOME` to override:
+```bash
+FRAIS_HOME=/custom/path frais doctor
+```
 
 ## Testing
 
